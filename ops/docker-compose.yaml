@@ -1,0 +1,52 @@
+volumes:
+  builder_data:
+
+services:
+  builder-op-node:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:devnet
+    command: >
+      op-node
+      --l1=ws://host.docker.internal:8546
+      --l1.beacon=http://host.docker.internal:5052
+      --l1.epoch-poll-interval=12s
+      --l1.http-poll-interval=6s
+      --l2=http://builder-op-geth:8551
+      --l2.jwt-secret=/config/jwt-secret.txt
+      --rollup.config=/rollup.json
+      --rpc.addr=0.0.0.0
+      --rpc.port=8545
+      --p2p.listen.ip=0.0.0.0
+      --p2p.listen.tcp=9003
+      --p2p.listen.udp=9003
+      --p2p.scoring.peers=light
+      --p2p.ban.peers=true
+      --metrics.enabled
+      --metrics.addr=0.0.0.0
+      --metrics.port=7300
+      --pprof.enabled
+      --rpc.enable-admin
+      --safedb.path=/db
+      --p2p.static=/dns/host.docker.internal/tcp/9003/p2p/16Uiu2HAmHqrXGts25TtKMBRHtvhWZLNypsobKoggpZye1XQtJpbZ
+    volumes:
+      - "${PWD}/jwt-secret.txt:/config/jwt-secret.txt"
+      - "${PP}/rollup.json:/rollup.json"
+    ports:
+      - 9546:9546
+
+  builder-op-geth:
+    build:
+      context: .
+      dockerfile: l2-op-geth.Dockerfile
+    ports:
+      - "5545:8545"
+      - "6063:6060"
+      - "8552:8551"
+    volumes:
+      - "builder_data:/db"
+      - "${PP}/genesis-l2.json:/genesis.json"
+      - "${PWD}/jwt-secret.txt:/config/jwt-secret.txt"
+    entrypoint: # pass the L2 specific flags by overriding the entry-point and adding extra arguments
+      - "/bin/sh"
+      - "/entrypoint.sh"
+    environment:
+      GETH_MINER_RECOMMIT: 100ms
