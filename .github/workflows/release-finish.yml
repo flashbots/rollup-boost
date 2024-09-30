@@ -21,7 +21,7 @@ permissions:
 jobs:
   upload:
     name: Publish Docker Image
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-16x
     if: github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Safety check
