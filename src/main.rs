@@ -7,6 +7,11 @@ use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::server::Server;
 use jsonrpsee::RpcModule;
+use opentelemetry::global;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry_sdk::trace::Config;
+use opentelemetry_sdk::Resource;
 use proxy::ProxyLayer;
 use reth_rpc_layer::{AuthClientLayer, AuthClientService};
 use server::{EngineApiServer, EthEngineApi};
@@ -55,6 +60,10 @@ struct Args {
     #[arg(long, env, default_value = "false")]
     tracing: bool,
 
+    /// OTLP endpoint
+    #[arg(long, env, default_value = "http://localhost:4318")]
+    otlp_endpoint: String,
+
     /// Log level
     #[arg(long, env, default_value = "info")]
     log_level: Level,
@@ -67,6 +76,11 @@ async fn main() -> Result<()> {
     // Load .env file
     dotenv().ok();
     let args: Args = Args::parse();
+
+    // telemetry setup
+    if args.tracing {
+        let _ = init_tracing(&args.otlp_endpoint);
+    }
 
     // Initialize logging
     tracing_subscriber::fmt()
@@ -141,6 +155,23 @@ fn create_client(
         .set_http_middleware(client_middleware)
         .build(url)
         .map_err(|e| Error::InitRPCClient(e.to_string()))
+}
+
+fn init_tracing(endpoint: &str) {
+    global::set_text_map_propagator(TraceContextPropagator::new());
+    let provider = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .http()
+                .with_endpoint(endpoint),
+        )
+        .with_trace_config(Config::default().with_resource(Resource::new(vec![
+            opentelemetry::KeyValue::new("service.name", "rollup-boost"),
+        ])))
+        .install_batch(opentelemetry_sdk::runtime::Tokio)
+        .unwrap();
+    let _ = global::set_tracer_provider(provider);
 }
 
 #[cfg(test)]

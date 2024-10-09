@@ -7,12 +7,80 @@ use jsonrpsee::core::{async_trait, ClientError, RpcResult};
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use jsonrpsee::types::{ErrorCode, ErrorObject};
-use op_alloy_rpc_types_engine::{
-    AsInnerPayload, OptimismExecutionPayloadEnvelopeV3, OptimismPayloadAttributes,
-};
-
+use lru::LruCache;
+use op_alloy_rpc_types_engine::{OptimismExecutionPayloadEnvelopeV3, OptimismPayloadAttributes};
+use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
+use opentelemetry::trace::{Span, SpanContext, TraceContextExt, Tracer};
+use opentelemetry::{Context, KeyValue};
+use reth_optimism_payload_builder::OptimismPayloadBuilderAttributes;
+use reth_payload_primitives::PayloadBuilderAttributes;
+use std::num::NonZero;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{error, info};
+
+const CACHE_SIZE: usize = 100;
+
+struct PayloadTraceContext {
+    tracer: Arc<BoxedTracer>,
+    block_hash_to_payload_ids: Arc<Mutex<LruCache<B256, Vec<PayloadId>>>>,
+    payload_id_to_span: Arc<Mutex<LruCache<PayloadId, SpanContext>>>,
+}
+
+impl PayloadTraceContext {
+    fn new() -> Self {
+        PayloadTraceContext {
+            tracer: Arc::new(global::tracer("rollup-boost")),
+            block_hash_to_payload_ids: Arc::new(Mutex::new(LruCache::new(
+                NonZero::new(CACHE_SIZE).unwrap(),
+            ))),
+            payload_id_to_span: Arc::new(Mutex::new(LruCache::new(
+                NonZero::new(CACHE_SIZE).unwrap(),
+            ))),
+        }
+    }
+
+    async fn store(&self, payload_id: PayloadId, parent_hash: B256, span_context: SpanContext) {
+        let mut store = self.payload_id_to_span.lock().await;
+        store.put(payload_id, span_context);
+        let mut store = self.block_hash_to_payload_ids.lock().await;
+        if let Some(payload_ids) = store.get_mut(&parent_hash) {
+            payload_ids.push(payload_id);
+        } else {
+            store.put(parent_hash, vec![payload_id]);
+        }
+    }
+
+    async fn retrieve_by_parent_hash(&self, parent_hash: &B256) -> Option<Vec<SpanContext>> {
+        let mut block_hash_to_payload_ids = self.block_hash_to_payload_ids.lock().await;
+        let mut payload_id_to_span = self.payload_id_to_span.lock().await;
+        block_hash_to_payload_ids
+            .get(parent_hash)
+            .cloned()
+            .map(|payload_ids| {
+                payload_ids
+                    .iter()
+                    .filter_map(|payload_id| payload_id_to_span.get(payload_id).cloned())
+                    .collect()
+            })
+    }
+
+    async fn retrieve_by_payload_id(&self, payload_id: &PayloadId) -> Option<SpanContext> {
+        let mut store = self.payload_id_to_span.lock().await;
+        store.get(payload_id).cloned()
+    }
+
+    async fn remove_by_parent_hash(&self, block_hash: &B256) {
+        let mut block_hash_to_payload_ids = self.block_hash_to_payload_ids.lock().await;
+        let mut payload_id_to_span = self.payload_id_to_span.lock().await;
+        if let Some(payload_ids) = block_hash_to_payload_ids.get_mut(block_hash) {
+            for payload_id in payload_ids {
+                payload_id_to_span.pop(&payload_id);
+            }
+        }
+        block_hash_to_payload_ids.pop(block_hash);
+    }
+}
 
 #[rpc(server, client, namespace = "engine")]
 pub trait EngineApi {
@@ -42,6 +110,7 @@ pub struct EthEngineApi<C> {
     l2_client: Arc<C>,
     builder_client: Arc<C>,
     boost_sync: bool,
+    payload_trace_context: Arc<PayloadTraceContext>,
 }
 
 impl<C> EthEngineApi<C>
@@ -53,6 +122,7 @@ where
             l2_client,
             builder_client,
             boost_sync,
+            payload_trace_context: Arc::new(PayloadTraceContext::new()),
         }
     }
 }
@@ -85,11 +155,48 @@ where
         };
 
         if should_send_to_builder {
+            let span: Option<BoxedSpan> = if let Some(payload_attributes) =
+                payload_attributes.clone()
+            {
+                let mut parent_span = self
+                    .payload_trace_context
+                    .tracer
+                    .start_with_context("build-block", &Context::current());
+                let builder_attrs = OptimismPayloadBuilderAttributes::try_new(
+                    fork_choice_state.head_block_hash,
+                    payload_attributes,
+                )
+                .unwrap();
+                let payload_id = builder_attrs.payload_id();
+                parent_span.set_attribute(KeyValue::new(
+                    "parent_hash",
+                    fork_choice_state.head_block_hash.to_string(),
+                ));
+                parent_span
+                    .set_attribute(KeyValue::new("timestamp", builder_attrs.timestamp() as i64));
+                parent_span.set_attribute(KeyValue::new("payload_id", payload_id.to_string()));
+                self.payload_trace_context
+                    .store(
+                        payload_id,
+                        fork_choice_state.head_block_hash,
+                        parent_span.span_context().clone(),
+                    )
+                    .await;
+                let ctx = Context::current().with_span(parent_span);
+                Some(
+                    self.payload_trace_context
+                        .tracer
+                        .start_with_context("fcu", &ctx),
+                )
+            } else {
+                None
+            };
+
             // async call to builder to trigger payload building and sync
             let builder = self.builder_client.clone();
             let attr = payload_attributes.clone();
             tokio::spawn(async move {
-                builder.fork_choice_updated_v3(fork_choice_state, attr).await.map(|response| {
+                let _ = builder.fork_choice_updated_v3(fork_choice_state, attr).await.map(|response| {
                     let payload_id_str = response.payload_id.map(|id| id.to_string()).unwrap_or_default();
                     if response.is_invalid() {
                         error!(message = "builder rejected fork_choice_updated_v3 with attributes", "payload_id" = payload_id_str, "validation_error" = %response.payload_status.status);
@@ -98,7 +205,8 @@ where
                     }
                 }).map_err(|e| {
                     error!(message = "error calling fork_choice_updated_v3 to builder", "error" = %e, "head_block_hash" = %fork_choice_state.head_block_hash);
-                })
+                });
+                span.map(|mut s| s.end());
             });
         } else {
             info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash);
@@ -127,12 +235,23 @@ where
         info!(message = "received get_payload_v3", "payload_id" = %payload_id);
         let l2_client_future = self.l2_client.get_payload_v3(payload_id);
         let builder_client_future = Box::pin(async {
+            let parent_ctx = self
+                .payload_trace_context
+                .retrieve_by_payload_id(&payload_id)
+                .await;
+            let span = parent_ctx.map(|ctx| {
+                self.payload_trace_context.tracer.start_with_context(
+                    "get_payload",
+                    &Context::current().with_remote_span_context(ctx),
+                )
+            });
             let payload = self.builder_client.get_payload_v3(payload_id).await.map_err(|e| {
                 error!(message = "error calling get_payload_v3 from builder", "error" = %e, "payload_id" = %payload_id);
                 e
             })?;
 
-            info!(message = "received payload from builder", "payload_id" = %payload_id, "block_hash" = %payload.as_v1_payload().block_hash);
+            let block_hash = ExecutionPayload::from(payload.clone().execution_payload).block_hash();
+            info!(message = "received payload from builder", "payload_id" = %payload_id, "block_hash" = %block_hash);
 
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
@@ -141,6 +260,7 @@ where
                 error!(message = "error calling new_payload_v3 to validate builder payload", "error" = %e, "payload_id" = %payload_id);
                 e
             })?;
+            span.map(|mut s| s.end());
             if payload_status.is_invalid() {
                 error!(message = "builder payload was not valid", "payload_status" = %payload_status.status, "payload_id" = %payload_id);
                 Err(ClientError::Call(ErrorObject::owned(
@@ -174,9 +294,22 @@ where
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> RpcResult<PayloadStatus> {
-        let block_hash = ExecutionPayload::from(payload.clone()).block_hash();
+        let execution_payload = ExecutionPayload::from(payload.clone());
+        let block_hash = execution_payload.block_hash();
+        let parent_hash = execution_payload.parent_hash();
         info!(message = "received new_payload_v3", "block_hash" = %block_hash);
-
+        let parent_ctxs = self
+            .payload_trace_context
+            .retrieve_by_parent_hash(&parent_hash)
+            .await;
+        let spans: Option<Vec<BoxedSpan>> = parent_ctxs.clone().map(|ctxs| {
+            ctxs.iter().map(|ctx| {
+                self.payload_trace_context.tracer.start_with_context(
+                    "new_payload",
+                    &Context::current().with_remote_span_context(ctx.clone()),
+                )
+            }).collect()
+        });
         // async call to builder to sync the builder node
         if self.boost_sync {
             let builder = self.builder_client.clone();
@@ -196,6 +329,17 @@ where
                 })
             });
         }
+
+        parent_ctxs.map(|ctxs| {
+            ctxs.iter().for_each(|ctx| {
+                self.payload_trace_context.tracer.start_with_context("new_payload", &Context::current().with_remote_span_context(ctx.clone()),
+                );
+            });
+        });
+        self.payload_trace_context.remove_by_parent_hash(&parent_hash).await;
+        spans.map(|mut spans| {
+            spans.iter_mut().for_each(|s| s.end());
+        });
 
         self.l2_client
             .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
