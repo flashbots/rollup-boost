@@ -48,7 +48,8 @@ pub struct EthEngineApi<S = AuthClientService<HttpBackend>> {
     builder_client: Arc<HttpClient<S>>,
     /// Whether to sync the builder using the proposer.
     boost_sync: bool,
-    /// Ephemeral cache to map l2 process id to builder process id.
+    /// Ephemeral cache to map l2 process id to builder process id between
+    /// a FCU, and subsequent retrieval of the payload.
     process_id_cache: Arc<RwLock<HashMap<PayloadId, PayloadId>>>,
 }
 
@@ -107,8 +108,17 @@ impl EngineApiServer for EthEngineApi {
             // Always return `ErrorCode::InternalError` if the l2_client fails
             match f.await {
                 (Ok(fcu_builder), Ok(fcu_l2)) => {
-                    if let (Some(v), Some(p)) = (fcu_builder.payload_id, fcu_l2.payload_id) {
-                        self.process_id_cache.write().await.insert(p, v);
+                    let payload_id_str = fcu_builder
+                        .payload_id
+                        .map(|id| id.to_string())
+                        .unwrap_or_default();
+                    if fcu_builder.is_invalid() {
+                        error!(message = "builder rejected fork_choice_updated_v3 with attributes", "payload_id" = payload_id_str, "validation_error" = %fcu_builder.payload_status.status);
+                    } else {
+                        info!(message = "called fork_choice_updated_v3 to builder with payload attributes", "payload_status" = %fcu_builder.payload_status.status, "payload_id" = payload_id_str);
+                        if let (Some(v), Some(p)) = (fcu_builder.payload_id, fcu_l2.payload_id) {
+                            self.process_id_cache.write().await.insert(p, v);
+                        }
                     }
                     return Ok(fcu_l2);
                 }
