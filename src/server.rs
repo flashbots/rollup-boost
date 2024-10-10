@@ -93,7 +93,7 @@ impl EngineApiServer for EthEngineApi {
         };
 
         if should_send_to_builder {
-            // async call to builder to trigger payload building and sync
+            // async call to the builder, and l2_client to start the payload building process
             let builder = self.builder_client.clone();
             let attr = payload_attributes.clone();
             let f = async {
