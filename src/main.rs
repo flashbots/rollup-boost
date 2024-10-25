@@ -17,6 +17,7 @@ use tracing_subscriber::EnvFilter;
 
 mod error;
 mod proxy;
+mod selector;
 mod server;
 
 #[derive(Parser, Debug)]
@@ -45,7 +46,7 @@ struct Args {
 
     /// URL of the builder execution engine
     #[arg(long, env)]
-    builder_url: String,
+    builder_urls: Vec<String>,
 
     /// Use the proposer to sync the builder node
     #[arg(long, env, default_value = "false")]
@@ -112,12 +113,19 @@ async fn main() -> Result<()> {
     // Initialize the l2 client
     let l2_client = create_client(&args.l2_url, jwt_secret)?;
 
-    // Initialize the builder client
-    let builder_client = create_client(&args.builder_url, builder_jwt_secret)?;
+    // Initialize the builder clients
+    let builder_clients = args
+        .builder_urls
+        .iter()
+        .map(|url| create_client(url, builder_jwt_secret))
+        .collect::<Result<Vec<_>>>()?;
 
     let eth_engine_api = EthEngineApi::new(
         Arc::new(l2_client),
-        Arc::new(builder_client),
+        builder_clients
+            .iter()
+            .map(|c| Arc::new(c.clone()))
+            .collect(),
         args.boost_sync,
     );
     let mut module: RpcModule<()> = RpcModule::new(());
