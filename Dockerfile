@@ -15,6 +15,9 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:stable-slim AS runtime
+
+RUN apt-get update && apt-get install -y libssl3
+
 WORKDIR /app
 COPY --from=builder /app/target/release/rollup-boost /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/rollup-boost"]
