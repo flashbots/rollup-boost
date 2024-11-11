@@ -11,7 +11,7 @@ use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
 use tracing::debug;
 
-const MULTIPLEX_METHODS: [&str; 2] = ["engine_", "eth_sendRawTransaction"];
+const MULTIPLEX_METHODS: [&str; 3] = ["engine_", "eth_sendRawTransaction", "eth_sendBundle"];
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
@@ -157,6 +157,7 @@ mod tests {
         proxy_failure().await;
         does_not_proxy_engine_method().await;
         does_not_proxy_eth_send_raw_transaction_method().await;
+        does_not_proxy_eth_send_bundle_method().await;
         health_check().await;
     }
 
@@ -186,6 +187,12 @@ mod tests {
         let response = send_request("eth_sendRawTransaction").await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "raw transaction response");
+    }
+
+    async fn does_not_proxy_eth_send_bundle_method() {
+        let response = send_request("eth_sendBundle").await;
+        assert!(response.is_ok());
+        assert_eq!(response.unwrap(), "bundle response");
     }
 
     async fn health_check() {
@@ -272,6 +279,9 @@ mod tests {
             .register_method("eth_sendRawTransaction", |_, _, _| {
                 "raw transaction response"
             })
+            .unwrap();
+        module
+            .register_method("eth_sendBundle", |_, _, _| "bundle response")
             .unwrap();
         module
             .register_method("non_existent_method", |_, _, _| "no proxy response")
