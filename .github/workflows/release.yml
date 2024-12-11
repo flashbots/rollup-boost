@@ -12,7 +12,7 @@ permissions:
 jobs:
   docker-image:
     name: Publish Docker Image
-    runs-on: ubuntu-latest-xlarge
+    runs-on: warp-ubuntu-latest-arm64-16x
 
     steps:
       - name: Checkout sources
@@ -62,7 +62,7 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ env.RELEASE_VERSION }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
