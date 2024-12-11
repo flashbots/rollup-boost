@@ -57,6 +57,7 @@ jobs:
           password: ${{ secrets.FLASHBOTS_DOCKERHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           cache-from: type=gha
@@ -73,6 +74,8 @@ jobs:
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
+          echo "Created files:"
+          ls -la /tmp/digests/
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
