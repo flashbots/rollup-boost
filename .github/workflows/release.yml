@@ -72,7 +72,15 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          echo "Full build outputs: ${{ toJSON(steps.build.outputs) }}"  # Debug all outputs
+          echo "Digest value: $digest"
+          if [ -z "$digest" ]; then
+            echo "Error: Digest is empty"
+            exit 1
+          fi
+          echo "$digest" > "/tmp/digests/${digest#sha256:}"  # Write digest to file instead of touch
+          echo "Created files:"
+          ls -la /tmp/digests/
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
