@@ -169,6 +169,10 @@ where
         module.merge(MinerApiServer::into_rpc(self.clone()))?;
         module.merge(MinerApiExtServer::into_rpc(self))?;
 
+        for method in module.method_names() {
+            info!(?method, "method registered");
+        }
+
         Ok(module)
     }
 }
@@ -337,6 +341,7 @@ where
 {
     async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
         debug!(
+            target: "server::set_max_da_size",
             message = "received miner_setMaxDASize",
             ?max_tx_size,
             ?max_block_size
@@ -345,10 +350,15 @@ where
         let builder_client = self.builder_client.client.clone();
         let url = self.builder_client.url.clone();
         tokio::spawn(async move {
+            info!(target: "server::set_max_da_size", message = "forwarding request to builder");
+
             builder_client.set_max_da_size(max_tx_size, max_block_size).await.map_err(|e| {
-                error!(message = "error calling miner_setMaxDASize for builder", "url" =url, "error" = %e);
+                error!(target: "server::set_max_da_size", message = "error calling miner_setMaxDASize for builder", "url" =url, "error" = %e);
             })
         });
+
+        // TODO: temp logging for debugging
+        info!(target: "server::set_max_da_size", message = "forwarding request to l2 client");
 
         match self
             .l2_client
@@ -358,7 +368,10 @@ where
         {
             Ok(result) => Ok(result),
             Err(e) => match e {
-                ClientError::Call(err) => Err(err),
+                ClientError::Call(err) => {
+                    error!(target: "server::set_max_da_size", message = "error forwarding miner_setMaxDASize to l2 client", ?err);
+                    Err(err)
+                }
                 other_error => {
                     error!(
                         message = "error calling miner_setMaxDASize for l2 client",
