@@ -156,7 +156,10 @@ impl<C> RollupBoostServer<C> {
     }
 }
 
-impl RollupBoostServer<HttpClientWrapper> {
+impl<C> RollupBoostServer<C>
+where
+    Self: EngineApiServer + EthApiServer + MinerApiServer + MinerApiExtServer + Clone,
+{
     pub fn into_merged_rpc(self) -> Result<RpcModule<()>, RegisterMethodError> {
         let mut module: RpcModule<()> = RpcModule::new(());
         module.merge(EngineApiServer::into_rpc(self.clone()))?;
@@ -961,5 +964,48 @@ mod tests {
             })
             .unwrap();
         server.start(module)
+    }
+
+    use alloy_primitives::U64;
+    use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_set_max_da_size() -> eyre::Result<()> {
+        let l2_client = HttpClientBuilder::new()
+            .build(format!("http://{L2_ADDR}"))
+            .unwrap();
+        let builder_client = HttpClientBuilder::new()
+            .build(format!("http://{BUILDER_ADDR}"))
+            .unwrap();
+
+        let rollup_boost_client = RollupBoostServer::new(
+            Arc::new(HttpClientWrapper::new(
+                l2_client,
+                format!("http://{L2_ADDR}"),
+            )),
+            Arc::new(HttpClientWrapper::new(
+                builder_client,
+                format!("http://{BUILDER_ADDR}"),
+            )),
+            false,
+            None,
+        );
+
+        let module = rollup_boost_client.into_merged_rpc().unwrap();
+
+        let _proxy = ServerBuilder::default()
+            .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
+            .await
+            .unwrap()
+            .start(module);
+
+        let client = HttpClient::builder()
+            .build(format!("http://{SERVER_ADDR}"))
+            .unwrap();
+
+        client.set_max_da_size(U64::from(10), U64::from(20)).await?;
+
+        Ok(())
     }
 }
