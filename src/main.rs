@@ -1,6 +1,6 @@
 use clap::{arg, ArgGroup, Parser};
 use dotenv::dotenv;
-use error::Error;
+use error::RollupBoostError;
 use http::{StatusCode, Uri};
 use hyper::service::service_fn;
 use hyper::{server::conn::http1, Request, Response};
@@ -8,7 +8,6 @@ use hyper_util::rt::TokioIo;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpBody, HttpClient, HttpClientBuilder};
 use jsonrpsee::server::Server;
-use jsonrpsee::RpcModule;
 use metrics::ServerMetrics;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::layers::{PrefixLayer, Stack};
@@ -19,7 +18,7 @@ use opentelemetry_sdk::trace::Config;
 use opentelemetry_sdk::Resource;
 use proxy::ProxyLayer;
 use reth_rpc_layer::{AuthClientLayer, AuthClientService, JwtSecret};
-use server::{EngineApiServer, EthEngineApi, HttpClientWrapper};
+use server::{HttpClientWrapper, RollupBoostClient};
 use std::net::AddrParseError;
 use std::sync::Arc;
 use std::time::Duration;
@@ -111,7 +110,7 @@ struct Args {
     l2_timeout: u64,
 }
 
-type Result<T> = core::result::Result<T, Error>;
+type Result<T> = core::result::Result<T, RollupBoostError>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -137,6 +136,8 @@ async fn main() -> Result<()> {
             .init();
     }
 
+    // TODO: update error handling
+
     let metrics = if args.metrics {
         let recorder = PrometheusBuilder::new().build_recorder();
         let handle = recorder.handle();
@@ -145,13 +146,13 @@ async fn main() -> Result<()> {
         Stack::new(recorder)
             .push(PrefixLayer::new("rollup-boost"))
             .install()
-            .map_err(|e| Error::InitMetrics(e.to_string()))?;
+            .map_err(|e| RollupBoostError::InitMetrics(e.to_string()))?;
 
         // Start the metrics server
         let metrics_addr = format!("{}:{}", args.metrics_host, args.metrics_port);
         let addr: SocketAddr = metrics_addr
             .parse()
-            .map_err(|e: AddrParseError| Error::InitMetrics(e.to_string()))?;
+            .map_err(|e: AddrParseError| RollupBoostError::InitMetrics(e.to_string()))?;
         tokio::spawn(init_metrics_server(addr, handle)); // Run the metrics server in a separate task
 
         Some(Arc::new(ServerMetrics::default()))
@@ -168,29 +169,28 @@ async fn main() -> Result<()> {
     let jwt_secret = match (args.jwt_path, args.jwt_token) {
         (Some(file), None) => {
             // Read JWT secret from file
-            JwtSecret::from_file(&file).map_err(|e| Error::InvalidArgs(e.to_string()))?
+            JwtSecret::from_file(&file).map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?
         }
         (None, Some(secret)) => {
             // Use the provided JWT secret
-            JwtSecret::from_hex(secret).map_err(|e| Error::InvalidArgs(e.to_string()))?
+            JwtSecret::from_hex(secret).map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?
         }
         _ => {
             // This case should not happen due to ArgGroup
-            return Err(Error::InvalidArgs(
+            return Err(RollupBoostError::InvalidArgs(
                 "Either jwt_file or jwt_secret must be provided".into(),
             ));
         }
     };
 
-    let builder_jwt_secret = match (args.builder_jwt_path, args.builder_jwt_token) {
-        (Some(file), None) => {
-            JwtSecret::from_file(&file).map_err(|e| Error::InvalidArgs(e.to_string()))?
-        }
-        (None, Some(secret)) => {
-            JwtSecret::from_hex(secret).map_err(|e| Error::InvalidArgs(e.to_string()))?
-        }
-        _ => jwt_secret,
-    };
+    let builder_jwt_secret =
+        match (args.builder_jwt_path, args.builder_jwt_token) {
+            (Some(file), None) => JwtSecret::from_file(&file)
+                .map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?,
+            (None, Some(secret)) => JwtSecret::from_hex(secret)
+                .map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?,
+            _ => jwt_secret,
+        };
 
     // Initialize the l2 client
     let l2_client = create_client(&args.l2_url, jwt_secret, args.l2_timeout)?;
@@ -199,33 +199,31 @@ async fn main() -> Result<()> {
     let builder_client =
         create_client(&args.builder_url, builder_jwt_secret, args.builder_timeout)?;
 
-    let eth_engine_api = EthEngineApi::new(
+    let rollup_boost = RollupBoostClient::new(
         Arc::new(l2_client),
         Arc::new(builder_client),
         args.boost_sync,
         metrics,
     );
-    let mut module: RpcModule<()> = RpcModule::new(());
-    module
-        .merge(eth_engine_api.into_rpc())
-        .map_err(|e| Error::InitRPCServer(e.to_string()))?;
+
+    let module = rollup_boost.into_rpc()?;
 
     // server setup
     info!("Starting server on :{}", args.rpc_port);
     let service_builder = tower::ServiceBuilder::new().layer(ProxyLayer::new(
         args.l2_url
             .parse::<Uri>()
-            .map_err(|e| Error::InvalidArgs(e.to_string()))?,
+            .map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?,
     ));
     let server = Server::builder()
         .set_http_middleware(service_builder)
         .build(
             format!("{}:{}", args.rpc_host, args.rpc_port)
                 .parse::<SocketAddr>()
-                .map_err(|e| Error::InitRPCServer(e.to_string()))?,
+                .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?,
         )
         .await
-        .map_err(|e| Error::InitRPCServer(e.to_string()))?;
+        .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
     let handle = server.start(module);
     handle.stopped().await;
 
@@ -245,7 +243,7 @@ fn create_client(
         .set_http_middleware(client_middleware)
         .request_timeout(Duration::from_millis(timeout))
         .build(url)
-        .map_err(|e| Error::InitRPCClient(e.to_string()))?;
+        .map_err(|e| RollupBoostError::InitRPCClient(e.to_string()))?;
     Ok(HttpClientWrapper::new(client, url.to_string()))
 }
 
@@ -275,7 +273,7 @@ fn init_tracing(endpoint: &str) {
 async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> Result<()> {
     let listener = TcpListener::bind(addr)
         .await
-        .map_err(|e| Error::InitMetrics(e.to_string()))?;
+        .map_err(|e| RollupBoostError::InitMetrics(e.to_string()))?;
     info!("Metrics server running on {}", addr);
 
     loop {

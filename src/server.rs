@@ -1,3 +1,4 @@
+use crate::error::RollupBoostError;
 use crate::metrics::ServerMetrics;
 use alloy_primitives::{Bytes, B256, U128, U64};
 use alloy_rpc_types_engine::{
@@ -10,6 +11,7 @@ use jsonrpsee::http_client::HttpClient;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use jsonrpsee::types::{ErrorCode, ErrorObject};
+use jsonrpsee::RpcModule;
 use lru::LruCache;
 use op_alloy_rpc_jsonrpsee::traits::{MinerApiExtClient, MinerApiExtServer};
 use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
@@ -117,6 +119,7 @@ pub trait EthApi {
     async fn send_raw_transaction(&self, bytes: Bytes) -> RpcResult<B256>;
 }
 
+#[derive(Clone)]
 pub struct HttpClientWrapper<C = HttpClient<AuthClientService<HttpBackend>>> {
     pub client: C,
     pub url: String,
@@ -128,7 +131,8 @@ impl<C> HttpClientWrapper<C> {
     }
 }
 
-pub struct EthEngineApi<C = HttpClientWrapper> {
+#[derive(Clone)]
+pub struct RollupBoostClient<C = HttpClientWrapper> {
     l2_client: Arc<C>,
     builder_client: Arc<C>,
     boost_sync: bool,
@@ -136,7 +140,7 @@ pub struct EthEngineApi<C = HttpClientWrapper> {
     payload_trace_context: Arc<PayloadTraceContext>,
 }
 
-impl<C> EthEngineApi<C> {
+impl<C> RollupBoostClient<C> {
     pub fn new(
         l2_client: Arc<C>,
         builder_client: Arc<C>,
@@ -153,8 +157,28 @@ impl<C> EthEngineApi<C> {
     }
 }
 
+impl RollupBoostClient<HttpClientWrapper> {
+    pub fn into_rpc(self) -> Result<RpcModule<()>, RollupBoostError> {
+        let mut module: RpcModule<()> = RpcModule::new(());
+
+        module
+            .merge(EngineApiServer::into_rpc(self.clone()))
+            .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
+
+        module
+            .merge(EthApiServer::into_rpc(self.clone()))
+            .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
+
+        module
+            .merge(MinerApiServer::into_rpc(self))
+            .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
+
+        Ok(module)
+    }
+}
+
 #[async_trait]
-impl<C> EthApiServer for EthEngineApi<HttpClientWrapper<C>>
+impl<C> EthApiServer for RollupBoostClient<HttpClientWrapper<C>>
 where
     C: EthApiClient + Send + Sync + Clone + 'static,
 {
@@ -217,7 +241,7 @@ pub trait MinerApi {
 }
 
 #[async_trait]
-impl<C> MinerApiServer for EthEngineApi<HttpClientWrapper<C>>
+impl<C> MinerApiServer for RollupBoostClient<HttpClientWrapper<C>>
 where
     C: MinerApiClient + Send + Sync + Clone + 'static,
 {
@@ -311,7 +335,7 @@ where
 }
 
 #[async_trait]
-impl<C> MinerApiExtServer for EthEngineApi<HttpClientWrapper<C>>
+impl<C> MinerApiExtServer for RollupBoostClient<HttpClientWrapper<C>>
 where
     C: MinerApiExtClient + Send + Sync + Clone + 'static,
 {
@@ -353,7 +377,7 @@ where
 }
 
 #[async_trait]
-impl<C> EngineApiServer for EthEngineApi<HttpClientWrapper<C>>
+impl<C> EngineApiServer for RollupBoostClient<HttpClientWrapper<C>>
 where
     C: EngineApiClient + Send + Sync + Clone + 'static,
 {
@@ -712,7 +736,7 @@ mod tests {
                 .build(format!("http://{BUILDER_ADDR}"))
                 .unwrap();
 
-            let eth_engine_api = EthEngineApi::new(
+            let rollup_boost_client = RollupBoostClient::new(
                 Arc::new(HttpClientWrapper::new(
                     l2_client,
                     format!("http://{L2_ADDR}"),
@@ -726,7 +750,7 @@ mod tests {
             );
             let mut module: RpcModule<()> = RpcModule::new(());
             module
-                .merge(EngineApiServer::into_rpc(eth_engine_api))
+                .merge(EngineApiServer::into_rpc(rollup_boost_client))
                 .unwrap();
 
             let proxy_server = ServerBuilder::default()
