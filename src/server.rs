@@ -132,7 +132,7 @@ impl<C> HttpClientWrapper<C> {
 }
 
 #[derive(Clone)]
-pub struct RollupBoostClient<C = HttpClientWrapper> {
+pub struct RollupBoostServer<C = HttpClientWrapper> {
     l2_client: Arc<C>,
     builder_client: Arc<C>,
     boost_sync: bool,
@@ -140,7 +140,7 @@ pub struct RollupBoostClient<C = HttpClientWrapper> {
     payload_trace_context: Arc<PayloadTraceContext>,
 }
 
-impl<C> RollupBoostClient<C> {
+impl<C> RollupBoostServer<C> {
     pub fn new(
         l2_client: Arc<C>,
         builder_client: Arc<C>,
@@ -157,7 +157,7 @@ impl<C> RollupBoostClient<C> {
     }
 }
 
-impl RollupBoostClient<HttpClientWrapper> {
+impl RollupBoostServer<HttpClientWrapper> {
     pub fn into_rpc(self) -> Result<RpcModule<()>, RegisterMethodError> {
         let mut module: RpcModule<()> = RpcModule::new(());
         module.merge(EngineApiServer::into_rpc(self.clone()))?;
@@ -169,7 +169,7 @@ impl RollupBoostClient<HttpClientWrapper> {
 }
 
 #[async_trait]
-impl<C> EthApiServer for RollupBoostClient<HttpClientWrapper<C>>
+impl<C> EthApiServer for RollupBoostServer<HttpClientWrapper<C>>
 where
     C: EthApiClient + Send + Sync + Clone + 'static,
 {
@@ -232,7 +232,7 @@ pub trait MinerApi {
 }
 
 #[async_trait]
-impl<C> MinerApiServer for RollupBoostClient<HttpClientWrapper<C>>
+impl<C> MinerApiServer for RollupBoostServer<HttpClientWrapper<C>>
 where
     C: MinerApiClient + Send + Sync + Clone + 'static,
 {
@@ -326,7 +326,7 @@ where
 }
 
 #[async_trait]
-impl<C> MinerApiExtServer for RollupBoostClient<HttpClientWrapper<C>>
+impl<C> MinerApiExtServer for RollupBoostServer<HttpClientWrapper<C>>
 where
     C: MinerApiExtClient + Send + Sync + Clone + 'static,
 {
@@ -368,7 +368,7 @@ where
 }
 
 #[async_trait]
-impl<C> EngineApiServer for RollupBoostClient<HttpClientWrapper<C>>
+impl<C> EngineApiServer for RollupBoostServer<HttpClientWrapper<C>>
 where
     C: EngineApiClient + Send + Sync + Clone + 'static,
 {
@@ -727,7 +727,7 @@ mod tests {
                 .build(format!("http://{BUILDER_ADDR}"))
                 .unwrap();
 
-            let rollup_boost_client = RollupBoostClient::new(
+            let rollup_boost_client = RollupBoostServer::new(
                 Arc::new(HttpClientWrapper::new(
                     l2_client,
                     format!("http://{L2_ADDR}"),

@@ -18,7 +18,7 @@ use opentelemetry_sdk::trace::Config;
 use opentelemetry_sdk::Resource;
 use proxy::ProxyLayer;
 use reth_rpc_layer::{AuthClientLayer, AuthClientService, JwtSecret};
-use server::{HttpClientWrapper, RollupBoostClient};
+use server::{HttpClientWrapper, RollupBoostServer};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{net::SocketAddr, path::PathBuf};
@@ -186,7 +186,7 @@ async fn main() -> eyre::Result<()> {
     let builder_client =
         create_client(&args.builder_url, builder_jwt_secret, args.builder_timeout)?;
 
-    let rollup_boost = RollupBoostClient::new(
+    let rollup_boost = RollupBoostServer::new(
         Arc::new(l2_client),
         Arc::new(builder_client),
         args.boost_sync,
