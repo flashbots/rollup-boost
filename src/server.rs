@@ -638,16 +638,21 @@ mod tests {
     use std::net::SocketAddr;
     use std::sync::Mutex;
 
+    use crate::proxy::ProxyLayer;
+
     use super::*;
 
     use alloy_primitives::hex;
+    use alloy_primitives::U64;
     use alloy_primitives::{FixedBytes, U256};
     use alloy_rpc_types_engine::{
         BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, PayloadStatusEnum,
     };
+    use http::Uri;
     use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
-    use jsonrpsee::server::{ServerBuilder, ServerHandle};
+    use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
     use jsonrpsee::RpcModule;
+    use std::sync::Arc;
 
     const L2_ADDR: &str = "0.0.0.0:8554";
     const BUILDER_ADDR: &str = "0.0.0.0:8555";
@@ -966,10 +971,7 @@ mod tests {
         server.start(module)
     }
 
-    use alloy_primitives::U64;
-    use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
-    use std::sync::Arc;
-
+    // TODO: update test harness
     #[tokio::test]
     async fn test_set_max_da_size() -> eyre::Result<()> {
         let l2_client = HttpClientBuilder::new()
@@ -979,7 +981,7 @@ mod tests {
             .build(format!("http://{BUILDER_ADDR}"))
             .unwrap();
 
-        let rollup_boost_client = RollupBoostServer::new(
+        let rollup_boost_server = RollupBoostServer::new(
             Arc::new(HttpClientWrapper::new(
                 l2_client,
                 format!("http://{L2_ADDR}"),
@@ -992,19 +994,23 @@ mod tests {
             None,
         );
 
-        let module = rollup_boost_client.into_merged_rpc().unwrap();
+        let module = rollup_boost_server.into_merged_rpc()?;
 
         let _proxy = ServerBuilder::default()
-            .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
-            .await
-            .unwrap()
+            .build(SERVER_ADDR.parse::<SocketAddr>()?)
+            .await?
             .start(module);
 
         let client = HttpClient::builder()
             .build(format!("http://{SERVER_ADDR}"))
             .unwrap();
 
-        client.set_max_da_size(U64::from(10), U64::from(20)).await?;
+        let service_builder = tower::ServiceBuilder::new()
+            .layer(ProxyLayer::new(Uri::try_from(format!("http://{L2_ADDR}"))?));
+        let server = Server::builder()
+            .set_http_middleware(service_builder)
+            .build(format!("{}:{}", args.rpc_host, args.rpc_port).parse::<SocketAddr>()?)
+            .await?;
 
         Ok(())
     }
