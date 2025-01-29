@@ -29,6 +29,10 @@ use tracing::error;
 use tracing::{info, Level};
 use tracing_subscriber::EnvFilter;
 
+mod metrics;
+mod proxy;
+mod server;
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
 #[clap(group(ArgGroup::new("jwt").required(true).multiple(false).args(&["jwt_token", "jwt_path"])))]
