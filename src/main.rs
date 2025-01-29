@@ -1,6 +1,5 @@
 use clap::{arg, ArgGroup, Parser};
 use dotenv::dotenv;
-use error::RollupBoostError;
 use http::{StatusCode, Uri};
 use hyper::service::service_fn;
 use hyper::{server::conn::http1, Request, Response};
@@ -27,7 +26,6 @@ use tracing::error;
 use tracing::{info, Level};
 use tracing_subscriber::EnvFilter;
 
-mod error;
 mod metrics;
 mod proxy;
 mod server;

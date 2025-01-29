@@ -1,4 +1,3 @@
-use crate::error::RollupBoostError;
 use crate::metrics::ServerMetrics;
 use alloy_primitives::{Bytes, B256, U128, U64};
 use alloy_rpc_types_engine::{
