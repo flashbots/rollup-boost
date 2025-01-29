@@ -157,7 +157,7 @@ impl<C> RollupBoostServer<C> {
 }
 
 impl RollupBoostServer<HttpClientWrapper> {
-    pub fn into_rpc(self) -> Result<RpcModule<()>, RegisterMethodError> {
+    pub fn into_merged_rpc(self) -> Result<RpcModule<()>, RegisterMethodError> {
         let mut module: RpcModule<()> = RpcModule::new(());
         module.merge(EngineApiServer::into_rpc(self.clone()))?;
         module.merge(EthApiServer::into_rpc(self.clone()))?;

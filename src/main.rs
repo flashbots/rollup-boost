@@ -191,7 +191,7 @@ async fn main() -> eyre::Result<()> {
         metrics,
     );
 
-    let module = rollup_boost.into_rpc()?;
+    let module = rollup_boost.into_merged_rpc()?;
 
     // server setup
     info!("Starting server on :{}", args.rpc_port);
