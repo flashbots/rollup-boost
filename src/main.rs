@@ -7,6 +7,7 @@ use hyper_util::rt::TokioIo;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpBody, HttpClient, HttpClientBuilder};
 use jsonrpsee::server::Server;
+use jsonrpsee::RpcModule;
 use metrics::ServerMetrics;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::layers::{PrefixLayer, Stack};
@@ -191,7 +192,7 @@ async fn main() -> eyre::Result<()> {
         metrics,
     );
 
-    let module = rollup_boost.into_merged_rpc()?;
+    let module: RpcModule<()> = rollup_boost.try_into()?;
 
     // server setup
     info!("Starting server on :{}", args.rpc_port);

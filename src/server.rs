@@ -156,11 +156,13 @@ impl<C> RollupBoostServer<C> {
     }
 }
 
-impl<C> RollupBoostServer<C>
+impl<C> TryInto<RpcModule<()>> for RollupBoostServer<C>
 where
     Self: EngineApiServer + EthApiServer + MinerApiServer + MinerApiExtServer + Clone,
 {
-    pub fn into_merged_rpc(self) -> Result<RpcModule<()>, RegisterMethodError> {
+    type Error = RegisterMethodError;
+
+    fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
         let mut module: RpcModule<()> = RpcModule::new(());
         module.merge(EngineApiServer::into_rpc(self.clone()))?;
         module.merge(EthApiServer::into_rpc(self.clone()))?;
@@ -994,7 +996,7 @@ mod tests {
             None,
         );
 
-        let module = rollup_boost_server.into_merged_rpc()?;
+        let module: RpcModule<()> = rollup_boost_server.try_into()?;
 
         let _proxy = ServerBuilder::default()
             .build(SERVER_ADDR.parse::<SocketAddr>()?)
@@ -1007,10 +1009,6 @@ mod tests {
 
         let service_builder = tower::ServiceBuilder::new()
             .layer(ProxyLayer::new(Uri::try_from(format!("http://{L2_ADDR}"))?));
-        let server = Server::builder()
-            .set_http_middleware(service_builder)
-            .build(format!("{}:{}", args.rpc_host, args.rpc_port).parse::<SocketAddr>()?)
-            .await?;
 
         Ok(())
     }
