@@ -311,6 +311,7 @@ mod tests {
     use assert_cmd::Command;
     use jsonrpsee::core::client::ClientT;
     use jsonrpsee::http_client::transport::Error as TransportError;
+    use jsonrpsee::RpcModule;
     use jsonrpsee::{
         core::ClientError,
         rpc_params,
