@@ -5,7 +5,7 @@ use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
 };
-use jsonrpsee::core::{async_trait, ClientError, RpcResult};
+use jsonrpsee::core::{async_trait, ClientError, RegisterMethodError, RpcResult};
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::HttpClient;
 use jsonrpsee::proc_macros::rpc;
@@ -158,20 +158,11 @@ impl<C> RollupBoostClient<C> {
 }
 
 impl RollupBoostClient<HttpClientWrapper> {
-    pub fn into_rpc(self) -> Result<RpcModule<()>, RollupBoostError> {
+    pub fn into_rpc(self) -> Result<RpcModule<()>, RegisterMethodError> {
         let mut module: RpcModule<()> = RpcModule::new(());
-
-        module
-            .merge(EngineApiServer::into_rpc(self.clone()))
-            .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
-
-        module
-            .merge(EthApiServer::into_rpc(self.clone()))
-            .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
-
-        module
-            .merge(MinerApiServer::into_rpc(self))
-            .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
+        module.merge(EngineApiServer::into_rpc(self.clone()))?;
+        module.merge(EthApiServer::into_rpc(self.clone()))?;
+        module.merge(MinerApiServer::into_rpc(self))?;
 
         Ok(module)
     }

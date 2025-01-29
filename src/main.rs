@@ -19,7 +19,6 @@ use opentelemetry_sdk::Resource;
 use proxy::ProxyLayer;
 use reth_rpc_layer::{AuthClientLayer, AuthClientService, JwtSecret};
 use server::{HttpClientWrapper, RollupBoostClient};
-use std::net::AddrParseError;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{net::SocketAddr, path::PathBuf};
@@ -110,10 +109,8 @@ struct Args {
     l2_timeout: u64,
 }
 
-type Result<T> = core::result::Result<T, RollupBoostError>;
-
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> eyre::Result<()> {
     // Load .env file
     dotenv().ok();
     let args: Args = Args::parse();
@@ -136,8 +133,6 @@ async fn main() -> Result<()> {
             .init();
     }
 
-    // TODO: update error handling
-
     let metrics = if args.metrics {
         let recorder = PrometheusBuilder::new().build_recorder();
         let handle = recorder.handle();
@@ -145,14 +140,11 @@ async fn main() -> Result<()> {
         // Build metrics stack
         Stack::new(recorder)
             .push(PrefixLayer::new("rollup-boost"))
-            .install()
-            .map_err(|e| RollupBoostError::InitMetrics(e.to_string()))?;
+            .install()?;
 
         // Start the metrics server
         let metrics_addr = format!("{}:{}", args.metrics_host, args.metrics_port);
-        let addr: SocketAddr = metrics_addr
-            .parse()
-            .map_err(|e: AddrParseError| RollupBoostError::InitMetrics(e.to_string()))?;
+        let addr: SocketAddr = metrics_addr.parse()?;
         tokio::spawn(init_metrics_server(addr, handle)); // Run the metrics server in a separate task
 
         Some(Arc::new(ServerMetrics::default()))
@@ -169,28 +161,23 @@ async fn main() -> Result<()> {
     let jwt_secret = match (args.jwt_path, args.jwt_token) {
         (Some(file), None) => {
             // Read JWT secret from file
-            JwtSecret::from_file(&file).map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?
+            JwtSecret::from_file(&file)?
         }
         (None, Some(secret)) => {
             // Use the provided JWT secret
-            JwtSecret::from_hex(secret).map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?
+            JwtSecret::from_hex(secret)?
         }
         _ => {
             // This case should not happen due to ArgGroup
-            return Err(RollupBoostError::InvalidArgs(
-                "Either jwt_file or jwt_secret must be provided".into(),
-            ));
+            eyre::bail!("Either jwt_file or jwt_secret must be provided");
         }
     };
 
-    let builder_jwt_secret =
-        match (args.builder_jwt_path, args.builder_jwt_token) {
-            (Some(file), None) => JwtSecret::from_file(&file)
-                .map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?,
-            (None, Some(secret)) => JwtSecret::from_hex(secret)
-                .map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?,
-            _ => jwt_secret,
-        };
+    let builder_jwt_secret = match (args.builder_jwt_path, args.builder_jwt_token) {
+        (Some(file), None) => JwtSecret::from_file(&file)?,
+        (None, Some(secret)) => JwtSecret::from_hex(secret)?,
+        _ => jwt_secret,
+    };
 
     // Initialize the l2 client
     let l2_client = create_client(&args.l2_url, jwt_secret, args.l2_timeout)?;
@@ -210,21 +197,15 @@ async fn main() -> Result<()> {
 
     // server setup
     info!("Starting server on :{}", args.rpc_port);
-    let service_builder = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-        args.l2_url
-            .parse::<Uri>()
-            .map_err(|e| RollupBoostError::InvalidArgs(e.to_string()))?,
-    ));
+    let service_builder =
+        tower::ServiceBuilder::new().layer(ProxyLayer::new(args.l2_url.parse::<Uri>()?));
     let server = Server::builder()
         .set_http_middleware(service_builder)
-        .build(
-            format!("{}:{}", args.rpc_host, args.rpc_port)
-                .parse::<SocketAddr>()
-                .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?,
-        )
-        .await
-        .map_err(|e| RollupBoostError::InitRPCServer(e.to_string()))?;
+        .build(format!("{}:{}", args.rpc_host, args.rpc_port).parse::<SocketAddr>()?)
+        .await?;
     let handle = server.start(module);
+
+    // TODO:
     handle.stopped().await;
 
     Ok(())
@@ -234,7 +215,7 @@ fn create_client(
     url: &str,
     jwt_secret: JwtSecret,
     timeout: u64,
-) -> Result<HttpClientWrapper<HttpClient<AuthClientService<HttpBackend>>>> {
+) -> eyre::Result<HttpClientWrapper<HttpClient<AuthClientService<HttpBackend>>>> {
     // Create a middleware that adds a new JWT token to every request.
     let auth_layer = AuthClientLayer::new(jwt_secret);
     let client_middleware = tower::ServiceBuilder::new().layer(auth_layer);
@@ -242,8 +223,7 @@ fn create_client(
     let client = HttpClientBuilder::new()
         .set_http_middleware(client_middleware)
         .request_timeout(Duration::from_millis(timeout))
-        .build(url)
-        .map_err(|e| RollupBoostError::InitRPCClient(e.to_string()))?;
+        .build(url)?;
     Ok(HttpClientWrapper::new(client, url.to_string()))
 }
 
@@ -270,10 +250,8 @@ fn init_tracing(endpoint: &str) {
     }
 }
 
-async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> Result<()> {
-    let listener = TcpListener::bind(addr)
-        .await
-        .map_err(|e| RollupBoostError::InitMetrics(e.to_string()))?;
+async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre::Result<()> {
+    let listener = TcpListener::bind(addr).await?;
     info!("Metrics server running on {}", addr);
 
     loop {
