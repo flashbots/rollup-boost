@@ -8,7 +8,6 @@ use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpBody, HttpClient, HttpClientBuilder};
 use jsonrpsee::server::Server;
 use jsonrpsee::RpcModule;
-use metrics::ServerMetrics;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::layers::{PrefixLayer, Stack};
 use opentelemetry::global;
@@ -16,9 +15,12 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::Config;
 use opentelemetry_sdk::Resource;
-use proxy::ProxyLayer;
 use reth_rpc_layer::{AuthClientLayer, AuthClientService, JwtSecret};
-use server::{HttpClientWrapper, RollupBoostServer};
+use rollup_boost::{
+    metrics::ServerMetrics,
+    proxy::ProxyLayer,
+    server::{HttpClientWrapper, RollupBoostServer},
+};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{net::SocketAddr, path::PathBuf};
@@ -26,10 +28,6 @@ use tokio::net::TcpListener;
 use tracing::error;
 use tracing::{info, Level};
 use tracing_subscriber::EnvFilter;
-
-mod metrics;
-mod proxy;
-mod server;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
