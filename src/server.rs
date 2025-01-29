@@ -161,7 +161,8 @@ impl RollupBoostServer<HttpClientWrapper> {
         let mut module: RpcModule<()> = RpcModule::new(());
         module.merge(EngineApiServer::into_rpc(self.clone()))?;
         module.merge(EthApiServer::into_rpc(self.clone()))?;
-        module.merge(MinerApiServer::into_rpc(self))?;
+        module.merge(MinerApiServer::into_rpc(self.clone()))?;
+        module.merge(MinerApiExtServer::into_rpc(self))?;
 
         Ok(module)
     }
