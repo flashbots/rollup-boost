@@ -11,12 +11,7 @@ use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
 use tracing::{debug, error, info};
 
-const MULTIPLEX_METHODS: [&str; 4] = [
-    "engine_",
-    "eth_sendRawTransactionConditional",
-    "eth_sendRawTransaction",
-    "miner_",
-];
+const MULTIPLEX_METHODS: [&str; 1] = ["engine_"];
 const FORWARD_REQUESTS: [&str; 6] = [
     "eth_sendRawTransaction",
     "eth_sendRawTransactionConditional",
