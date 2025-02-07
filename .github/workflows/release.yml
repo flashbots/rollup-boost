@@ -1,6 +1,3 @@
-# This workflow is modified from Reth:
-# https://github.com/paradigmxyz/reth/blob/main/.github/workflows/release.yml
-
 name: release
 
 on:
