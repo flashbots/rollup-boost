@@ -206,7 +206,7 @@ mod tests {
         types::{ErrorCode, ErrorObject},
         RpcModule,
     };
-    use reth_rpc_layer::JwtSecret;
+    
     use serde_json::json;
     use std::{
         net::{IpAddr, SocketAddr},
@@ -385,7 +385,7 @@ mod tests {
                 }
             };
 
-            return Ok(hyper::Response::new(response.to_string()));
+            Ok(hyper::Response::new(response.to_string()))
         }
     }
 
@@ -674,7 +674,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (gas_price.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (gas_price,))
             .await?;
 
         let expected_price = json!(gas_price);
@@ -708,7 +708,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (gas_limit.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (gas_limit,))
             .await?;
 
         let expected_price = json!(gas_limit);
@@ -742,7 +742,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (mock_data.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (mock_data,))
             .await?;
 
         let expected_price = json!(mock_data);

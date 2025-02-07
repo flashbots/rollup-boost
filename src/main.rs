@@ -3,7 +3,6 @@ use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
 use std::{net::SocketAddr, sync::Arc};
 
 use dotenv::dotenv;
-use eyre::bail;
 use http::StatusCode;
 use hyper::service::service_fn;
 use hyper::{server::conn::http1, Request, Response};
@@ -18,7 +17,6 @@ use opentelemetry::global;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::Config, Resource};
 use proxy::ProxyLayer;
-use reth_rpc_layer::JwtSecret;
 use server::RollupBoostServer;
 
 use tokio::net::TcpListener;
