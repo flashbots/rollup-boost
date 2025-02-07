@@ -10,4 +10,6 @@ pub enum Error {
     InitRPCServer(String),
     #[error("Error Initializing Prometheus Metrics: {0}")]
     InitMetrics(String),
+    #[error("Error Initializing Flashblocks Client: {0}")]
+    InitFlashblocks(String),
 }

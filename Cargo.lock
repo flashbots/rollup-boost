@@ -1025,9 +1025,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.8.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ac0150caa2ae65ca5bd83f25c7de183dea78d4d366469f148435e2acfbad0da"
+checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
 dependencies = [
  "serde",
 ]
@@ -1363,6 +1363,12 @@ dependencies = [
  "once_cell",
  "parking_lot_core",
 ]
+
+[[package]]
+name = "data-encoding"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e60eed09d8c01d3cee5b7d30acb059b76614c918fa0f992e0dd6eeb10daad6f"
 
 [[package]]
 name = "der"
@@ -3079,7 +3085,7 @@ dependencies = [
  "arbitrary",
  "derive_more",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -3094,7 +3100,7 @@ dependencies = [
  "alloy-sol-types",
  "serde",
  "serde_repr",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -3116,7 +3122,7 @@ dependencies = [
  "op-alloy-consensus",
  "op-alloy-genesis",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tracing",
  "unsigned-varint",
 ]
@@ -3156,7 +3162,7 @@ dependencies = [
  "op-alloy-protocol",
  "serde",
  "snap",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -3903,7 +3909,7 @@ dependencies = [
  "reth-execution-errors",
  "reth-primitives",
  "reth-storage-errors",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4037,7 +4043,7 @@ dependencies = [
  "serde",
  "strum",
  "sysinfo",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4096,7 +4102,7 @@ dependencies = [
  "reth-primitives-traits",
  "reth-trie",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tokio",
 ]
 
@@ -4110,7 +4116,7 @@ dependencies = [
  "reth-execution-errors",
  "reth-fs-util",
  "reth-storage-errors",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4131,7 +4137,7 @@ dependencies = [
  "reth-primitives",
  "reth-primitives-traits",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4168,7 +4174,7 @@ dependencies = [
  "once_cell",
  "rustc-hash 2.0.0",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4210,7 +4216,7 @@ dependencies = [
  "reth-prune-types",
  "reth-storage-errors",
  "revm-primitives",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4238,7 +4244,7 @@ source = "git+https://github.com/paradigmxyz/reth.git?rev=e022b6fd92a33cd44e3ae5
 dependencies = [
  "serde",
  "serde_json",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4254,7 +4260,7 @@ dependencies = [
  "parking_lot",
  "reth-mdbx-sys",
  "smallvec",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tracing",
 ]
 
@@ -4316,7 +4322,7 @@ dependencies = [
  "enr",
  "secp256k1",
  "serde_with",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "url",
 ]
 
@@ -4344,7 +4350,7 @@ dependencies = [
  "memmap2",
  "reth-fs-util",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tracing",
  "zstd",
 ]
@@ -4475,7 +4481,7 @@ dependencies = [
  "reth-transaction-pool",
  "revm",
  "sha2",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tracing",
 ]
 
@@ -4548,7 +4554,7 @@ dependencies = [
  "reth-primitives",
  "revm-primitives",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tokio",
 ]
 
@@ -4681,7 +4687,7 @@ dependencies = [
  "modular-bitfield",
  "reth-codecs",
  "serde",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -4804,7 +4810,7 @@ dependencies = [
  "futures-util",
  "metrics",
  "reth-metrics",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tokio",
  "tracing",
  "tracing-futures",
@@ -4857,7 +4863,7 @@ dependencies = [
  "schnellru",
  "serde",
  "smallvec",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -4940,7 +4946,7 @@ dependencies = [
  "reth-tracing",
  "reth-trie-common",
  "smallvec",
- "thiserror 2.0.4",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -5122,10 +5128,12 @@ dependencies = [
  "thiserror 1.0.65",
  "time",
  "tokio",
+ "tokio-tungstenite",
  "tower 0.4.13",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -5878,11 +5886,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.4"
+version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f49a1853cf82743e3b7950f77e0f4d622ca36cf4317cba00c767838bac8d490"
+checksum = "d452f284b73e6d76dd36758a0c8684b1d5be31f92b89d07fd5822175732206fc"
 dependencies = [
- "thiserror-impl 2.0.4",
+ "thiserror-impl 2.0.11",
 ]
 
 [[package]]
@@ -5898,9 +5906,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.4"
+version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8381894bb3efe0c4acac3ded651301ceee58a15d47c2e34885ed1908ad667061"
+checksum = "26afc1baea8a989337eeb52b6e72a039780ce45c3edfcc9c5b9d112feeb173c2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6041,6 +6049,18 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.26.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be4bf6fecd69fcdede0ec680aaf474cdab988f9de6bc73d3758f0160e3b7025a"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite",
 ]
 
 [[package]]
@@ -6326,6 +6346,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
+name = "tungstenite"
+version = "0.26.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413083a99c579593656008130e29255e54dcaae495be556cc26888f211648c24"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "data-encoding",
+ "http 1.1.0",
+ "httparse",
+ "log",
+ "rand",
+ "sha1",
+ "thiserror 2.0.11",
+ "utf-8",
+]
+
+[[package]]
 name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6416,6 +6454,12 @@ dependencies = [
  "idna",
  "percent-encoding",
 ]
+
+[[package]]
+name = "utf-8"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "utf8parse"

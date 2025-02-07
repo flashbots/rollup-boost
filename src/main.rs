@@ -27,7 +27,10 @@ use tokio::signal::unix::{signal as unix_signal, SignalKind};
 use tracing::{error, info, Level};
 use tracing_subscriber::EnvFilter;
 
+use crate::flashblocks::FlashbotsClient;
+
 mod error;
+mod flashblocks;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
@@ -109,6 +112,13 @@ struct Args {
     /// Timeout for the l2 client calls in milliseconds
     #[arg(long, env, default_value = "2000")]
     l2_timeout: u64,
+
+    #[arg(long, env, default_value = "false")]
+    flashblocks: bool,
+
+    /// Flashblocks WebSocket URL
+    #[arg(long, env, default_value = "ws://localhost:1111")]
+    flashblocks_url: String,
 }
 
 type Result<T> = core::result::Result<T, Error>;
@@ -199,13 +209,26 @@ async fn main() -> Result<()> {
     let builder_client =
         create_client(&args.builder_url, builder_jwt_secret, args.builder_timeout)?;
 
+    let flashblocks_client = if args.flashblocks {
+        let mut flashblocks_client = FlashbotsClient::new();
+        flashblocks_client
+            .init(args.flashblocks_url)
+            .map_err(|e| Error::InitFlashblocks(e.to_string()))?;
+
+        Some(flashblocks_client)
+    } else {
+        None
+    };
+
     // Construct the RPC module
     let eth_engine_api = EthEngineApi::new(
         Arc::new(l2_client),
         Arc::new(builder_client),
         args.boost_sync,
         metrics,
+        flashblocks_client,
     );
+
     let mut module: RpcModule<()> = RpcModule::new(());
     module
         .merge(eth_engine_api.into_rpc())

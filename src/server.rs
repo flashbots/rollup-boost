@@ -23,6 +23,7 @@ use reth_rpc_layer::AuthClientService;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
+use crate::flashblocks::FlashbotsClient;
 use crate::metrics::ServerMetrics;
 
 const CACHE_SIZE: usize = 100;
@@ -149,6 +150,7 @@ pub struct EthEngineApi<C = HttpClientWrapper> {
     boost_sync: bool,
     metrics: Option<Arc<ServerMetrics>>,
     payload_trace_context: Arc<PayloadTraceContext>,
+    flashblocks_client: Option<FlashbotsClient>,
 }
 
 impl<C> EthEngineApi<C> {
@@ -157,6 +159,7 @@ impl<C> EthEngineApi<C> {
         builder_client: Arc<C>,
         boost_sync: bool,
         metrics: Option<Arc<ServerMetrics>>,
+        flashblocks_client: Option<FlashbotsClient>,
     ) -> Self {
         Self {
             l2_client,
@@ -164,6 +167,7 @@ impl<C> EthEngineApi<C> {
             boost_sync,
             metrics,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
+            flashblocks_client,
         }
     }
 }
@@ -381,11 +385,25 @@ where
                 .await
                 .unwrap_or(payload_id);
 
+            // Use the flashblocks payload if available
+            let payload = if let Some(flashblocks_client) = &self.flashblocks_client {
+                flashblocks_client.get_best_payload().await
+            } else {
+                None
+            };
+
             let builder = self.builder_client.clone();
-            let payload = builder.client.get_payload_v3(external_payload_id).await.map_err(|e| {
+
+            // Fallback to the get_payload_v3 from the builder if no flashblocks payload is available
+            let payload = if let Some(payload) = payload {
+                info!(message = "using flashblocks payload");
+                payload
+            } else {
+                builder.client.get_payload_v3(external_payload_id).await.map_err(|e| {
                 error!(message = "error calling get_payload_v3 from builder", "url" = builder.url, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 e
-                })?;
+                })?
+            };
 
             let block_hash = ExecutionPayload::from(payload.clone().execution_payload).block_hash();
             info!(message = "received payload from builder", "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id, "block_hash" = %block_hash);
@@ -622,6 +640,7 @@ mod tests {
                     format!("http://{BUILDER_ADDR}"),
                 )),
                 boost_sync,
+                None,
                 None,
             );
             let mut module: RpcModule<()> = RpcModule::new(());
