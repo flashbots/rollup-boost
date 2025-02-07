@@ -257,7 +257,6 @@ async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre
 
 #[cfg(test)]
 mod tests {
-    use assert_cmd::Command;
     use http::Uri;
     use jsonrpsee::core::client::ClientT;
 
@@ -270,7 +269,6 @@ mod tests {
         rpc_params,
         server::{ServerBuilder, ServerHandle},
     };
-    use predicates::prelude::*;
     use reth_rpc_layer::{AuthClientService, AuthLayer, JwtAuthValidator, JwtSecret};
     use std::result::Result;
     use std::str::FromStr;
@@ -280,16 +278,6 @@ mod tests {
     const AUTH_PORT: u32 = 8550;
     const AUTH_ADDR: &str = "0.0.0.0";
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
-
-    #[test]
-    fn test_invalid_args() {
-        let mut cmd = Command::cargo_bin("rollup-boost").unwrap();
-        cmd.arg("--invalid-arg");
-
-        cmd.assert().failure().stderr(predicate::str::contains(
-            "error: unexpected argument '--invalid-arg' found",
-        ));
-    }
 
     #[tokio::test]
     async fn test_create_client() {

@@ -161,8 +161,9 @@ async fn forward_request(
     uri: Uri,
     auth: Option<JwtSecret>,
 ) -> Result<http::Response<HttpBody>, BoxError> {
+    *req.uri_mut() = uri.clone();
+
     if let Some(auth) = auth {
-        *req.uri_mut() = uri.clone();
         req.headers_mut()
             .insert(AUTHORIZATION, secret_to_bearer_header(&auth));
     }
@@ -206,7 +207,7 @@ mod tests {
         types::{ErrorCode, ErrorObject},
         RpcModule,
     };
-    
+
     use serde_json::json;
     use std::{
         net::{IpAddr, SocketAddr},
