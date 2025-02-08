@@ -58,21 +58,56 @@ macro_rules! define_rpc_args {
             paste! {
                 #[derive(Parser, Debug, Clone, PartialEq, Eq)]
                 pub struct $name {
+
+                    /// Http server address
+                    #[arg(long, env, default_value = "127.0.0.1:8545")]
+                    pub [<$prefix _http_url>]: Uri,
+
+                    /// Hex encoded JWT secret to use for the JSON-RPC API client.
+                    #[arg(long, env, value_name = "HEX")]
+                    pub [<$prefix _http_jwt_token>]: Option<JwtSecret>,
+
+                    /// Path to a JWT secret to use for the authenticated JSON-RPC API client.
+                    #[arg(long, env, value_name = "PATH")]
+                    pub [<$prefix _http_jwt_path>]: Option<PathBuf>,
+
                     /// Auth server address
                     #[arg(long, env, default_value = "127.0.0.1:8551")]
-                    pub [<$prefix _url>]: Uri,
+                    pub [<$prefix _auth_url>]: Uri,
 
-                    /// Hex encoded JWT secret to use for the authenticated engine-API RPC server.
+                    /// Hex encoded JWT secret to use for the authenticated engine-API RPC client.
                     #[arg(long, env, value_name = "HEX")]
-                    pub [<$prefix _jwt_token>]: Option<JwtSecret>,
+                    pub [<$prefix _auth_jwt_token>]: Option<JwtSecret>,
 
-                    /// Path to a JWT secret to use for the authenticated engine-API RPC server.
+                    /// Path to a JWT secret to use for the authenticated engine-API RPC client.
                     #[arg(long, env, value_name = "PATH")]
-                    pub [<$prefix _jwt_path>]: Option<PathBuf>,
+                    pub [<$prefix _auth_jwt_path>]: Option<PathBuf>,
 
                     /// Timeout for http calls in milliseconds
                     #[arg(long, env, default_value_t = 1000)]
                     pub [<$prefix _timeout>]: u64,
+                }
+
+                impl $name {
+                    pub fn get_http_jwt(&self) -> Result<Option<JwtSecret>, ExecutionClientError> {
+                        if let Some(secret) = &self.[<$prefix _http_jwt_token>] {
+                            Ok(Some(secret.clone()))
+                        } else if let Some(path) = &self.[<$prefix _http_jwt_path>] {
+                            Ok(Some(JwtSecret::from_file(path)?))
+                        } else {
+                            Ok(None)
+                        }
+                    }
+
+                    pub fn get_auth_jwt(&self) -> Result<Option<JwtSecret>, ExecutionClientError> {
+                        if let Some(secret) = &self.[<$prefix _auth_jwt_token>] {
+                            Ok(Some(secret.clone()))
+                        } else if let Some(path) = &self.[<$prefix _auth_jwt_path>] {
+                            Ok(Some(JwtSecret::from_file(path)?))
+                        } else {
+                            Ok(None)
+                        }
+                    }
                 }
             }
         )*

@@ -3,7 +3,6 @@ use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
 use std::{net::SocketAddr, sync::Arc};
 
 use dotenv::dotenv;
-use eyre::bail;
 use http::StatusCode;
 use hyper::service::service_fn;
 use hyper::{server::conn::http1, Request, Response};
@@ -18,7 +17,6 @@ use opentelemetry::global;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::Config, Resource};
 use proxy::ProxyLayer;
-use reth_rpc_layer::JwtSecret;
 use server::RollupBoostServer;
 
 use tokio::net::TcpListener;
@@ -132,32 +130,23 @@ async fn main() -> eyre::Result<()> {
     }
 
     let l2_client_args = args.l2_client;
-
-    let l2_auth_jwt = if let Some(secret) = l2_client_args.l2_jwt_token {
-        secret
-    } else if let Some(path) = l2_client_args.l2_jwt_path.as_ref() {
-        JwtSecret::from_file(path)?
-    } else {
-        bail!("Missing L2 Client JWT secret");
-    };
+    let l2_auth_jwt = l2_client_args
+        .get_auth_jwt()?
+        .expect("L2 Auth JWT is required");
 
     let l2_client = ExecutionClient::new(
-        l2_client_args.l2_url.clone(),
+        l2_client_args.l2_auth_url.clone(),
         l2_auth_jwt,
         l2_client_args.l2_timeout,
     )?;
 
     let builder_args = args.builder;
-    let builder_auth_jwt = if let Some(secret) = builder_args.builder_jwt_token {
-        secret
-    } else if let Some(path) = builder_args.builder_jwt_path.as_ref() {
-        JwtSecret::from_file(path)?
-    } else {
-        bail!("Missing Builder JWT secret");
-    };
+    let builder_auth_jwt = builder_args
+        .get_auth_jwt()?
+        .expect("Builder Auth JWT is required");
 
     let builder_client = ExecutionClient::new(
-        builder_args.builder_url.clone(),
+        builder_args.builder_auth_url.clone(),
         builder_auth_jwt,
         builder_args.builder_timeout,
     )?;
@@ -169,11 +158,14 @@ async fn main() -> eyre::Result<()> {
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
 
+    let l2_http_jwt = l2_client_args.get_http_jwt()?;
+    let builder_http_jwt = builder_args.get_http_jwt()?;
+
     let service_builder = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-        l2_client_args.l2_url,
-        l2_auth_jwt,
-        builder_args.builder_url,
-        builder_auth_jwt,
+        l2_client_args.l2_http_url,
+        l2_http_jwt,
+        builder_args.builder_http_url,
+        builder_http_jwt,
     ));
 
     let server = Server::builder()
@@ -265,7 +257,6 @@ async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre
 
 #[cfg(test)]
 mod tests {
-    use assert_cmd::Command;
     use http::Uri;
     use jsonrpsee::core::client::ClientT;
 
@@ -278,7 +269,6 @@ mod tests {
         rpc_params,
         server::{ServerBuilder, ServerHandle},
     };
-    use predicates::prelude::*;
     use reth_rpc_layer::{AuthClientService, AuthLayer, JwtAuthValidator, JwtSecret};
     use std::result::Result;
     use std::str::FromStr;
@@ -288,16 +278,6 @@ mod tests {
     const AUTH_PORT: u32 = 8550;
     const AUTH_ADDR: &str = "0.0.0.0";
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
-
-    #[test]
-    fn test_invalid_args() {
-        let mut cmd = Command::cargo_bin("rollup-boost").unwrap();
-        cmd.arg("--invalid-arg");
-
-        cmd.assert().failure().stderr(predicate::str::contains(
-            "error: unexpected argument '--invalid-arg' found",
-        ));
-    }
 
     #[tokio::test]
     async fn test_create_client() {

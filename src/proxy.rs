@@ -28,24 +28,24 @@ const FORWARD_REQUESTS: [&str; 6] = [
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
-    l2_auth_uri: Uri,
-    l2_auth_secret: JwtSecret,
-    builder_auth_uri: Uri,
-    builder_auth_secret: JwtSecret,
+    l2_http_uri: Uri,
+    l2_http_secret: Option<JwtSecret>,
+    builder_http_uri: Uri,
+    builder_http_secret: Option<JwtSecret>,
 }
 
 impl ProxyLayer {
     pub fn new(
-        l2_auth_uri: Uri,
-        l2_auth_secret: JwtSecret,
-        builder_auth_uri: Uri,
-        builder_auth_secret: JwtSecret,
+        l2_http_uri: Uri,
+        l2_http_secret: Option<JwtSecret>,
+        builder_http_uri: Uri,
+        builder_http_secret: Option<JwtSecret>,
     ) -> Self {
         ProxyLayer {
-            l2_auth_uri,
-            l2_auth_secret,
-            builder_auth_uri,
-            builder_auth_secret,
+            l2_http_uri,
+            l2_http_secret,
+            builder_http_uri,
+            builder_http_secret,
         }
     }
 }
@@ -57,10 +57,10 @@ impl<S> Layer<S> for ProxyLayer {
         ProxyService {
             inner,
             client: Client::builder(TokioExecutor::new()).build_http(),
-            l2_auth_uri: self.l2_auth_uri.clone(),
-            l2_auth_secret: self.l2_auth_secret,
-            builder_auth_uri: self.builder_auth_uri.clone(),
-            builder_auth_secret: self.builder_auth_secret,
+            l2_http_uri: self.l2_http_uri.clone(),
+            l2_http_secret: self.l2_http_secret,
+            builder_http_uri: self.builder_http_uri.clone(),
+            builder_http_secret: self.builder_http_secret,
         }
     }
 }
@@ -69,10 +69,10 @@ impl<S> Layer<S> for ProxyLayer {
 pub struct ProxyService<S> {
     inner: S,
     client: Client<HttpConnector, HttpBody>,
-    l2_auth_uri: Uri,
-    l2_auth_secret: JwtSecret,
-    builder_auth_uri: Uri,
-    builder_auth_secret: JwtSecret,
+    l2_http_uri: Uri,
+    l2_http_secret: Option<JwtSecret>,
+    builder_http_uri: Uri,
+    builder_http_secret: Option<JwtSecret>,
 }
 
 impl<S> Service<HttpRequest<HttpBody>> for ProxyService<S>
@@ -98,10 +98,10 @@ where
 
         let client = self.client.clone();
         let mut inner = self.inner.clone();
-        let builder_uri = self.builder_auth_uri.clone();
-        let builder_secret = self.builder_auth_secret;
-        let l2_uri = self.l2_auth_uri.clone();
-        let l2_secret = self.l2_auth_secret;
+        let builder_uri = self.builder_http_uri.clone();
+        let builder_secret = self.builder_http_secret;
+        let l2_uri = self.l2_http_uri.clone();
+        let l2_secret = self.l2_http_secret;
 
         #[derive(serde::Deserialize, Debug)]
         struct RpcRequest<'a> {
@@ -159,11 +159,14 @@ async fn forward_request(
     mut req: http::Request<HttpBody>,
     method: &str,
     uri: Uri,
-    auth: JwtSecret,
+    auth: Option<JwtSecret>,
 ) -> Result<http::Response<HttpBody>, BoxError> {
     *req.uri_mut() = uri.clone();
-    req.headers_mut()
-        .insert(AUTHORIZATION, secret_to_bearer_header(&auth));
+
+    if let Some(auth) = auth {
+        req.headers_mut()
+            .insert(AUTHORIZATION, secret_to_bearer_header(&auth));
+    }
 
     debug!(
         target: "proxy::forward_request",
@@ -204,7 +207,7 @@ mod tests {
         types::{ErrorCode, ErrorObject},
         RpcModule,
     };
-    use reth_rpc_layer::JwtSecret;
+
     use serde_json::json;
     use std::{
         net::{IpAddr, SocketAddr},
@@ -237,9 +240,9 @@ mod tests {
             let l2 = MockHttpServer::serve().await?;
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
+                None,
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
+                None,
             ));
 
             let temp_listener = TcpListener::bind("0.0.0.0:0").await?;
@@ -383,7 +386,7 @@ mod tests {
                 }
             };
 
-            return Ok(hyper::Response::new(response.to_string()));
+            Ok(hyper::Response::new(response.to_string()))
         }
     }
 
@@ -484,7 +487,6 @@ mod tests {
     async fn spawn_proxy_server() -> ServerHandle {
         let addr = format!("{ADDR}:{PORT}");
 
-        let jwt = JwtSecret::random();
         let l2_auth_uri = format!(
             "http://{}",
             SocketAddr::new(IpAddr::from_str(ADDR).unwrap(), PROXY_PORT as u16)
@@ -492,7 +494,7 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt.clone(), l2_auth_uri, jwt);
+        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), None, l2_auth_uri, None);
 
         // Create a layered server
         let server = ServerBuilder::default()
@@ -673,7 +675,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (gas_price.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (gas_price,))
             .await?;
 
         let expected_price = json!(gas_price);
@@ -707,7 +709,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (gas_limit.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (gas_limit,))
             .await?;
 
         let expected_price = json!(gas_limit);
@@ -741,7 +743,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (mock_data.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (mock_data,))
             .await?;
 
         let expected_price = json!(mock_data);
