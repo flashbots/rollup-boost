@@ -1,4 +1,5 @@
 use crate::server::EngineApiClient;
+use crate::server::PayloadCreator;
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{
@@ -7,6 +8,7 @@ use alloy_rpc_types_engine::{
 };
 use jsonrpsee::http_client::{transport::HttpBackend, HttpClient};
 use jsonrpsee::proc_macros::rpc;
+use lazy_static::lazy_static;
 use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 use reth_optimism_payload_builder::OpPayloadAttributes;
 use reth_rpc_layer::{AuthClientLayer, AuthClientService, JwtSecret};
@@ -14,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Mutex;
 use std::{
     fs::{File, OpenOptions},
     io,
@@ -21,8 +24,8 @@ use std::{
     process::{Child, Command},
     time::{Duration, SystemTime},
 };
+use thiserror::Error;
 use time::{format_description, OffsetDateTime};
-use tokio::time::sleep;
 
 /// Default JWT token for testing purposes
 pub const DEFAULT_JWT_TOKEN: &str =
@@ -32,13 +35,22 @@ mod integration_test;
 mod service_rb;
 mod service_reth;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum IntegrationError {
+    #[error("Failed to spawn process")]
     SpawnError,
+    #[error("Binary not found")]
     BinaryNotFound,
+    #[error("Failed to setup integration framework")]
     SetupError,
+    #[error("Log error")]
     LogError,
+    #[error("Service already running")]
     ServiceAlreadyRunning,
+    #[error("Service stopped")]
+    ServiceStopped,
+    #[error(transparent)]
+    AddrParseError(#[from] std::net::AddrParseError),
 }
 
 #[derive(Debug, Clone)]
@@ -117,7 +129,10 @@ impl ServiceCommand {
 
 pub trait Service {
     fn command(&self) -> ServiceCommand;
-    fn ready(&self, log_path: &Path) -> impl Future<Output = Result<(), IntegrationError>> + Send;
+    fn ready(
+        &self,
+        service_instance: &mut ServiceInstance,
+    ) -> impl Future<Output = Result<(), IntegrationError>> + Send;
 }
 
 pub struct ServiceInstance {
@@ -126,42 +141,19 @@ pub struct ServiceInstance {
     allocated_ports: HashMap<String, u16>,
 }
 
-pub struct IntegrationFramework {
-    test_dir: PathBuf,
-    services: Vec<ServiceInstance>,
-    allocated_ports: HashSet<u16>,
+lazy_static! {
+    static ref GLOBAL_ALLOCATED_PORTS: Mutex<HashSet<u16>> = Mutex::new(HashSet::new());
 }
 
-/// Helper function to poll logs periodically
-pub async fn poll_logs(
-    log_path: &Path,
-    pattern: &str,
-    interval: Duration,
-    timeout: Duration,
-) -> Result<(), IntegrationError> {
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > timeout {
-            return Err(IntegrationError::SpawnError);
-        }
-
-        let mut file = File::open(log_path).map_err(|_| IntegrationError::LogError)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|_| IntegrationError::LogError)?;
-
-        if contents.contains(pattern) {
-            return Ok(());
-        }
-
-        sleep(interval).await;
-    }
+pub struct IntegrationFramework {
+    test_dir: PathBuf,
+    logs_dir: PathBuf,
+    services: HashMap<String, ServiceInstance>,
 }
 
 impl ServiceInstance {
-    pub fn new(name: String, test_dir: PathBuf, allocated_ports: HashMap<String, u16>) -> Self {
-        let log_path = test_dir.join(format!("{}.log", name));
+    pub fn new(name: String, logs_dir: PathBuf, allocated_ports: HashMap<String, u16>) -> Self {
+        let log_path = logs_dir.join(format!("{}.log", name));
         Self {
             process: None,
             log_path,
@@ -207,7 +199,7 @@ impl ServiceInstance {
         system_command: Command,
     ) -> Result<(), IntegrationError> {
         self.start(system_command)?;
-        config.ready(&self.log_path).await?;
+        config.ready(self).await?;
         Ok(())
     }
 
@@ -220,28 +212,78 @@ impl ServiceInstance {
     pub fn get_endpoint(&self, name: &str) -> String {
         format!("http://localhost:{}", self.get_port(name))
     }
+
+    pub fn get_logs(&self) -> String {
+        let mut file = File::open(&self.log_path).unwrap();
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).unwrap();
+        contents
+    }
+
+    pub fn wait_for_log(
+        &mut self,
+        pattern: &str,
+        timeout: Duration,
+    ) -> Result<(), IntegrationError> {
+        let start = std::time::Instant::now();
+
+        loop {
+            // Check if process has stopped
+            if let Some(ref mut process) = self.process {
+                match process.try_wait() {
+                    Ok(None) => {}
+                    Ok(Some(_status)) => {
+                        // Process has exited
+                        return Err(IntegrationError::ServiceStopped);
+                    }
+                    Err(_) => {
+                        return Err(IntegrationError::ServiceStopped);
+                    }
+                }
+            }
+
+            if start.elapsed() > timeout {
+                return Err(IntegrationError::SpawnError);
+            }
+
+            let mut file = File::open(&self.log_path).map_err(|_| IntegrationError::LogError)?;
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)
+                .map_err(|_| IntegrationError::LogError)?;
+
+            if contents.contains(pattern) {
+                return Ok(());
+            }
+
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
 }
 
 impl IntegrationFramework {
-    pub fn new() -> Result<Self, IntegrationError> {
+    pub fn new(test_name: &str) -> Result<Self, IntegrationError> {
         let dt: OffsetDateTime = SystemTime::now().into();
         let format = format_description::parse("[year]_[month]_[day]_[hour]_[minute]_[second]")
             .map_err(|_| IntegrationError::SetupError)?;
 
-        let test_name = dt
+        let timestamp = dt
             .format(&format)
             .map_err(|_| IntegrationError::SetupError)?;
+
+        let test_name = format!("{}_{}", timestamp, test_name);
 
         let mut test_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_dir.push("./integration_logs");
         test_dir.push(test_name);
 
-        std::fs::create_dir_all(&test_dir).map_err(|_| IntegrationError::SetupError)?;
+        // Create logs subdirectory
+        let logs_dir = test_dir.join("logs");
+        std::fs::create_dir_all(&logs_dir).map_err(|_| IntegrationError::SetupError)?;
 
         Ok(Self {
             test_dir,
-            services: Vec::new(),
-            allocated_ports: HashSet::new(),
+            logs_dir,
+            services: HashMap::new(),
         })
     }
 
@@ -256,7 +298,6 @@ impl IntegrationFramework {
         for arg in cmd.args {
             match arg {
                 Arg::Port { name, preferred } => {
-                    // find available port
                     let port = self.find_available_port(preferred)?;
                     allocated_ports.insert(name, port);
                     command.arg(port.to_string());
@@ -272,20 +313,24 @@ impl IntegrationFramework {
             }
         }
 
-        // update the allocated ports with the new ports
-        self.allocated_ports.extend(allocated_ports.values());
         Ok((allocated_ports, command))
     }
 
     fn find_available_port(&self, start: u16) -> Result<u16, IntegrationError> {
+        let mut global_ports = GLOBAL_ALLOCATED_PORTS
+            .lock()
+            .expect("Failed to acquire lock");
+
         (start..start + 100)
             .find(|&port| {
-                // if the port is already allocated internally by the framework, skip it
-                if self.allocated_ports.contains(&port) {
+                if global_ports.contains(&port) {
                     return false;
                 }
-                // check if the port is available
-                std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+                if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+                    global_ports.insert(port);
+                    return true;
+                }
+                false
             })
             .ok_or(IntegrationError::SetupError)
     }
@@ -299,9 +344,9 @@ impl IntegrationFramework {
 
         // Store the service instance in the framework
         let service =
-            ServiceInstance::new(name.to_string(), self.test_dir.clone(), allocated_ports);
-        self.services.push(service);
-        let service = self.services.last_mut().unwrap();
+            ServiceInstance::new(name.to_string(), self.logs_dir.clone(), allocated_ports);
+        self.services.insert(name.to_string(), service);
+        let service = self.services.get_mut(name).unwrap();
 
         service.start_with_config(config, command).await?;
         Ok(service)
@@ -335,8 +380,19 @@ fn open_log_file(path: &PathBuf) -> Result<File, IntegrationError> {
 
 impl Drop for IntegrationFramework {
     fn drop(&mut self) {
+        // Stop all services first
         for service in &mut self.services {
-            let _ = service.stop();
+            let _ = service.1.stop();
+        }
+
+        // Release allocated ports from global registry
+        let mut global_ports = GLOBAL_ALLOCATED_PORTS
+            .lock()
+            .expect("Failed to acquire lock");
+        for service in &self.services {
+            for port in service.1.allocated_ports.values() {
+                global_ports.remove(port);
+            }
         }
     }
 }
@@ -426,8 +482,8 @@ pub struct RollupBoostTestHarness {
 }
 
 impl RollupBoostTestHarness {
-    pub async fn new() -> Result<Self, IntegrationError> {
-        let mut framework = IntegrationFramework::new()?;
+    pub async fn new(test_name: &str) -> Result<Self, IntegrationError> {
+        let mut framework = IntegrationFramework::new(test_name)?;
 
         let jwt_path = framework.write_file("jwt.hex", DEFAULT_JWT_TOKEN)?;
 
@@ -438,6 +494,7 @@ impl RollupBoostTestHarness {
         let l2_reth_config = service_reth::RethConfig::new()
             .jwt_secret_path(jwt_path.clone())
             .chain_config_path(genesis_path.clone());
+
         let l2_service = {
             let service = framework.start("l2-reth", &l2_reth_config).await?;
             service.get_endpoint("authrpc")
@@ -459,6 +516,7 @@ impl RollupBoostTestHarness {
             .jwt_path(jwt_path)
             .l2_url(l2_service)
             .builder_url(builder_service);
+
         let rb_service = framework.start("rollup-boost", &rb_config).await?;
 
         let engine_api = EngineApi::new(&rb_service.get_endpoint("rpc"), DEFAULT_JWT_TOKEN)
@@ -469,19 +527,58 @@ impl RollupBoostTestHarness {
             engine_api,
         })
     }
+
+    pub fn get_block_creator(&self, block_hash: B256) -> Option<PayloadCreator> {
+        let service = self._framework.services.get("rollup-boost").unwrap();
+        let logs = service.get_logs();
+
+        let search_query = format!("returning block hash={:#x}", block_hash);
+
+        // Find the log line containing the block hash
+        for line in logs.lines() {
+            if line.contains(&search_query) {
+                // Extract the context=X part
+                if let Some(context_start) = line.find("context=") {
+                    let context = line[context_start..]
+                        .split_whitespace()
+                        .next()?
+                        .split('=')
+                        .nth(1)?;
+
+                    match context {
+                        "builder" => return Some(PayloadCreator::Builder),
+                        "l2" => return Some(PayloadCreator::L2),
+                        _ => panic!("Unknown context: {}", context),
+                    }
+                } else {
+                    panic!("no context found");
+                }
+            }
+        }
+
+        None
+    }
+
+    pub async fn get_block_generator(&self) -> SimpleBlockGenerator {
+        let mut block_creator = SimpleBlockGenerator::new(self);
+        block_creator.init().await.unwrap();
+        block_creator
+    }
 }
 
 /// A simple system that continuously generates empty blocks using the engine API
 pub struct SimpleBlockGenerator<'a> {
+    rollup_boost_service: &'a RollupBoostTestHarness,
     engine_api: &'a EngineApi,
     latest_hash: B256,
     timestamp: u64,
 }
 
 impl<'a> SimpleBlockGenerator<'a> {
-    pub fn new(engine_api: &'a EngineApi) -> Self {
+    pub fn new(rollup_boost_service: &'a RollupBoostTestHarness) -> Self {
         Self {
-            engine_api,
+            rollup_boost_service,
+            engine_api: &rollup_boost_service.engine_api,
             latest_hash: B256::ZERO, // temporary value
             timestamp: 0,            // temporary value
         }
@@ -496,7 +593,10 @@ impl<'a> SimpleBlockGenerator<'a> {
     }
 
     /// Generate a single new block and return its hash
-    pub async fn generate_block(&mut self) -> eyre::Result<B256> {
+    pub async fn generate_block(
+        &mut self,
+        empty_blocks: bool,
+    ) -> eyre::Result<(B256, PayloadCreator)> {
         // Submit forkchoice update with payload attributes for the next block
         let result = self
             .engine_api
@@ -514,7 +614,7 @@ impl<'a> SimpleBlockGenerator<'a> {
                         max_blobs_per_block: None,
                     },
                     transactions: None,
-                    no_tx_pool: Some(false),
+                    no_tx_pool: Some(empty_blocks),
                     gas_limit: Some(10000000000),
                     eip_1559_params: None,
                 }),
@@ -553,6 +653,12 @@ impl<'a> SimpleBlockGenerator<'a> {
             .payload_inner
             .timestamp;
 
-        Ok(new_block_hash)
+        // Check who built the block in the rollup-boost logs
+        let block_creator = self
+            .rollup_boost_service
+            .get_block_creator(new_block_hash)
+            .unwrap();
+
+        Ok((new_block_hash, block_creator))
     }
 }

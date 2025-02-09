@@ -1,9 +1,6 @@
-use crate::integration::{poll_logs, Arg, IntegrationError, Service, ServiceCommand};
+use crate::integration::{Arg, IntegrationError, Service, ServiceCommand, ServiceInstance};
 use futures_util::Future;
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{path::PathBuf, time::Duration};
 
 #[derive(Default)]
 pub struct RollupBoostConfig {
@@ -41,7 +38,7 @@ impl Service for RollupBoostConfig {
         let jwt_path = self.jwt_path.as_ref().expect("jwt_path not set");
 
         let cmd = ServiceCommand::new(bin_path.to_str().unwrap())
-            .arg("--jwt-path")
+            .arg("--l2-jwt-path")
             .arg(jwt_path.clone())
             .arg("--builder-jwt-path")
             .arg(jwt_path.clone())
@@ -53,22 +50,15 @@ impl Service for RollupBoostConfig {
             .arg(Arg::Port {
                 name: "rpc".into(),
                 preferred: 8112,
-            })
-            .arg("--boost-sync");
+            });
 
         cmd
     }
 
-    #[allow(clippy::manual_async_fn)]
-    fn ready(&self, log_path: &Path) -> impl Future<Output = Result<(), IntegrationError>> + Send {
-        async move {
-            poll_logs(
-                log_path,
-                "Starting server on",
-                Duration::from_millis(100),
-                Duration::from_secs(60),
-            )
-            .await
-        }
+    fn ready(
+        &self,
+        service: &mut ServiceInstance,
+    ) -> impl Future<Output = Result<(), IntegrationError>> + Send {
+        async move { service.wait_for_log("Starting server on", Duration::from_secs(5)) }
     }
 }
