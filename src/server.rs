@@ -1,4 +1,5 @@
 use crate::client::ExecutionClient;
+use crate::flashblocks::FlashbotsClient;
 use crate::metrics::ServerMetrics;
 use alloy_primitives::B256;
 use std::num::NonZero;
@@ -10,6 +11,7 @@ use alloy_rpc_types_engine::{
     PayloadStatus,
 };
 use jsonrpsee::core::{async_trait, ClientError, RegisterMethodError, RpcResult};
+use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use jsonrpsee::types::{ErrorCode, ErrorObject};
 use jsonrpsee::RpcModule;
@@ -20,11 +22,8 @@ use opentelemetry::trace::{Span, TraceContextExt, Tracer};
 use opentelemetry::{Context, KeyValue};
 use reth_optimism_payload_builder::{OpPayloadAttributes, OpPayloadBuilderAttributes};
 use reth_payload_primitives::PayloadBuilderAttributes;
-use crate::flashblocks::FlashbotsClient;
-use crate::metrics::ServerMetrics;
 use tokio::sync::Mutex;
 use tracing::{error, info};
-use jsonrpsee::proc_macros::rpc;
 
 const CACHE_SIZE: usize = 100;
 
@@ -110,6 +109,7 @@ pub struct RollupBoostServer {
     pub boost_sync: bool,
     pub metrics: Option<Arc<ServerMetrics>>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
+    pub flashblocks_client: Option<Arc<FlashbotsClient>>,
 }
 
 impl RollupBoostServer {
@@ -118,6 +118,7 @@ impl RollupBoostServer {
         builder_client: ExecutionClient,
         boost_sync: bool,
         metrics: Option<Arc<ServerMetrics>>,
+        flashblocks_client: Option<FlashbotsClient>,
     ) -> Self {
         Self {
             l2_client,
@@ -125,6 +126,7 @@ impl RollupBoostServer {
             boost_sync,
             metrics,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
+            flashblocks_client: flashblocks_client.map(Arc::new),
         }
     }
 }
@@ -424,7 +426,7 @@ impl RollupBoostServer {
                 info!(message = "using flashblocks payload");
                 payload
             } else {
-                builder.client.get_payload_v3(external_payload_id).await.map_err(|e| {
+                builder.auth_client.get_payload_v3(external_payload_id).await.map_err(|e| {
                     error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                     e
                 })?
@@ -685,7 +687,7 @@ mod tests {
             let builder_client = ExecutionClient::new(builder_auth_rpc, jwt_secret, 2000).unwrap();
 
             let rollup_boost_client =
-                RollupBoostServer::new(l2_client, builder_client, boost_sync, None);
+                RollupBoostServer::new(l2_client, builder_client, boost_sync, None, None);
 
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
 

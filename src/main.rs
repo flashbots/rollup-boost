@@ -21,19 +21,14 @@ use proxy::ProxyLayer;
 use reth_rpc_layer::JwtSecret;
 use server::RollupBoostServer;
 
+use crate::flashblocks::FlashbotsClient;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal as unix_signal, SignalKind};
 use tracing::{error, info, Level};
 use tracing_subscriber::EnvFilter;
 
-<<<<<<< HEAD
-use crate::flashblocks::FlashbotsClient;
-
-mod error;
-mod flashblocks;
-=======
 mod client;
->>>>>>> main
+mod flashblocks;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
@@ -88,15 +83,6 @@ struct Args {
     /// Log format
     #[arg(long, env, default_value = "text")]
     log_format: String,
-<<<<<<< HEAD
-
-    /// Timeout for the builder client calls in milliseconds
-    #[arg(long, env, default_value = "200")]
-    builder_timeout: u64,
-
-    /// Timeout for the l2 client calls in milliseconds
-    #[arg(long, env, default_value = "2000")]
-    l2_timeout: u64,
 
     #[arg(long, env, default_value = "false")]
     flashblocks: bool,
@@ -104,8 +90,6 @@ struct Args {
     /// Flashblocks WebSocket URL
     #[arg(long, env, default_value = "ws://localhost:1111")]
     flashblocks_url: String,
-=======
->>>>>>> main
 }
 
 #[tokio::main]
@@ -192,37 +176,23 @@ async fn main() -> eyre::Result<()> {
         info!("Boost sync enabled");
     }
 
-<<<<<<< HEAD
     let flashblocks_client = if args.flashblocks {
-        let mut flashblocks_client = FlashbotsClient::new();
-        flashblocks_client
-            .init(args.flashblocks_url)
-            .map_err(|e| Error::InitFlashblocks(e.to_string()))?;
-
-        Some(flashblocks_client)
+        let mut client = FlashbotsClient::new();
+        client.init(args.flashblocks_url).unwrap();
+        Some(client)
     } else {
         None
     };
 
-    // Construct the RPC module
-    let eth_engine_api = EthEngineApi::new(
-        Arc::new(l2_client),
-        Arc::new(builder_client),
-        args.boost_sync,
+    let rollup_boost = RollupBoostServer::new(
+        l2_client,
+        builder_client,
+        boost_sync_enabled,
         metrics,
         flashblocks_client,
     );
 
-    let mut module: RpcModule<()> = RpcModule::new(());
-    module
-        .merge(eth_engine_api.into_rpc())
-        .map_err(|e| Error::InitRPCServer(e.to_string()))?;
-=======
-    let rollup_boost =
-        RollupBoostServer::new(l2_client, builder_client, boost_sync_enabled, metrics);
-
     let module: RpcModule<()> = rollup_boost.try_into()?;
->>>>>>> main
 
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
