@@ -1,5 +1,6 @@
-use clap::{arg, Parser};
+use clap::{arg, Parser, Subcommand};
 use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
+use debug_api::{DebugClient, SetDryRunRequestAction};
 use std::{net::SocketAddr, sync::Arc};
 
 use dotenv::dotenv;
@@ -28,6 +29,7 @@ use tracing::{error, info, Level};
 use tracing_subscriber::EnvFilter;
 
 mod client;
+mod debug_api;
 mod flashblocks;
 #[cfg(all(feature = "integration", test))]
 mod integration;
@@ -38,6 +40,9 @@ mod server;
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     #[clap(flatten)]
     builder: BuilderArgs,
 
@@ -84,12 +89,32 @@ struct Args {
     #[arg(long, env, default_value = "text")]
     log_format: String,
 
+    /// Enable Flashblocks client
     #[arg(long, env, default_value = "false")]
     flashblocks: bool,
 
     /// Flashblocks WebSocket URL
     #[arg(long, env, default_value = "ws://localhost:1111")]
     flashblocks_url: String,
+
+    /// Debug server port
+    #[arg(long, env, default_value = "5555")]
+    debug_server_port: u16,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Debug commands
+    Debug {
+        #[command(subcommand)]
+        command: DebugCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum DebugCommands {
+    /// Toggle dry run mode
+    DryRun {},
 }
 
 #[tokio::main]
@@ -97,6 +122,24 @@ async fn main() -> eyre::Result<()> {
     // Load .env file
     dotenv().ok();
     let args: Args = Args::parse();
+
+    // Handle commands if present
+    if let Some(cmd) = args.command {
+        match cmd {
+            Commands::Debug { command } => match command {
+                DebugCommands::DryRun {} => {
+                    let client = DebugClient::default();
+                    let result = client
+                        .set_dry_run(SetDryRunRequestAction::ToggleDryRun)
+                        .await
+                        .unwrap();
+                    println!("Response: {:?}", result);
+
+                    return Ok(());
+                }
+            },
+        }
+    }
 
     // Initialize logging
     let log_format = args.log_format.to_lowercase();
@@ -191,6 +234,11 @@ async fn main() -> eyre::Result<()> {
         metrics,
         flashblocks_client,
     );
+
+    // Spawn the debug server
+    rollup_boost
+        .start_debug_server(args.debug_server_port)
+        .await?;
 
     let module: RpcModule<()> = rollup_boost.try_into()?;
 

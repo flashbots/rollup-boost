@@ -1,7 +1,9 @@
 use crate::client::ExecutionClient;
+use crate::debug_api;
 use crate::flashblocks::FlashbotsClient;
 use crate::metrics::ServerMetrics;
 use alloy_primitives::B256;
+use debug_api::DebugServer;
 use std::num::NonZero;
 use std::sync::Arc;
 use std::time::Instant;
@@ -110,6 +112,7 @@ pub struct RollupBoostServer {
     pub metrics: Option<Arc<ServerMetrics>>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     pub flashblocks_client: Option<Arc<FlashbotsClient>>,
+    pub dry_run: Arc<Mutex<bool>>,
 }
 
 impl RollupBoostServer {
@@ -127,7 +130,15 @@ impl RollupBoostServer {
             metrics,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             flashblocks_client: flashblocks_client.map(Arc::new),
+            dry_run: Arc::new(Mutex::new(false)),
         }
+    }
+
+    pub async fn start_debug_server(&self, port: u16) -> eyre::Result<()> {
+        let server = DebugServer::new(self.dry_run.clone());
+        server.run(Some(port)).await?;
+
+        Ok(())
     }
 }
 
@@ -276,16 +287,19 @@ impl RollupBoostServer {
                 }
             })?;
 
-        let use_tx_pool = payload_attributes
-            .as_ref()
-            .map(|attr| !attr.no_tx_pool.unwrap_or_default());
-        let should_send_to_builder = if self.boost_sync {
-            // don't send to builder only if no_tx_pool is set
-            use_tx_pool.unwrap_or(true)
-        } else {
-            // send to builder if there are payload attributes and no_tx_pool is not set
-            use_tx_pool.is_some()
-        };
+        // TODO: Use _is_block_building_call to log the correct message during the async call to builder
+        let (should_send_to_builder, _is_block_building_call) =
+            if let Some(attr) = payload_attributes.as_ref() {
+                // payload attributes are present. It is a FCU call to start block building
+                // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
+                // a deterministic block without txs. We let the fallback EL node compute those.
+                let use_tx_pool = !attr.no_tx_pool.unwrap_or_default();
+                (use_tx_pool, true)
+            } else {
+                // no payload attributes. It is a FCU call to lock the head block
+                // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
+                (self.boost_sync, false)
+            };
 
         if should_send_to_builder {
             let span: Option<BoxedSpan> = if let Some(payload_attributes) =
@@ -377,6 +391,19 @@ impl RollupBoostServer {
                 };
             });
         } else {
+            // If no payload attributes are provided, the builder will not build a block
+            // We store a mapping from the local payload ID to an empty payload ID to signal
+            // during get_payload_v3 request that the builder does not need to be queried.
+            if let Some(local_id) = l2_response.payload_id {
+                let payload_trace_context = self.payload_trace_context.clone();
+
+                payload_trace_context
+                    .store_payload_id_mapping(local_id, PayloadId::default())
+                    .await;
+            } else {
+                error!(message = "no local payload id returned from l2 client", "head_block_hash" = %fork_choice_state.head_block_hash);
+            }
+
             info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash);
         }
 
@@ -389,7 +416,20 @@ impl RollupBoostServer {
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
         info!(message = "received get_payload_v3", "payload_id" = %payload_id);
         let l2_client_future = self.l2_client.auth_client.get_payload_v3(payload_id);
+
         let builder_client_future = Box::pin(async move {
+            let dry_run = self.dry_run.lock().await;
+            if *dry_run {
+                info!(message = "dry run mode is enabled, skipping get payload builder call");
+
+                // We are in dry run mode, so we do not want to call the builder.
+                return Err(ClientError::Call(ErrorObject::owned(
+                    INVALID_REQUEST_CODE,
+                    "Dry run mode is enabled",
+                    None::<String>,
+                )));
+            }
+
             if let Some(metrics) = &self.metrics {
                 metrics.get_payload_count.increment(1);
             }
@@ -411,6 +451,23 @@ impl RollupBoostServer {
                 .get_external_payload_id(&payload_id)
                 .await
                 .unwrap_or(payload_id);
+
+            if external_payload_id == PayloadId::default() {
+                info!(
+                    message =
+                        "no-tx-pool call and builder did not build a block, defer to L2 result"
+                );
+
+                // Note: We are sending an error here to return early from the future and this error
+                // is not logged later on, so it's not causing issues. However, we should find a better
+                // way to handle this case in the future rather than relying on this error being silently
+                // ignored.
+                return Err(ClientError::Call(ErrorObject::owned(
+                    INVALID_REQUEST_CODE,
+                    "Builder payload was not valid",
+                    None::<String>,
+                )));
+            }
 
             // Use the flashblocks payload if available
             let payload = if let Some(flashblocks_client) = &self.flashblocks_client {
