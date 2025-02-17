@@ -476,8 +476,6 @@ impl RollupBoostServer {
             let block_hash = ExecutionPayload::from(payload.clone().execution_payload).block_hash();
             info!(message = "received payload from builder", "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id, "block_hash" = %block_hash);
 
-            println!("A");
-
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
             // If validation fails, return the local block since that one has already been validated.
@@ -485,17 +483,10 @@ impl RollupBoostServer {
                 metrics.new_payload_count.increment(1);
             }
 
-            println!("B");
-
             let payload_status = self.l2_client.auth_client.new_payload_v3(payload.execution_payload.clone(), vec![], payload.parent_beacon_block_root).await.map_err(|e| {
-                println!("D");
-
                 error!(message = "error calling new_payload_v3 to validate builder payload", "url" = ?self.l2_client.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 e
             })?;
-
-            println!("C");
-
             if let Some(mut s) = span {
                 s.end();
             };
@@ -506,10 +497,7 @@ impl RollupBoostServer {
                 }
             };
 
-            println!("E");
-
             if payload_status.is_invalid() {
-                println!("F");
                 error!(message = "builder payload was not valid", "url" = ?builder.auth_rpc, "payload_status" = %payload_status.status, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 Err(ClientError::Call(ErrorObject::owned(
                     INVALID_REQUEST_CODE,
