@@ -122,3 +122,11 @@ async fn connect_websocket(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_flashbots_client() {}
+}
