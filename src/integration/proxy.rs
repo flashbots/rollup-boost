@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use http::header;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::client::conn::http1::Builder;
 use hyper::server::conn::http1;
@@ -24,7 +25,7 @@ struct JsonRpcResponse {
     jsonrpc: String,
     #[serde(default)]
     result: Option<Value>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     error: Option<JsonRpcError>,
     id: Value,
 }
@@ -36,8 +37,7 @@ pub struct JsonRpcError {
     data: Option<Value>,
 }
 
-pub type DynHandlerFn =
-    Box<dyn Fn(&str, Value, Value) -> Result<Value, JsonRpcError> + Send + Sync>;
+pub type DynHandlerFn = Box<dyn Fn(&str, Value, Value) -> Option<Value> + Send + Sync>;
 
 // Structure to hold the target address that we'll pass to the proxy function
 #[derive(Clone)]
@@ -77,11 +77,30 @@ async fn proxy(
     let bytes = body.collect().await?.to_bytes();
 
     let json_rpc_response = serde_json::from_slice::<JsonRpcResponse>(&bytes).unwrap();
-    if let Some(result) = json_rpc_response.result {
-        let _ = (config.handler)(&json_rpc_request.method, json_rpc_request.params, result);
-    }
+    let bytes = if let Some(result) = json_rpc_response.clone().result {
+        let value = (config.handler)(&json_rpc_request.method, json_rpc_request.params, result);
+        if let Some(value) = value {
+            // If the handler returns a value, we replace the result with the new value
+            // The callback only returns the result of the jsonrpc request so we have to wrap it up
+            // again in a JsonRpcResponse
+            let mut new_json_rpc_resp = json_rpc_response;
+            new_json_rpc_resp.result = Some(value);
+            Bytes::from(serde_json::to_vec(&new_json_rpc_resp).unwrap())
+        } else {
+            // If the handler returns None, we return the original response
+            bytes
+        }
+    } else {
+        bytes
+    };
 
-    let resp = Response::from_parts(parts, Full::new(bytes).map_err(|_| unreachable!()));
+    let bytes_len = bytes.len();
+    let mut resp = Response::from_parts(parts, Full::new(bytes).map_err(|_| unreachable!()));
+
+    // We have to update the content length to the new bytes length
+    resp.headers_mut()
+        .insert(header::CONTENT_LENGTH, bytes_len.into());
+
     Ok(resp.map(|b| b.boxed()))
 }
 

@@ -1,11 +1,13 @@
 #[cfg(test)]
 mod tests {
+    use alloy_primitives::B256;
     use serde_json::Value;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use crate::debug_api::SetDryRunRequestAction;
     use crate::integration::RollupBoostTestHarnessBuilder;
+    use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 
     #[tokio::test]
     async fn test_integration_simple() -> eyre::Result<()> {
@@ -161,12 +163,12 @@ mod tests {
             let delay = delay_for_handler.lock().unwrap();
             // sleep the amount of time specified in the delay
             std::thread::sleep(*delay);
-            Ok(Value::Null)
+            None
         });
 
         // This integration test checks that if the builder has a general delay in processing ANY of the requests,
         // rollup-boost does not stop building blocks.
-        let harness = RollupBoostTestHarnessBuilder::new("test_integration_proxy")
+        let harness = RollupBoostTestHarnessBuilder::new("test_integration_builder_full_delay")
             .proxy_handler(handler)
             .build()
             .await?;
@@ -192,6 +194,55 @@ mod tests {
             assert!(block_creator.is_l2(), "Block creator should be the builder");
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_integration_builder_returns_incorrect_block() -> eyre::Result<()> {
+        // Test that the builder returns a block with an incorrect state root and that rollup-boost
+        // does not process it.
+        let handler = Box::new(move |method: &str, _params: Value, _result: Value| {
+            if method != "engine_getPayloadV3" {
+                return None;
+            }
+
+            let mut payload =
+                serde_json::from_value::<OpExecutionPayloadEnvelopeV3>(_result).unwrap();
+
+            // modify the state root field
+            payload
+                .execution_payload
+                .payload_inner
+                .payload_inner
+                .state_root = B256::ZERO;
+
+            let result = serde_json::to_value(&payload).unwrap();
+            Some(result)
+        });
+
+        let mut harness =
+            RollupBoostTestHarnessBuilder::new("test_integration_builder_returns_incorrect_block")
+                .proxy_handler(handler)
+                .build()
+                .await?;
+
+        let mut block_generator = harness.get_block_generator().await?;
+
+        // create 3 blocks that are processed by the builder
+        for _ in 0..3 {
+            let (_block, block_creator) = block_generator.generate_block(false).await?;
+            assert!(block_creator.is_l2(), "Block creator should be the builder");
+        }
+
+        // check that at some point we had the log "builder payload was not valid" which signals
+        // that the builder returned a payload that was not valid and rollup-boost did not process it.
+        let rb_service = harness._framework.get_mut_service("rollup-boost")?;
+        let logs = rb_service.get_logs()?;
+        assert!(
+            logs.contains("builder payload was not valid"),
+            "Logs should contain the message 'builder payload was not valid'"
+        );
 
         Ok(())
     }

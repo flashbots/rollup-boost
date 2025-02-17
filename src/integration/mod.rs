@@ -246,6 +246,14 @@ impl ServiceInstance {
         format!("http://localhost:{}", self.get_port(name))
     }
 
+    pub fn get_logs(&self) -> Result<String, IntegrationError> {
+        let mut file = File::open(&self.log_path).map_err(|_| IntegrationError::LogError)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .map_err(|_| IntegrationError::LogError)?;
+        Ok(contents)
+    }
+
     pub fn wait_for_log(
         &mut self,
         pattern: &str,
@@ -272,10 +280,7 @@ impl ServiceInstance {
                 return Err(IntegrationError::SpawnError);
             }
 
-            let mut file = File::open(&self.log_path).map_err(|_| IntegrationError::LogError)?;
-            let mut contents = String::new();
-            file.read_to_string(&mut contents)
-                .map_err(|_| IntegrationError::LogError)?;
+            let mut contents = self.get_logs()?;
 
             // Since we share the same log file for different executions of the same service during the lifespan
             // of the test, we need to filter the logs and only consider the logs of the current execution.
