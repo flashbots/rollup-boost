@@ -18,12 +18,10 @@ use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use jsonrpsee::types::{ErrorCode, ErrorObject};
 use jsonrpsee::RpcModule;
 use lru::LruCache;
-use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
+use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
 use opentelemetry::trace::{Span, TraceContextExt, Tracer};
 use opentelemetry::{Context, KeyValue};
-use reth_optimism_payload_builder::{OpPayloadAttributes, OpPayloadBuilderAttributes};
-use reth_payload_primitives::PayloadBuilderAttributes;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
@@ -309,19 +307,15 @@ impl RollupBoostServer {
                     .payload_trace_context
                     .tracer
                     .start_with_context("build-block", &Context::current());
-                let builder_attrs = OpPayloadBuilderAttributes::try_new(
-                    fork_choice_state.head_block_hash,
-                    payload_attributes,
-                    3,
-                )
-                .unwrap();
                 let local_payload_id = l2_response.payload_id.expect("local payload_id is None");
                 parent_span.set_attribute(KeyValue::new(
                     "parent_hash",
                     fork_choice_state.head_block_hash.to_string(),
                 ));
-                parent_span
-                    .set_attribute(KeyValue::new("timestamp", builder_attrs.timestamp() as i64));
+                parent_span.set_attribute(KeyValue::new(
+                    "timestamp",
+                    payload_attributes.payload_attributes.timestamp as i64,
+                ));
                 parent_span
                     .set_attribute(KeyValue::new("payload_id", local_payload_id.to_string()));
                 let ctx =
@@ -504,6 +498,7 @@ impl RollupBoostServer {
             if let Some(metrics) = &self.metrics {
                 metrics.new_payload_count.increment(1);
             }
+
             let payload_status = self.l2_client.auth_client.new_payload_v3(payload.execution_payload.clone(), vec![], payload.parent_beacon_block_root).await.map_err(|e| {
                 error!(message = "error calling new_payload_v3 to validate builder payload", "url" = ?self.l2_client.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 e
@@ -517,6 +512,7 @@ impl RollupBoostServer {
                     parent.end();
                 }
             };
+
             if payload_status.is_invalid() {
                 error!(message = "builder payload was not valid", "url" = ?builder.auth_rpc, "payload_status" = %payload_status.status, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 Err(ClientError::Call(ErrorObject::owned(
@@ -649,11 +645,11 @@ mod tests {
         BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, PayloadStatusEnum,
     };
 
+    use alloy_rpc_types_engine::JwtSecret;
     use http::Uri;
     use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::server::{ServerBuilder, ServerHandle};
     use jsonrpsee::RpcModule;
-    use reth_rpc_layer::JwtSecret;
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
