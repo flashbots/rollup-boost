@@ -345,7 +345,6 @@ mod tests {
     use jsonrpsee::core::client::ClientT;
 
     use crate::auth_layer::AuthClientService;
-    use alloy_rpc_types_engine::JwtSecret;
     use jsonrpsee::http_client::transport::Error as TransportError;
     use jsonrpsee::http_client::transport::HttpBackend;
     use jsonrpsee::http_client::HttpClient;
@@ -356,7 +355,7 @@ mod tests {
         server::{ServerBuilder, ServerHandle},
     };
     use predicates::prelude::*;
-    use reth_rpc_layer::{AuthLayer, JwtAuthValidator};
+    use reth_rpc_layer::{AuthLayer, JwtAuthValidator, JwtSecret};
     use std::result::Result;
     use std::str::FromStr;
 
