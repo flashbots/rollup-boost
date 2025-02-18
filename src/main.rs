@@ -22,7 +22,7 @@ use proxy::ProxyLayer;
 use reth_rpc_layer::JwtSecret;
 use server::RollupBoostServer;
 
-use crate::flashblocks::FlashblocksService;
+use crate::flashblocks::Flashblocks;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal as unix_signal, SignalKind};
 use tracing::{error, info, Level};
@@ -220,12 +220,7 @@ async fn main() -> eyre::Result<()> {
     }
 
     let flashblocks_client = if args.flashblocks {
-        /*
-        let mut client = FlashblocksService::new();
-        client.init(args.flashblocks_url).unwrap();
-        */
-        // Some(client)
-        None
+        Some(Flashblocks::run(builder_args.builder_url.to_string()).unwrap())
     } else {
         None
     };

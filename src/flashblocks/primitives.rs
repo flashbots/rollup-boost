@@ -1,6 +1,6 @@
-use alloy_eips::eip4895::Withdrawal;
 use alloy_primitives::{Address, Bloom, Bytes, B256, U256};
 use alloy_rpc_types_engine::PayloadId;
+use alloy_rpc_types_eth::Withdrawal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

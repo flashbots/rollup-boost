@@ -1,14 +1,29 @@
-use super::primitives::FlashblocksPayloadV1;
+use super::primitives::{
+    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
+};
+use alloy_primitives::U256;
 use alloy_rpc_types_engine::PayloadId;
-use futures::{Stream, StreamExt};
+use alloy_rpc_types_engine::{
+    BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
+};
 use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{debug, error, info};
-use url::Url;
+use thiserror::Error;
+use tokio::sync::mpsc;
+use tokio::sync::RwLock;
+use tracing::error;
+#[derive(Debug, Error)]
+pub enum FlashblocksError {
+    #[error("Missing base payload for initial flashblock")]
+    MissingBasePayload,
+    #[error("Unexpected base payload for non-initial flashblock")]
+    UnexpectedBasePayload,
+    #[error("Missing delta for flashblock")]
+    MissingDelta,
+    #[error("Invalid index for flashblock")]
+    InvalidIndex,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct FlashbotsMessage {
@@ -24,176 +39,160 @@ enum FlashblocksEngineMessage {
     FlashblocksPayloadV1(FlashblocksPayloadV1),
 }
 
-struct InMemoryFlashblock {
-    payload_id: PayloadId,
-    payload: Option<OpExecutionPayloadEnvelopeV3>,
+#[derive(Debug, Default)]
+struct FlashblockBuilder {
+    base: Option<ExecutionPayloadBaseV1>,
+    flashblocks: Vec<ExecutionPayloadFlashblockDeltaV1>,
 }
 
-impl InMemoryFlashblock {
+impl FlashblockBuilder {
     pub fn new() -> Self {
         Self {
-            payload_id: PayloadId::default(),
-            payload: None,
+            base: None,
+            flashblocks: Vec::new(),
         }
     }
 
-    pub fn extend(&mut self, payload: OpExecutionPayloadEnvelopeV3) {
-        // append the transactions from the current payload and update. Use the header
-        // from the new payload
+    pub fn extend(&mut self, payload: FlashblocksPayloadV1) -> Result<(), FlashblocksError> {
+        // Check base payload rules
+        match (payload.index, payload.base) {
+            // First payload must have a base
+            (0, None) => return Err(FlashblocksError::MissingBasePayload),
+            (0, Some(base)) => self.base = Some(base),
+            // Subsequent payloads must have no base
+            (_, Some(_)) => return Err(FlashblocksError::UnexpectedBasePayload),
+            (_, None) => {} // Non-zero index without base is fine
+        }
+
+        // Validate the index is contiguous
+        if payload.index != self.flashblocks.len() as u64 {
+            return Err(FlashblocksError::InvalidIndex);
+        }
+
+        // Update latest diff and accumulate transactions and withdrawals
+        self.flashblocks.push(payload.diff);
+
+        Ok(())
+    }
+
+    pub fn to_envelope(self) -> Result<OpExecutionPayloadEnvelopeV3, FlashblocksError> {
+        let base = self.base.ok_or(FlashblocksError::MissingBasePayload)?;
+
+        // There must be at least one delta
+        let diff = self
+            .flashblocks
+            .last()
+            .ok_or(FlashblocksError::MissingDelta)?;
+
+        let transactions = self
+            .flashblocks
+            .iter()
+            .flat_map(|diff| diff.transactions.clone())
+            .collect();
+
+        let withdrawals = self
+            .flashblocks
+            .iter()
+            .flat_map(|diff| diff.withdrawals.clone())
+            .map(|w| w.into())
+            .collect();
+
+        Ok(OpExecutionPayloadEnvelopeV3 {
+            parent_beacon_block_root: base.parent_beacon_block_root,
+            block_value: U256::ZERO,
+            blobs_bundle: BlobsBundleV1 {
+                commitments: Vec::new(),
+                proofs: Vec::new(),
+                blobs: Vec::new(),
+            },
+            should_override_builder: false,
+            execution_payload: ExecutionPayloadV3 {
+                blob_gas_used: 0,
+                excess_blob_gas: 0,
+                payload_inner: ExecutionPayloadV2 {
+                    withdrawals: withdrawals,
+                    payload_inner: ExecutionPayloadV1 {
+                        parent_hash: base.parent_hash,
+                        fee_recipient: base.fee_recipient,
+                        state_root: diff.state_root,
+                        receipts_root: diff.receipts_root,
+                        logs_bloom: diff.logs_bloom,
+                        prev_randao: base.prev_randao,
+                        block_number: base.block_number,
+                        gas_limit: base.gas_limit,
+                        gas_used: diff.gas_used,
+                        timestamp: base.timestamp,
+                        extra_data: base.extra_data,
+                        base_fee_per_gas: base.base_fee_per_gas,
+                        block_hash: diff.block_hash,
+                        transactions: transactions,
+                    },
+                },
+            },
+        })
     }
 }
 
+#[derive(Clone)]
 pub struct FlashblocksService {
-    // sender: mpsc::Sender<FlashblocksEngineMessage>,
-    best_payload: Arc<RwLock<InMemoryFlashblock>>,
-    // mailbox: mpsc::Receiver<FlashblocksEngineMessage>,
-    // stream: FlashblocksMessageStream,
-}
+    // Current payload ID we're processing (set from external notification)
+    current_payload_id: Arc<RwLock<PayloadId>>,
 
-pub type FlashblocksMessageStream =
-    Pin<Box<dyn Stream<Item = FlashblocksEngineMessage> + Send + Sync>>;
+    // flashblocks payload being constructed
+    best_payload: Arc<RwLock<FlashblockBuilder>>,
+}
 
 impl FlashblocksService {
     pub fn new() -> Self {
-        // let (sender, mailbox) = mpsc::channel(100);
-
         Self {
-            // sender,
-            // mailbox,
-            best_payload: Arc::new(RwLock::new(InMemoryFlashblock::new())),
-            // stream,
+            current_payload_id: Arc::new(RwLock::new(PayloadId::default())),
+            best_payload: Arc::new(RwLock::new(FlashblockBuilder::new())),
         }
     }
 
-    pub async fn get_best_payload(&self) -> Option<OpExecutionPayloadEnvelopeV3> {
-        // self.best_payload.read().await.clone()
-        None
+    pub async fn get_best_payload(
+        &self,
+    ) -> Result<Option<OpExecutionPayloadEnvelopeV3>, FlashblocksError> {
+        // consume the best payload and reset the builder
+        let payload = {
+            let mut builder = self.best_payload.write().await;
+            std::mem::take(&mut *builder).to_envelope()?
+        };
+        *self.best_payload.write().await = FlashblockBuilder::new();
+
+        Ok(Some(payload))
     }
 
-    pub async fn on_event(&mut self, event: FlashblocksEngineMessage) {
+    pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
+        *self.current_payload_id.write().await = payload_id;
+    }
+
+    async fn on_event(&mut self, event: FlashblocksEngineMessage) {
         match event {
             FlashblocksEngineMessage::FlashblocksPayloadV1(payload) => {
-                println!("Received payload: {:?}", payload);
+                // make sure the payload id matches the current payload id
+                if *self.current_payload_id.read().await != payload.payload_id {
+                    error!(message = "Payload ID mismatch",);
+                    return;
+                }
+
+                if let Err(e) = self.best_payload.write().await.extend(payload) {
+                    error!(message = "Failed to extend payload", error = %e);
+                }
             }
         }
     }
 
-    pub async fn run(&mut self, mut stream: FlashblocksMessageStream) {
+    pub async fn run(&mut self, mut stream: mpsc::Receiver<FlashblocksPayloadV1>) {
         loop {
-            let event = stream.next().await;
+            let event = stream.recv().await;
             match event {
-                Some(event) => self.on_event(event).await,
+                Some(event) => {
+                    self.on_event(FlashblocksEngineMessage::FlashblocksPayloadV1(event))
+                        .await
+                }
                 None => break,
             }
         }
-
-        /*
-        let url = Url::parse(&ws_url)?;
-        let sender = self.sender.clone();
-
-        // Spawn WebSocket handler
-        tokio::spawn(async move {
-            loop {
-                match connect_websocket(&url, sender.clone()).await {
-                    Ok(()) => break,
-                    Err(e) => {
-                        error!(
-                            message = "Flashbots WebSocket connection error, retrying in 5 seconds",
-                            error = %e
-                        );
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    }
-                }
-            }
-        });
-        */
-
-        // Take ownership of mailbox and state for the actor loop
-        // let mut mailbox = std::mem::replace(&mut self.mailbox, mpsc::channel(1).1);
-        // let best_payload = self.best_payload.clone();
-
-        /*
-        // Spawn actor's event loop
-        tokio::spawn(async move {
-            while let Some(message) = mailbox.recv().await {
-                match message {
-                    FlashblocksEngineMessage::BestPayload { response } => {
-                        *best_payload.write().await = Some(response);
-                    }
-                }
-            }
-        });
-        */
-    }
-}
-
-async fn connect_websocket(
-    url: &Url,
-    sender: mpsc::Sender<FlashblocksEngineMessage>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (ws_stream, _) = connect_async(url.as_str()).await?;
-    let (_write, mut read) = ws_stream.split();
-
-    info!(message = "Flashbots WebSocket connected", url = %url);
-
-    while let Some(msg) = read.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                match serde_json::from_str::<OpExecutionPayloadEnvelopeV3>(&text) {
-                    Ok(payload) => {
-                        debug!(message = "Received new payload from Flashbots");
-                        /*let _ = sender
-                        .send(FlashblocksEngineMessage::BestPayload { response: payload })
-                        .await;*/
-                    }
-                    Err(e) => {
-                        println!("{}", text);
-                        error!(message = "Failed to parse payload", error = %e);
-                    }
-                }
-            }
-            Ok(Message::Close(_)) => {
-                info!(message = "Received close frame");
-                break;
-            }
-            Err(e) => {
-                error!(message = "WebSocket error", error = %e);
-                return Err(e.into());
-            }
-            _ => {} // Ignore other message types
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use futures::{Stream, StreamExt};
-    use hyper::service;
-    use std::pin::Pin;
-    use tokio::sync::mpsc;
-
-    pub fn get_test_stream() -> (
-        Pin<Box<dyn Stream<Item = FlashblocksEngineMessage> + Send + Sync>>,
-        mpsc::Sender<FlashblocksEngineMessage>,
-    ) {
-        let (tx, rx) = mpsc::channel(100);
-        let stream = Box::pin(futures::stream::unfold(rx, |mut rx| async move {
-            rx.recv().await.map(|item| (item, rx))
-        }));
-        (stream, tx)
-    }
-
-    #[tokio::test]
-    async fn test_flashbots_client() {
-        let mut service = FlashblocksService::new();
-
-        let msg = FlashblocksPayloadV1::default();
-
-        service
-            .on_event(FlashblocksEngineMessage::FlashblocksPayloadV1(msg))
-            .await;
     }
 }

@@ -333,6 +333,12 @@ impl RollupBoostServer {
                         parent_span,
                     )
                     .await;
+
+                if let Some(flashblocks_client) = &self.flashblocks_client {
+                    flashblocks_client
+                        .set_current_payload_id(local_payload_id)
+                        .await;
+                }
                 Some(
                     self.payload_trace_context
                         .tracer
@@ -471,7 +477,7 @@ impl RollupBoostServer {
 
             // Use the flashblocks payload if available
             let payload = if let Some(flashblocks_client) = &self.flashblocks_client {
-                flashblocks_client.get_best_payload().await
+                flashblocks_client.get_best_payload().await.unwrap() // TODO: handle error
             } else {
                 None
             };
