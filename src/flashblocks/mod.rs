@@ -1,5 +1,5 @@
 mod inbound;
-mod primitives;
+pub mod primitives;
 mod service;
 use inbound::FlashblocksReceiverService;
 use tokio::sync::mpsc;
