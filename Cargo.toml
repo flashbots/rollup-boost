@@ -28,7 +28,6 @@ http-body-util = "0.1.2"
 hyper = { version = "1.4.1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 serde_json = "1.0.96"
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "e022b6fd92a33cd44e3ae51ee2fc2ecc0f773222" }
 opentelemetry = { version = "0.26.0", features = ["trace"] }
 opentelemetry-http = "0.26.0"
 opentelemetry-otlp = { version = "0.26.0", features = [
@@ -60,6 +59,7 @@ predicates = "3.1.2"
 tokio-util = { version = "0.7.13" }
 nix = "0.15.0"
 bytes = "1.2"
+reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "e022b6fd92a33cd44e3ae51ee2fc2ecc0f773222" }
 
 [features]
 integration = []

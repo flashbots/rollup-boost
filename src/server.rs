@@ -623,11 +623,11 @@ mod tests {
         BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, PayloadStatusEnum,
     };
 
+    use alloy_rpc_types_engine::JwtSecret;
     use http::Uri;
     use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::server::{ServerBuilder, ServerHandle};
     use jsonrpsee::RpcModule;
-    use reth_rpc_layer::JwtSecret;
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
