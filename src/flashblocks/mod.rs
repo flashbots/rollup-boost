@@ -1,4 +1,4 @@
-mod client;
 mod primitives;
+mod service;
 
-pub use client::FlashbotsClient;
+pub use service::FlashblocksService;
