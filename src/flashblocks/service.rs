@@ -54,6 +54,8 @@ impl FlashblockBuilder {
     }
 
     pub fn extend(&mut self, payload: FlashblocksPayloadV1) -> Result<(), FlashblocksError> {
+        println!("-> {:?} {:?}", payload.index, payload.base.is_some());
+
         // Check base payload rules
         match (payload.index, payload.base) {
             // First payload must have a base
