@@ -5234,6 +5234,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
+ "alloy-serde 0.7.3",
  "anyhow",
  "assert_cmd",
  "clap",

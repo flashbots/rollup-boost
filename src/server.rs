@@ -1,6 +1,6 @@
 use crate::client::ExecutionClient;
 use crate::debug_api;
-use crate::flashblocks::FlashbotsClient;
+use crate::flashblocks::FlashblocksService;
 use crate::metrics::ServerMetrics;
 use alloy_primitives::B256;
 use debug_api::DebugServer;
@@ -111,7 +111,7 @@ pub struct RollupBoostServer {
     pub boost_sync: bool,
     pub metrics: Option<Arc<ServerMetrics>>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
-    pub flashblocks_client: Option<Arc<FlashbotsClient>>,
+    pub flashblocks_client: Option<Arc<FlashblocksService>>,
     pub dry_run: Arc<Mutex<bool>>,
 }
 
@@ -121,7 +121,7 @@ impl RollupBoostServer {
         builder_client: ExecutionClient,
         boost_sync: bool,
         metrics: Option<Arc<ServerMetrics>>,
-        flashblocks_client: Option<FlashbotsClient>,
+        flashblocks_client: Option<FlashblocksService>,
     ) -> Self {
         Self {
             l2_client,
