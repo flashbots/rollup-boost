@@ -23,6 +23,8 @@ pub enum FlashblocksError {
     MissingDelta,
     #[error("Invalid index for flashblock")]
     InvalidIndex,
+    #[error("Missing payload")]
+    MissingPayload,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -54,8 +56,6 @@ impl FlashblockBuilder {
     }
 
     pub fn extend(&mut self, payload: FlashblocksPayloadV1) -> Result<(), FlashblocksError> {
-        println!("-> {:?} {:?}", payload.index, payload.base.is_some());
-
         // Check base payload rules
         match (payload.index, payload.base) {
             // First payload must have a base
@@ -78,7 +78,7 @@ impl FlashblockBuilder {
     }
 
     pub fn to_envelope(self) -> Result<OpExecutionPayloadEnvelopeV3, FlashblocksError> {
-        let base = self.base.ok_or(FlashblocksError::MissingBasePayload)?;
+        let base = self.base.ok_or(FlashblocksError::MissingPayload)?;
 
         // There must be at least one delta
         let diff = self
@@ -166,12 +166,19 @@ impl FlashblocksService {
     }
 
     pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
+        tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
         *self.current_payload_id.write().await = payload_id;
     }
 
     async fn on_event(&mut self, event: FlashblocksEngineMessage) {
         match event {
             FlashblocksEngineMessage::FlashblocksPayloadV1(payload) => {
+                tracing::debug!(
+                    message = "Received flashblock payload",
+                    payload_id = %payload.payload_id,
+                    index = payload.index
+                );
+
                 // make sure the payload id matches the current payload id
                 if *self.current_payload_id.read().await != payload.payload_id {
                     error!(message = "Payload ID mismatch",);
