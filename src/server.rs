@@ -471,7 +471,13 @@ impl RollupBoostServer {
 
             // Use the flashblocks payload if available
             let payload = if let Some(flashblocks_client) = &self.flashblocks_client {
-                flashblocks_client.get_best_payload().await.unwrap() // TODO: handle error
+                match flashblocks_client.get_best_payload().await {
+                    Ok(payload) => payload,
+                    Err(e) => {
+                        error!(message = "error getting flashblocks payload", "error" = %e);
+                        None
+                    }
+                }
             } else {
                 None
             };

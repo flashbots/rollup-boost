@@ -142,13 +142,17 @@ pub struct FlashblocksService {
 
     // flashblocks payload being constructed
     best_payload: Arc<RwLock<FlashblockBuilder>>,
+
+    // outbound sender for valid messages
+    outbound: mpsc::Sender<FlashblocksPayloadV1>,
 }
 
 impl FlashblocksService {
-    pub fn new() -> Self {
+    pub fn new(outbound: mpsc::Sender<FlashblocksPayloadV1>) -> Self {
         Self {
             current_payload_id: Arc::new(RwLock::new(PayloadId::default())),
             best_payload: Arc::new(RwLock::new(FlashblockBuilder::new())),
+            outbound,
         }
     }
 
@@ -185,8 +189,13 @@ impl FlashblocksService {
                     return;
                 }
 
-                if let Err(e) = self.best_payload.write().await.extend(payload) {
+                if let Err(e) = self.best_payload.write().await.extend(payload.clone()) {
                     error!(message = "Failed to extend payload", error = %e);
+                } else {
+                    // Broadcast the valid message
+                    if let Err(e) = self.outbound.send(payload).await {
+                        error!(message = "Failed to broadcast payload", error = %e);
+                    }
                 }
             }
         }

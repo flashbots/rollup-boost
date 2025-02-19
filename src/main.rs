@@ -90,6 +90,17 @@ struct Args {
     #[arg(long, env, default_value = "text")]
     log_format: String,
 
+    /// Debug server port
+    #[arg(long, env, default_value = "5555")]
+    debug_server_port: u16,
+
+    /// Enable Flashblocks client
+    #[clap(flatten)]
+    flashblocks: FlashblocksArgs,
+}
+
+#[derive(Parser, Debug)]
+struct FlashblocksArgs {
     /// Enable Flashblocks client
     #[arg(long, env, default_value = "false")]
     flashblocks: bool,
@@ -98,9 +109,9 @@ struct Args {
     #[arg(long, env, default_value = "ws://localhost:1111")]
     flashblocks_url: String,
 
-    /// Debug server port
-    #[arg(long, env, default_value = "5555")]
-    debug_server_port: u16,
+    /// Flashblocks outbound WebSocket URL
+    #[arg(long, env, default_value = "127.0.0.1:1112")]
+    flashblocks_outbound_url: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -220,8 +231,11 @@ async fn main() -> eyre::Result<()> {
         info!("Boost sync enabled");
     }
 
-    let flashblocks_client = if args.flashblocks {
-        Some(Flashblocks::run(builder_args.builder_url.to_string()).unwrap())
+    let flashblocks_client = if args.flashblocks.flashblocks {
+        let inbound_url = args.flashblocks.flashblocks_url;
+        let outbound_url = args.flashblocks.flashblocks_outbound_url;
+
+        Some(Flashblocks::run(inbound_url, outbound_url).unwrap())
     } else {
         None
     };

@@ -9,7 +9,7 @@ use serde_json::Value;
 /// such as state root, receipts, logs, and new transactions. Other immutable block fields
 /// like parent hash and block number are excluded since they remain constant throughout
 /// the block's construction.
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ExecutionPayloadFlashblockDeltaV1 {
     /// The state root of the block.
     pub state_root: B256,
@@ -32,7 +32,7 @@ pub struct ExecutionPayloadFlashblockDeltaV1 {
 /// throughout block construction. This includes fundamental block properties like
 /// parent hash, block number, and other header fields that are determined at
 /// block creation and cannot be modified.
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ExecutionPayloadBaseV1 {
     /// Ecotone parent beacon block root
     pub parent_beacon_block_root: B256,
@@ -57,7 +57,7 @@ pub struct ExecutionPayloadBaseV1 {
     pub base_fee_per_gas: U256,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct FlashblocksPayloadV1 {
     /// The payload id of the flashblock
     pub payload_id: PayloadId,
