@@ -107,31 +107,43 @@ impl PayloadTraceContext {
 pub struct RollupBoostServer {
     pub l2_client: ExecutionClient,
     pub builder_client: ExecutionClient,
-    pub boost_sync: bool,
     pub metrics: Option<Arc<ServerMetrics>>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
+    pub num_invalid_builder_payloads: Arc<Mutex<u32>>,
+    pub config: RollupBoostConfig,
+}
+
+#[derive(Clone)]
+pub struct RollupBoostConfig {
     pub dry_run: Arc<Mutex<bool>>,
+    pub boost_sync: bool,
+    pub max_allowed_invalid_builder_payloads: u32,
 }
 
 impl RollupBoostServer {
     pub fn new(
         l2_client: ExecutionClient,
         builder_client: ExecutionClient,
-        boost_sync: bool,
         metrics: Option<Arc<ServerMetrics>>,
+        boost_sync: bool,
+        max_allowed_invalid_builder_payloads: u32,
     ) -> Self {
         Self {
             l2_client,
             builder_client,
-            boost_sync,
             metrics,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
-            dry_run: Arc::new(Mutex::new(false)),
+            num_invalid_builder_payloads: Arc::new(Mutex::new(0)),
+            config: RollupBoostConfig {
+                dry_run: Arc::new(Mutex::new(false)),
+                boost_sync,
+                max_allowed_invalid_builder_payloads,
+            },
         }
     }
 
     pub async fn start_debug_server(&self, port: u16) -> eyre::Result<()> {
-        let server = DebugServer::new(self.dry_run.clone());
+        let server = DebugServer::new(self.config.dry_run.clone());
         server.run(Some(port)).await?;
 
         Ok(())
@@ -285,7 +297,12 @@ impl RollupBoostServer {
 
         // TODO: Use _is_block_building_call to log the correct message during the async call to builder
         let (should_send_to_builder, _is_block_building_call) =
-            if let Some(attr) = payload_attributes.as_ref() {
+            if *self.num_invalid_builder_payloads.lock().await
+                >= self.config.max_allowed_invalid_builder_payloads
+            {
+                // Circuit breaker is triggered, do not send to builder
+                (false, false)
+            } else if let Some(attr) = payload_attributes.as_ref() {
                 // payload attributes are present. It is a FCU call to start block building
                 // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
                 // a deterministic block without txs. We let the fallback EL node compute those.
@@ -294,7 +311,7 @@ impl RollupBoostServer {
             } else {
                 // no payload attributes. It is a FCU call to lock the head block
                 // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
-                (self.boost_sync, false)
+                (self.config.boost_sync, false)
             };
 
         if should_send_to_builder {
@@ -410,8 +427,10 @@ impl RollupBoostServer {
         let l2_client_future = self.l2_client.auth_client.get_payload_v3(payload_id);
 
         let builder_client_future = Box::pin(async move {
-            let dry_run = self.dry_run.lock().await;
-            if *dry_run {
+            let dry_run = *self.config.dry_run.lock().await;
+            let circuit_breaker_triggered = *self.num_invalid_builder_payloads.lock().await
+                >= self.config.max_allowed_invalid_builder_payloads;
+            if dry_run || circuit_breaker_triggered {
                 info!(message = "dry run mode is enabled, skipping get payload builder call");
 
                 // We are in dry run mode, so we do not want to call the builder.
@@ -492,6 +511,9 @@ impl RollupBoostServer {
             };
 
             if payload_status.is_invalid() {
+                // Increment the number of invalid builder payloads for the circuit breaker
+                // Currently to reset the circuit breaker, we need to restart rollup-boost
+                *self.num_invalid_builder_payloads.lock().await += 1;
                 error!(message = "builder payload was not valid", "url" = ?builder.auth_rpc, "payload_status" = %payload_status.status, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 Err(ClientError::Call(ErrorObject::owned(
                     INVALID_REQUEST_CODE,
@@ -549,8 +571,10 @@ impl RollupBoostServer {
         let block_hash = execution_payload.block_hash();
         let parent_hash = execution_payload.parent_hash();
         info!(message = "received new_payload_v3", "block_hash" = %block_hash);
+        let circuit_breaker_triggered = *self.num_invalid_builder_payloads.lock().await
+            >= self.config.max_allowed_invalid_builder_payloads;
         // async call to builder to sync the builder node
-        if self.boost_sync {
+        if self.config.boost_sync && !circuit_breaker_triggered {
             if let Some(metrics) = &self.metrics {
                 metrics.new_payload_count.increment(1);
             }
@@ -713,6 +737,7 @@ mod tests {
             boost_sync: bool,
             l2_mock: Option<MockEngineServer>,
             builder_mock: Option<MockEngineServer>,
+            max_allowed_invalid_builder_payloads: u32,
         ) -> Self {
             let jwt_secret = JwtSecret::random();
 
@@ -723,8 +748,13 @@ mod tests {
                 Uri::from_str(&format!("http://{}:{}", HOST, BUILDER_PORT)).unwrap();
             let builder_client = ExecutionClient::new(builder_auth_rpc, jwt_secret, 2000).unwrap();
 
-            let rollup_boost_client =
-                RollupBoostServer::new(l2_client, builder_client, boost_sync, None);
+            let rollup_boost_client = RollupBoostServer::new(
+                l2_client,
+                builder_client,
+                None,
+                boost_sync,
+                max_allowed_invalid_builder_payloads,
+            );
 
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
 
@@ -766,10 +796,11 @@ mod tests {
         builder_payload_err().await;
         test_local_external_payload_ids_different().await;
         test_local_external_payload_ids_same().await;
+        test_circuit_breaker().await;
     }
 
     async fn engine_success() {
-        let test_harness = TestHarness::new(false, None, None).await;
+        let test_harness = TestHarness::new(false, None, None, 5).await;
 
         // test fork_choice_updated_v3 success
         let fcu = ForkchoiceState {
@@ -849,7 +880,7 @@ mod tests {
     }
 
     async fn boost_sync_enabled() {
-        let test_harness = TestHarness::new(true, None, None).await;
+        let test_harness = TestHarness::new(true, None, None, 5).await;
 
         let fcu = ForkchoiceState {
             head_block_hash: FixedBytes::random(),
@@ -906,7 +937,7 @@ mod tests {
             payload.block_value = U256::from(10);
             payload
         });
-        let test_harness = TestHarness::new(true, Some(l2_mock), None).await;
+        let test_harness = TestHarness::new(true, Some(l2_mock), None, 5).await;
 
         // test get_payload_v3 return l2 payload if builder payload is invalid
         let get_payload_response = test_harness
@@ -919,7 +950,10 @@ mod tests {
         test_harness.cleanup().await;
     }
 
-    async fn spawn_server(mock_engine_server: MockEngineServer, addr: &str) -> ServerHandle {
+    async fn spawn_server(
+        mock_engine_server: MockEngineServer,
+        addr: &'static str,
+    ) -> ServerHandle {
         let server = ServerBuilder::default().build(addr).await.unwrap();
         let mut module: RpcModule<()> = RpcModule::new(());
 
@@ -945,8 +979,8 @@ mod tests {
                 let params: (PayloadId,) = params.parse()?;
                 let mut get_payload_requests =
                     mock_engine_server.get_payload_requests.lock().unwrap();
-                get_payload_requests.push(params.0);
 
+                get_payload_requests.push(params.0);
                 mock_engine_server.get_payload_response.clone()
             })
             .unwrap();
@@ -978,7 +1012,7 @@ mod tests {
         builder_mock.override_payload_id = Some(same_id);
 
         let test_harness =
-            TestHarness::new(true, Some(l2_mock.clone()), Some(builder_mock.clone())).await;
+            TestHarness::new(true, Some(l2_mock.clone()), Some(builder_mock.clone()), 5).await;
 
         // Test FCU call
         let fcu = ForkchoiceState {
@@ -1028,7 +1062,7 @@ mod tests {
         builder_mock.override_payload_id = Some(external_id);
 
         let test_harness =
-            TestHarness::new(true, Some(l2_mock.clone()), Some(builder_mock.clone())).await;
+            TestHarness::new(true, Some(l2_mock.clone()), Some(builder_mock.clone()), 5).await;
 
         // Test FCU call
         let fcu = ForkchoiceState {
@@ -1059,6 +1093,64 @@ mod tests {
         let l2_gp = l2_mock.get_payload_requests.lock().unwrap();
         assert_eq!(l2_gp.len(), 1);
         assert_eq!(l2_gp[0], local_id);
+
+        test_harness.cleanup().await;
+    }
+
+    // Test that the circuit breaker works when it hits 5 invalid builder payloads
+    async fn test_circuit_breaker() {
+        let mut l2_mock = MockEngineServer::new();
+        l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut status| {
+            status.status = PayloadStatusEnum::Invalid {
+                validation_error: "test".to_string(),
+            };
+            status
+        });
+        let test_harness = TestHarness::new(true, Some(l2_mock), None, 5).await;
+
+        // try 10 times to trigger the circuit breaker
+        for _ in 0..10 {
+            let new_payload_response = test_harness
+                .client
+                .new_payload_v3(
+                    test_harness
+                        .l2_mock
+                        .get_payload_response
+                        .clone()
+                        .unwrap()
+                        .execution_payload
+                        .clone(),
+                    vec![],
+                    B256::ZERO,
+                )
+                .await;
+            assert!(new_payload_response.is_ok());
+            let fcu_response = test_harness
+                .client
+                .fork_choice_updated_v3(
+                    ForkchoiceState {
+                        head_block_hash: FixedBytes::random(),
+                        safe_block_hash: FixedBytes::random(),
+                        finalized_block_hash: FixedBytes::random(),
+                    },
+                    None,
+                )
+                .await;
+            assert!(fcu_response.is_ok());
+            let get_payload_response = test_harness
+                .client
+                .get_payload_v3(PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]))
+                .await;
+            assert!(get_payload_response.is_ok());
+        }
+
+        let builder_mock_fcu = test_harness.builder_mock.fcu_requests.clone();
+        let builder_fcu_req = builder_mock_fcu.lock().unwrap();
+        assert_eq!(builder_fcu_req.len(), 5);
+
+        let builder_mock_np = test_harness.builder_mock.new_payload_requests.clone();
+        let builder_new_payload_req = builder_mock_np.lock().unwrap();
+        assert_eq!(builder_new_payload_req.len(), 5);
 
         test_harness.cleanup().await;
     }

@@ -24,7 +24,8 @@ cargo run -- [OPTIONS]
 - `--log-level <LEVEL>`: Log level (default: info)
 - `--log-format <FORMAT>`: Log format (default: text)
 - `--metrics`: Enable metrics (default: false)
-- `--no-boost-sync`: Disables using the proposer to sync the builder node (default: true)
+- `--no-boost-sync`: Disables using the proposer to sync the builder node (default: false)
+- `--max-allowed-invalid-builder-payloads <NUM>`: Maximum number of builder invalid payloads before circuit breaker is triggered and stops sending rpc requests to the builder (default: 5)
 
 ### Environment Variables
 
@@ -103,6 +104,10 @@ By default, `rollup-boost` will sync the builder with the proposer `op-node`. Af
 
 - `engine_forkchoiceUpdatedV3`: this call will be multiplexed to the builder regardless of whether the call contains payload attributes or not.
 - `engine_newPayloadV3`: ensures the builder has the latest block if the local payload was used.
+
+### Circuit Breaker
+
+The circuit breaker is triggered when the number of invalid builder payloads during payload validation exceeds a certain threshold. This is configured using the `--max-allowed-invalid-builder-payloads` flag. When the circuit breaker is triggered, `rollup-boost` will stop sending all rpc requests to the builder.
 
 ## License
 

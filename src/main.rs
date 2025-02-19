@@ -91,6 +91,10 @@ struct Args {
     /// Debug server port
     #[arg(long, env, default_value = "5555")]
     debug_server_port: u16,
+
+    /// Max builder invalid payloads for circuit breaker
+    #[arg(long, env, default_value = "5")]
+    max_allowed_invalid_builder_payloads: u32,
 }
 
 #[derive(Subcommand, Debug)]
@@ -210,8 +214,13 @@ async fn main() -> eyre::Result<()> {
         info!("Boost sync enabled");
     }
 
-    let rollup_boost =
-        RollupBoostServer::new(l2_client, builder_client, boost_sync_enabled, metrics);
+    let rollup_boost = RollupBoostServer::new(
+        l2_client,
+        builder_client,
+        metrics,
+        boost_sync_enabled,
+        args.max_allowed_invalid_builder_payloads,
+    );
 
     // Spawn the debug server
     rollup_boost
