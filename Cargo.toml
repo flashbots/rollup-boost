@@ -45,7 +45,7 @@ metrics = "0.24.0"
 metrics-exporter-prometheus = "0.16.0"
 metrics-process = "2.3.1"
 metrics-util = "0.18.0"
-tokio-tungstenite = "0.26.1"
+tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 url = "2.5"
 eyre = "0.6.12"
 paste = "1.0.15"
