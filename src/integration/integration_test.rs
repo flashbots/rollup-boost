@@ -6,7 +6,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::debug_api::SetDryRunRequestAction;
-    use crate::integration::RollupBoostTestHarnessBuilder;
+    use crate::integration::{ChaosTestHarness, RollupBoostTestHarnessBuilder};
     use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 
     #[tokio::test]
@@ -159,7 +159,7 @@ mod tests {
         let delay = Arc::new(Mutex::new(Duration::from_secs(0)));
 
         let delay_for_handler = delay.clone();
-        let handler = Box::new(move |_method: &str, _params: Value, _result: Value| {
+        let handler = Box::new(move |method: &str, _params: Value, _result: Value| {
             let delay = delay_for_handler.lock().unwrap();
             // sleep the amount of time specified in the delay
             std::thread::sleep(*delay);
@@ -203,6 +203,7 @@ mod tests {
         // Test that the builder returns a block with an incorrect state root and that rollup-boost
         // does not process it.
         let handler = Box::new(move |method: &str, _params: Value, _result: Value| {
+            println!("Method: {}", method);
             if method != "engine_getPayloadV3" {
                 return None;
             }
@@ -243,6 +244,20 @@ mod tests {
             logs.contains("builder payload was not valid"),
             "Logs should contain the message 'builder payload was not valid'"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_integration_chaos() -> eyre::Result<()> {
+        let handler = Box::new(move |method: &str, _params: Value, _result: Value| {
+            println!("Method: {}", method);
+            None
+        });
+        let harness = ChaosTestHarness::new("test_integration_chaos", handler).await;
+
+        // sleep for 10000 seconds
+        tokio::time::sleep(tokio::time::Duration::from_secs(10000)).await;
 
         Ok(())
     }

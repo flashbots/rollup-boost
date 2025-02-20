@@ -800,3 +800,39 @@ impl BlockBuilderCreatorValidator {
         Ok(None)
     }
 }
+
+pub struct ChaosTestHarness {
+    _framework: IntegrationFramework,
+}
+
+impl ChaosTestHarness {
+    async fn new(test_name: &str, proxy_handler: DynHandlerFn) -> Self {
+        let mut framework = IntegrationFramework::new(test_name).unwrap();
+
+        let genesis_path = PathBuf::from(
+            "/Users/ferranbt/go/src/github.com/ethereum-optimism/optimism/.devnet/genesis-l2.json",
+        );
+        let jwt_path = framework.write_file("jwt.hex", DEFAULT_JWT_TOKEN).unwrap();
+
+        let builder_reth_config = service_reth::RethConfig::new()
+            .jwt_secret_path(jwt_path.clone())
+            .chain_config_path(genesis_path);
+
+        // start the reth node
+        let service = framework
+            .start("reth", Box::new(builder_reth_config))
+            .await
+            .unwrap();
+
+        let reth_authrpc_port = service.get_port("authrpc");
+
+        // add the proxy on known port 4444, we have to use a known port here because the setup is static
+        let _ = start_proxy_server(proxy_handler, 4444, reth_authrpc_port)
+            .await
+            .unwrap();
+
+        Self {
+            _framework: framework,
+        }
+    }
+}
