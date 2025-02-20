@@ -16,7 +16,7 @@ use tokio::net::{TcpListener, TcpStream};
 struct JsonRpcRequest {
     jsonrpc: String,
     method: String,
-    params: Value,
+    params: Option<Value>,
     id: Value,
 }
 
@@ -53,6 +53,8 @@ async fn proxy(
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
 
+    println!("Proxy request bytes: {:?}", bytes);
+
     let json_rpc_request = serde_json::from_slice::<JsonRpcRequest>(&bytes).unwrap();
     let req = Request::from_parts(parts, Full::new(bytes));
 
@@ -78,14 +80,19 @@ async fn proxy(
 
     let json_rpc_response = serde_json::from_slice::<JsonRpcResponse>(&bytes).unwrap();
     let bytes = if let Some(result) = json_rpc_response.clone().result {
-        let value = (config.handler)(&json_rpc_request.method, json_rpc_request.params, result);
-        if let Some(value) = value {
-            // If the handler returns a value, we replace the result with the new value
-            // The callback only returns the result of the jsonrpc request so we have to wrap it up
-            // again in a JsonRpcResponse
-            let mut new_json_rpc_resp = json_rpc_response;
-            new_json_rpc_resp.result = Some(value);
-            Bytes::from(serde_json::to_vec(&new_json_rpc_resp).unwrap())
+        if let Some(params) = json_rpc_request.params {
+            let value = (config.handler)(&json_rpc_request.method, params, result);
+            if let Some(value) = value {
+                // If the handler returns a value, we replace the result with the new value
+                // The callback only returns the result of the jsonrpc request so we have to wrap it up
+                // again in a JsonRpcResponse
+                let mut new_json_rpc_resp = json_rpc_response;
+                new_json_rpc_resp.result = Some(value);
+                Bytes::from(serde_json::to_vec(&new_json_rpc_resp).unwrap())
+            } else {
+                // If the handler returns None, we return the original response
+                bytes
+            }
         } else {
             // If the handler returns None, we return the original response
             bytes
