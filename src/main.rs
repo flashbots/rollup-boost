@@ -22,6 +22,7 @@ use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::Config, Reso
 use proxy::ProxyLayer;
 use server::RollupBoostServer;
 
+use crate::flashblocks::Flashblocks;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal as unix_signal, SignalKind};
 use tracing::{error, info, Level};
@@ -30,6 +31,7 @@ use tracing_subscriber::EnvFilter;
 mod auth_layer;
 mod client;
 mod debug_api;
+mod flashblocks;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
@@ -91,6 +93,25 @@ struct Args {
     /// Debug server port
     #[arg(long, env, default_value = "5555")]
     debug_server_port: u16,
+
+    /// Enable Flashblocks client
+    #[clap(flatten)]
+    flashblocks: FlashblocksArgs,
+}
+
+#[derive(Parser, Debug)]
+struct FlashblocksArgs {
+    /// Enable Flashblocks client
+    #[arg(long, env, default_value = "false")]
+    flashblocks: bool,
+
+    /// Flashblocks WebSocket URL
+    #[arg(long, env, default_value = "ws://localhost:1111")]
+    flashblocks_url: String,
+
+    /// Flashblocks outbound WebSocket URL
+    #[arg(long, env, default_value = "127.0.0.1:1112")]
+    flashblocks_outbound_url: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -210,8 +231,22 @@ async fn main() -> eyre::Result<()> {
         info!("Boost sync enabled");
     }
 
-    let rollup_boost =
-        RollupBoostServer::new(l2_client, builder_client, boost_sync_enabled, metrics);
+    let flashblocks_client = if args.flashblocks.flashblocks {
+        let inbound_url = args.flashblocks.flashblocks_url;
+        let outbound_url = args.flashblocks.flashblocks_outbound_url;
+
+        Some(Flashblocks::run(inbound_url, outbound_url).unwrap())
+    } else {
+        None
+    };
+
+    let rollup_boost = RollupBoostServer::new(
+        l2_client,
+        builder_client,
+        boost_sync_enabled,
+        metrics,
+        flashblocks_client,
+    );
 
     // Spawn the debug server
     rollup_boost
@@ -324,7 +359,6 @@ mod tests {
     use jsonrpsee::core::client::ClientT;
 
     use crate::auth_layer::AuthClientService;
-    use alloy_rpc_types_engine::JwtSecret;
     use jsonrpsee::http_client::transport::Error as TransportError;
     use jsonrpsee::http_client::transport::HttpBackend;
     use jsonrpsee::http_client::HttpClient;
@@ -335,7 +369,7 @@ mod tests {
         server::{ServerBuilder, ServerHandle},
     };
     use predicates::prelude::*;
-    use reth_rpc_layer::{AuthLayer, JwtAuthValidator};
+    use reth_rpc_layer::{AuthLayer, JwtAuthValidator, JwtSecret};
     use std::result::Result;
     use std::str::FromStr;
 
