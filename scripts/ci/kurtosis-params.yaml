@@ -1,0 +1,7 @@
+optimism_package:
+  chains:
+    - participants:
+      - el_type: op-geth
+      network_params:
+        network: "kurtosis"
+      additional_services: ["rollup-boost"]
