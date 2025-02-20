@@ -105,6 +105,7 @@ impl PayloadTraceContext {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
     // Normal execution, sending all requests
     Enabled,

@@ -133,22 +133,28 @@ mod tests {
         let server = DebugServer::new(execution_mode.clone());
         let _ = server.run(None).await.unwrap();
 
-        /*
         let client = DebugClient::default();
+
+        // Test setting execution mode to Disabled
         let result = client
-            .set_dry_run(SetDryRunRequestAction::ToggleDryRun)
+            .set_execution_mode(ExecutionMode::Disabled)
             .await
             .unwrap();
+        assert_eq!(result.execution_mode, ExecutionMode::Disabled);
 
-        assert_eq!(result.dry_run_state, true);
-        assert_eq!(result.dry_run_state, *dry_run.lock().await);
+        // Verify with get_execution_mode
+        let status = client.get_execution_mode().await.unwrap();
+        assert_eq!(status.execution_mode, ExecutionMode::Disabled);
 
+        // Test setting execution mode back to Enabled
         let result = client
-            .set_dry_run(SetDryRunRequestAction::ToggleDryRun)
+            .set_execution_mode(ExecutionMode::Enabled)
             .await
             .unwrap();
-        assert_eq!(result.dry_run_state, false);
-        assert_eq!(result.dry_run_state, *dry_run.lock().await);
-        */
+        assert_eq!(result.execution_mode, ExecutionMode::Enabled);
+
+        // Verify again with get_execution_mode
+        let status = client.get_execution_mode().await.unwrap();
+        assert_eq!(status.execution_mode, ExecutionMode::Enabled);
     }
 }
