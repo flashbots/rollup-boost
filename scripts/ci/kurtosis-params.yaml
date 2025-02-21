@@ -5,3 +5,9 @@ optimism_package:
       network_params:
         network: "kurtosis"
       additional_services: ["rollup-boost"]
+      mev_params:
+        rollup_boost_image: "flashbots/rollup-boost:0.3rc4"
+ethereum_package:
+  participants:
+  - el_type: geth
+    cl_type: teku
