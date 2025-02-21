@@ -54,13 +54,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_integration_dry_run() -> eyre::Result<()> {
+    async fn test_integration_execution_mode() -> eyre::Result<()> {
         // Create a counter that increases whenever we receive a new RPC call in the builder
         let counter = Arc::new(Mutex::new(0));
 
         let counter_for_handler = counter.clone();
         let handler = Box::new(move |_method: &str, _params: Value, _result: Value| {
             let mut counter = counter_for_handler.lock().unwrap();
+
             *counter += 1;
             None
         });
@@ -110,6 +111,12 @@ mod tests {
                 "Block creator should be the builder"
             );
         }
+
+        // sleep for 1 second so that it has time to send the last FCU request to the builder
+        // and there is not a race condition with the disable call
+        std::thread::sleep(Duration::from_secs(1));
+
+        tracing::info!("Setting execution mode to disabled");
 
         // Set the execution mode to disabled and reset the counter in the proxy to 0
         // to track the number of calls to the builder during the disabled mode which
