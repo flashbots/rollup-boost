@@ -364,9 +364,6 @@ impl RollupBoostServer {
             };
 
             // async call to builder to trigger payload building and sync
-            if let Some(metrics) = &self.metrics {
-                metrics.fcu_count.increment(1);
-            }
             let builder_client = self.builder_client.clone();
             let attr = payload_attributes.clone();
             let payload_trace_context = self.payload_trace_context.clone();
@@ -463,9 +460,6 @@ impl RollupBoostServer {
                 )));
             }
 
-            if let Some(metrics) = &self.metrics {
-                metrics.get_payload_count.increment(1);
-            }
             let parent_span = self
                 .payload_trace_context
                 .retrieve_by_payload_id(&payload_id)
@@ -514,10 +508,6 @@ impl RollupBoostServer {
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
             // If validation fails, return the local block since that one has already been validated.
-            if let Some(metrics) = &self.metrics {
-                metrics.new_payload_count.increment(1);
-            }
-
             let payload_status = self.l2_client.auth_client.new_payload_v3(payload.execution_payload.clone(), vec![], payload.parent_beacon_block_root).await.map_err(|e| {
                 error!(message = "error calling new_payload_v3 to validate builder payload", "url" = ?self.l2_client.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 e
@@ -593,9 +583,6 @@ impl RollupBoostServer {
         // async call to builder to sync the builder node
         let execution_mode = self.execution_mode.lock().await;
         if self.boost_sync && !execution_mode.is_disabled() {
-            if let Some(metrics) = &self.metrics {
-                metrics.new_payload_count.increment(1);
-            }
             let parent_spans = self
                 .payload_trace_context
                 .retrieve_by_parent_hash(&parent_hash)
