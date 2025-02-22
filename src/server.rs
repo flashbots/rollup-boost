@@ -153,10 +153,6 @@ impl RollupBoostServer {
     pub fn execution_mode(&self) -> ExecutionMode {
         *self.execution_mode.lock()
     }
-
-    pub fn set_execution_mode(&self, mode: ExecutionMode) {
-        *self.execution_mode.lock() = mode;
-    }
 }
 
 impl TryInto<RpcModule<()>> for RollupBoostServer {
