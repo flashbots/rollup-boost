@@ -94,7 +94,7 @@ impl PayloadTraceContext {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, clap::ValueEnum)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
     // Normal execution, sending all requests
@@ -123,7 +123,7 @@ pub struct RollupBoostServer {
     pub boost_sync: bool,
     pub metrics: Option<Arc<ServerMetrics>>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
-    pub execution_mode: Arc<Mutex<ExecutionMode>>,
+    execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 impl RollupBoostServer {
@@ -148,6 +148,14 @@ impl RollupBoostServer {
         server.run(Some(port)).await?;
 
         Ok(())
+    }
+
+    pub fn execution_mode(&self) -> ExecutionMode {
+        *self.execution_mode.lock()
+    }
+
+    pub fn set_execution_mode(&self, mode: ExecutionMode) {
+        *self.execution_mode.lock() = mode;
     }
 }
 
@@ -310,7 +318,7 @@ impl RollupBoostServer {
                 (self.boost_sync, false)
             };
 
-        let execution_mode = self.execution_mode.lock();
+        let execution_mode = self.execution_mode();
 
         println!("execution_mode: {:?}", execution_mode);
 
@@ -436,7 +444,7 @@ impl RollupBoostServer {
         let l2_client_future = self.l2_client.auth_client.get_payload_v3(payload_id);
 
         let builder_client_future = Box::pin(async move {
-            let execution_mode = self.execution_mode.lock().clone();
+            let execution_mode = self.execution_mode();
             if !execution_mode.is_get_payload_enabled() {
                 info!(message = "dry run mode is enabled, skipping get payload builder call");
 
@@ -582,7 +590,7 @@ impl RollupBoostServer {
         let parent_hash = execution_payload.parent_hash();
         info!(message = "received new_payload_v3", "block_hash" = %block_hash);
         // async call to builder to sync the builder node
-        let execution_mode = self.execution_mode.lock().clone();
+        let execution_mode = self.execution_mode();
         if self.boost_sync && !execution_mode.is_disabled() {
             if let Some(metrics) = &self.metrics {
                 metrics.new_payload_count.increment(1);
