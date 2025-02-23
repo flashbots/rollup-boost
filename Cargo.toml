@@ -1,0 +1,24 @@
+[package]
+name = "flashblocks-websocket-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.28", features = ["full"] }
+tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
+metrics-exporter-prometheus = { version = "0.16.0", features = ["http-listener"]}
+http = "1.2.0"
+axum = { version = "0.8.1", features = ["ws"] }
+tracing = "0.1.41"
+clap = { version = "4", features = ["derive", "env"] }
+dotenv = "0.15.0"
+backoff = "0.4.0"
+futures = "0.3.31"
+tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
+tokio-util = "0.7.12"
+reqwest = "0.12.12"
+metrics = "0.24.1"
+metrics-derive = "0.1"
+
+[features]
+integration = []
