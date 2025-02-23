@@ -1,11 +1,14 @@
+mod client;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
+mod rate_limit;
 mod registry;
 mod server;
 mod subscriber;
 
 use crate::metrics::Metrics;
+use crate::rate_limit::InMemoryRateLimit;
 use crate::registry::Registry;
 use crate::server::Server;
 use crate::subscriber::WebsocketSubscriber;
@@ -49,7 +52,23 @@ struct Args {
         default_value = "100",
         help = "Maximum number of concurrently connected clients"
     )]
-    maximum_concurrent_connections: usize,
+    global_connections_limit: usize,
+
+    #[arg(
+        long,
+        env,
+        default_value = "10",
+        help = "Maximum number of concurrently connected clients"
+    )]
+    per_ip_connections_limit: usize,
+
+    #[arg(
+        long,
+        env,
+        default_value = "X-Forwarded-For",
+        help = "Header to use to determine the clients origin IP"
+    )]
+    ip_addr_http_header: String,
 
     #[arg(long, env, default_value = "info")]
     log_level: Level,
@@ -134,9 +153,20 @@ async fn main() {
     );
     let subscriber_task = subscriber.run(token.clone());
 
-    let registry = Registry::new(sender, args.maximum_concurrent_connections, metrics.clone());
+    let registry = Registry::new(sender, metrics.clone());
 
-    let server = Server::new(args.listen_addr, registry.clone());
+    let rate_limiter = Arc::new(InMemoryRateLimit::new(
+        args.global_connections_limit,
+        args.per_ip_connections_limit,
+    ));
+
+    let server = Server::new(
+        args.listen_addr,
+        registry.clone(),
+        metrics,
+        rate_limiter,
+        args.ip_addr_http_header,
+    );
     let server_task = server.listen(token.clone());
 
     let mut interrupt = signal(SignalKind::interrupt()).unwrap();

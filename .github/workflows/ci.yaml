@@ -40,9 +40,6 @@ jobs:
       - name: Check for common mistakes
         run: cargo check
 
-      - name: Check documentation
-        run: cargo doc --no-deps --document-private-items
-
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest

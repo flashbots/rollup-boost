@@ -512,6 +512,8 @@ dependencies = [
  "metrics-derive",
  "metrics-exporter-prometheus",
  "reqwest",
+ "serde_json",
+ "thiserror 2.0.11",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",

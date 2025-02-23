@@ -1,5 +1,6 @@
 mod test {
     use crate::metrics::Metrics;
+    use crate::rate_limit::InMemoryRateLimit;
     use crate::registry::Registry;
     use crate::server::Server;
     use futures::StreamExt;
@@ -36,14 +37,22 @@ mod test {
         }
         fn new(addr: SocketAddr) -> TestHarness {
             let (sender, _) = broadcast::channel(5);
-            let registry = Registry::new(sender.clone(), 3, Arc::new(Metrics::default()));
+            let metrics = Arc::new(Metrics::default());
+            let registry = Registry::new(sender.clone(), metrics.clone());
+            let rate_limited = Arc::new(InMemoryRateLimit::new(3, 10));
 
             Self {
                 received_messages: Arc::new(Mutex::new(HashMap::new())),
                 clients_failed_to_connect: Arc::new(Mutex::new(HashMap::new())),
                 current_client_id: 0,
                 cancel_token: CancellationToken::new(),
-                server: Server::new(addr.into(), registry),
+                server: Server::new(
+                    addr.into(),
+                    registry,
+                    metrics,
+                    rate_limited,
+                    "header".to_string(),
+                ),
                 server_addr: addr,
                 client_id_to_handle: HashMap::new(),
                 sender,
