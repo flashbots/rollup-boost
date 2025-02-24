@@ -18,8 +18,6 @@ install() {
 }
 
 install_contender() {
-    apt-get update
-    apt-get install -y libsqlite3-dev libfontconfig1-dev libfontconfig
     cargo install --git https://github.com/flashbots/contender --bin contender --force
 }
 

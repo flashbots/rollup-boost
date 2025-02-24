@@ -27,13 +27,16 @@ jobs:
           profile: minimal
 
       - name: Install Contender
-        run: bash scripts/ci/kurtosis.sh install-contender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev libfontconfig1-dev libfontconfig
+          ./scripts/ci/kurtosis.sh install-contender
 
       - name: Install Kurtosis
-        run: bash scripts/ci/kurtosis.sh install
+        run: ./scripts/ci/kurtosis.sh install
 
       - name: Deploy Optimism Package
-        run: bash scripts/ci/kurtosis.sh deploy
+        run: ./scripts/ci/kurtosis.sh deploy
 
       - name: Run Integration Tests
-        run: bash scripts/ci/kurtosis.sh run
+        run: ./scripts/ci/kurtosis.sh run
