@@ -270,20 +270,37 @@ mod test {
         harness.stop_client(client_three).await;
         tokio::time::sleep(Duration::from_millis(100)).await;
 
+        // It takes a couple of messages for dead clients to disconnect.
         harness.send_messages(vec!["three"]);
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        harness.wait_for_messages_to_drain().await;
+        harness.send_messages(vec!["four"]);
+        harness.wait_for_messages_to_drain().await;
 
+        // Client three is disconnected
+        assert_eq!(harness.sender.receiver_count(), 2);
+
+        let client_four = harness.connect_client();
+        tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(harness.sender.receiver_count(), 3);
 
-        // todo!("client four isn't being properly accepted due to rate limits");
-        let _client_four = harness.connect_client();
+        harness.send_messages(vec!["five"]);
+        harness.wait_for_messages_to_drain().await;
+        harness.send_messages(vec!["six"]);
+        harness.wait_for_messages_to_drain().await;
 
-        // harness.send_messages(vec!["four"]);
-        // harness.wait_for_messages_to_drain().await;
-        //
-        // assert_eq!(vec!["one", "two", "three", "four"], harness.messages_for_client(client_one));
-        // assert_eq!(vec!["one", "two", "three", "four"], harness.messages_for_client(client_two));
-        // assert_eq!(vec!["one", "two"], harness.messages_for_client(client_three));
-        // assert_eq!(vec!["four"], harness.messages_for_client(client_four));
+
+        assert_eq!(
+            vec!["one", "two", "three", "four", "five", "six"],
+            harness.messages_for_client(client_one)
+        );
+        assert_eq!(
+            vec!["one", "two", "three", "four", "five", "six"],
+            harness.messages_for_client(client_two)
+        );
+        assert_eq!(
+            vec!["one", "two"],
+            harness.messages_for_client(client_three)
+        );
+        assert_eq!(vec!["five", "six"], harness.messages_for_client(client_four));
     }
 }

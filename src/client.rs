@@ -6,7 +6,7 @@ use std::net::IpAddr;
 pub struct ClientConnection {
     client_addr: IpAddr,
     _ticket: Ticket,
-    websocket: WebSocket,
+    pub(crate) websocket: WebSocket,
 }
 
 impl ClientConnection {
