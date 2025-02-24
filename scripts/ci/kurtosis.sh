@@ -59,7 +59,7 @@ run() {
     # I have not managed to send a working transaction with cast yet. That should replace
     # this setup eventually since we are only testing if a single transaction is included
     # in the canonical chain.
-    contender setup -p $PREFUNDED_PRIV_KEY scenario.toml http://localhost:$L2_PORT
+    contender setup -p $PREFUNDED_PRIV_KEY /tmp/scenario.toml http://localhost:$L2_PORT
 }
 
 clean() {
