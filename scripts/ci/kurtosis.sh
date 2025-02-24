@@ -15,14 +15,12 @@ install() {
         echo "❌ Kurtosis installation failed. 'kurtosis' command not found in PATH"
         return 1
     fi
+}
 
-    # Ensure cast is installed
-    if ! command -v cast &> /dev/null; then
-        echo "❌ cast could not be found"
-        return 1
-    else
-        echo "✅ cast installed"
-    fi
+install_contender() {
+    apt-get update
+    apt-get install -y libsqlite3-dev libfontconfig1-dev libfontconfig
+    cargo install --git https://github.com/flashbots/contender --bin contender --force
 }
 
 deploy() {
@@ -38,7 +36,7 @@ run() {
     # the transactions will be included in the canonical blocks and finalized.
 
     # Figure out first the builder's JSON-RPC URL
-    L2_PORT=$(docker inspect --format='{{(index .NetworkSettings.Ports "8545/tcp" 0).HostPort}}' $(docker ps --filter "name=op-el-1" -q))
+    L2_PORT=$(docker inspect --format='{{(index .NetworkSettings.Ports "8545/tcp" 0).HostPort}}' $(docker ps --filter "name=op-el-builder-" -q))
     
     # Private key with prefunded balance
     PREFUNDED_PRIV_KEY=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
@@ -55,7 +53,15 @@ run() {
         echo "✅ Prefunded address has balance"
     fi
     
-    cast send --private-key $PREFUNDED_PRIV_KEY 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --value 10ether --rpc-url http://localhost:$L2_PORT --gas-limit 25000 --gas-price 1000000
+    # Download the scenario for contender
+    wget https://raw.githubusercontent.com/flashbots/contender/refs/heads/main/scenarios/stress.toml -O /tmp/scenario.toml
+
+    # Deploy the contract with contender, this should be enough to check that the
+    # builder is working as expected
+    # I have not managed to send a working transaction with cast yet. That should replace
+    # this setup eventually since we are only testing if a single transaction is included
+    # in the canonical chain.
+    contender setup -p $PREFUNDED_PRIV_KEY scenario.toml http://localhost:$L2_PORT
 }
 
 clean() {
@@ -69,6 +75,9 @@ case "$1" in
     "install")
         install
         ;;
+    "install-contender")
+        install_contender
+        ;;
     "deploy")
         deploy
         ;;
@@ -79,9 +88,11 @@ case "$1" in
         clean
         ;;
     *)
-        echo "Usage: $0 {install|run|clean}"
+        echo "Usage: $0 {install|install-contender|deploy|run|clean}"
         echo "Commands:"
         echo "  install - Install Kurtosis CLI"
+        echo "  install-contender - Install Contender"
+        echo "  deploy  - Deploy the Optimism package"
         echo "  run     - Run the Optimism package"
         echo "  clean   - Clean up the Kurtosis environment"
         exit 1
