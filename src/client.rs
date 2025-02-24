@@ -12,6 +12,9 @@ use jsonrpsee::core::{ClientError, RpcResult};
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorCode;
+use metrics::histogram;
+use metrics::Histogram;
+use metrics_derive::Metrics;
 use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
 use paste::paste;
 use std::path::PathBuf;
@@ -30,10 +33,26 @@ pub enum ExecutionClientError {
     Jwt(#[from] JwtError),
 }
 
+#[derive(Clone)]
+struct ClientMetrics {
+    pub fork_choice_updated_v3_total: Histogram,
+    pub get_payload_v3_total: Histogram,
+    pub new_payload_v3_total: Histogram,
+}
+
+impl ClientMetrics {
+    fn new(target: PayloadSource) -> Self {
+        Self {
+            fork_choice_updated_v3_total: histogram!("rpc.fork_choice_updated_v3", "target" => target.to_string()),
+            get_payload_v3_total: histogram!("rpc.get_payload_v3", "target" => target.to_string()),
+            new_payload_v3_total: histogram!("rpc.new_payload_v3", "target" => target.to_string()),
+        }
+    }
+}
+
 /// Client interface for interacting with execution layer node's Engine API.
 ///
 /// - **Engine API** calls are faciliated via the `auth_client` (requires JWT authentication).
-///
 #[derive(Clone)]
 pub struct ExecutionClient {
     /// Handles requests to the authenticated Engine API (requires JWT authentication)
@@ -41,7 +60,7 @@ pub struct ExecutionClient {
     /// Uri of the RPC server for authenticated Engine API calls
     pub auth_rpc: Uri,
     /// Metrics for the client
-    pub metrics: Option<Arc<ServerMetrics>>,
+    metrics: ClientMetrics,
     /// The source of the payload
     pub payload_source: PayloadSource,
 }
@@ -52,7 +71,6 @@ impl ExecutionClient {
         auth_rpc: Uri,
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
-        metrics: Option<Arc<ServerMetrics>>,
         payload_source: PayloadSource,
     ) -> Result<Self, ExecutionClientError> {
         let auth_layer = AuthClientLayer::new(auth_rpc_jwt_secret);
@@ -64,7 +82,7 @@ impl ExecutionClient {
         Ok(Self {
             auth_client: Arc::new(auth_client),
             auth_rpc,
-            metrics,
+            metrics: ClientMetrics::new(payload_source.clone()),
             payload_source,
         })
     }
@@ -91,13 +109,9 @@ impl ExecutionClient {
                     ErrorCode::InternalError.into()
                 }
             });
-        if let Some(metrics) = &self.metrics {
-            metrics.record_fork_choice_updated_v3(
-                start.elapsed(),
-                self.get_response_code(&response),
-                self.payload_source.clone(),
-            );
-        }
+        self.metrics
+            .fork_choice_updated_v3_total
+            .record(start.elapsed());
         response
     }
 
@@ -122,13 +136,7 @@ impl ExecutionClient {
                     ErrorCode::InternalError.into()
                 }
             });
-        if let Some(metrics) = &self.metrics {
-            metrics.record_get_payload_v3(
-                start.elapsed(),
-                self.get_response_code(&response),
-                self.payload_source.clone(),
-            );
-        }
+        self.metrics.get_payload_v3_total.record(start.elapsed());
         response
     }
 
@@ -157,13 +165,7 @@ impl ExecutionClient {
                     ErrorCode::InternalError.into()
                 }
             });
-        if let Some(metrics) = &self.metrics {
-            metrics.record_new_payload_v3(
-                start.elapsed(),
-                self.get_response_code(&response),
-                self.payload_source.clone(),
-            );
-        }
+        self.metrics.new_payload_v3_total.record(start.elapsed());
         response
     }
 

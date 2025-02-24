@@ -1,3 +1,4 @@
+use ::metrics::Recorder;
 use clap::{arg, Parser, Subcommand};
 use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
 use debug_api::DebugClient;
@@ -198,7 +199,6 @@ async fn main() -> eyre::Result<()> {
         l2_client_args.l2_url.clone(),
         l2_auth_jwt,
         l2_client_args.l2_timeout,
-        metrics.clone(),
         PayloadSource::L2,
     )?;
 
@@ -215,7 +215,6 @@ async fn main() -> eyre::Result<()> {
         builder_args.builder_url.clone(),
         builder_auth_jwt,
         builder_args.builder_timeout,
-        metrics.clone(),
         PayloadSource::Builder,
     )?;
 
@@ -385,7 +384,7 @@ mod tests {
         let secret = JwtSecret::from_hex(SECRET).unwrap();
 
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
-        let client = ExecutionClient::new(auth_rpc, secret, 1000, None, PayloadSource::L2).unwrap();
+        let client = ExecutionClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
         let response = send_request(client.auth_client).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");
@@ -394,7 +393,7 @@ mod tests {
     async fn invalid_jwt() {
         let secret = JwtSecret::random();
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
-        let client = ExecutionClient::new(auth_rpc, secret, 1000, None, PayloadSource::L2).unwrap();
+        let client = ExecutionClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
         let response = send_request(client.auth_client).await;
         assert!(response.is_err());
         assert!(matches!(

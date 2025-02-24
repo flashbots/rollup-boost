@@ -3,8 +3,6 @@ use std::time::Duration;
 use metrics::{counter, histogram, Counter, Histogram};
 use metrics_derive::Metrics;
 
-use crate::server::PayloadSource;
-
 #[derive(Metrics)]
 #[metrics(scope = "rpc")]
 pub struct ServerMetrics {
@@ -23,70 +21,30 @@ pub struct ServerMetrics {
     #[metric(describe = "Count of blocks created by the L2 builder")]
     pub blocks_created_by_l2: Counter,
 
-    // L2 client metrics
-    #[metric(describe = "Latency for l2 client `engine_newPayloadV3` call")]
-    pub l2_new_payload_v3: Histogram,
-
-    #[metric(describe = "Latency for l2 client `engine_getPayloadV3` call")]
-    pub l2_get_payload_v3: Histogram,
-
-    #[metric(describe = "Latency for l2 client `engine_forkChoiceUpdatedV3` call")]
-    pub l2_fork_choice_updated_v3: Histogram,
-
-    #[metric(describe = "Count of l2 client `engine_newPayloadV3` responses", labels = ["code"])]
+    #[metric(describe = "Count of l2 client `engine_newPayloadV3` responses", labels = ["target", "code"])]
     #[allow(dead_code)]
-    pub l2_new_payload_v3_response_count: Counter,
+    pub new_payload_v3_response_count: Counter,
 
-    #[metric(describe = "Count of l2 client `engine_getPayloadV3` responses", labels = ["code"])]
+    #[metric(describe = "Count of l2 client `engine_getPayloadV3` responses", labels = ["target", "code"])]
     #[allow(dead_code)]
-    pub l2_get_payload_v3_response_count: Counter,
+    pub get_payload_v3_response_count: Counter,
 
-    #[metric(describe = "Count of l2 client `engine_forkChoiceUpdatedV3` responses", labels = ["code"])]
+    #[metric(describe = "Count of l2 client `engine_forkChoiceUpdatedV3` responses", labels = ["target", "code"])]
     #[allow(dead_code)]
-    pub l2_fork_choice_updated_v3_response_count: Counter,
-
-    // Builder client metrics
-    #[metric(describe = "Latency for builder client `engine_newPayloadV3` call")]
-    pub builder_new_payload_v3: Histogram,
-
-    #[metric(describe = "Latency for builder client `engine_getPayloadV3` call")]
-    pub builder_get_payload_v3: Histogram,
-
-    #[metric(describe = "Latency for builder client `engine_forkChoiceUpdatedV3` call")]
-    pub builder_fork_choice_updated_v3: Histogram,
-
-    #[metric(describe = "Count of builder client `engine_newPayloadV3` responses", labels = ["code"])]
-    #[allow(dead_code)]
-    pub builder_new_payload_v3_response_count: Counter,
-
-    #[metric(describe = "Count of builder client `engine_getPayloadV3` responses", labels = ["code"])]
-    #[allow(dead_code)]
-    pub builder_get_payload_v3_response_count: Counter,
-
-    #[metric(describe = "Count of builder client `engine_forkChoiceUpdatedV3` responses", labels = ["code"])]
-    #[allow(dead_code)]
-    pub builder_fork_choice_updated_v3_response_count: Counter,
+    pub fork_choice_updated_v3_response_count: Counter,
 
     // Builder proxy metrics
-    #[metric(describe = "Latency for builder client forwarded rpc calls (excluding the engine api)", labels = ["method"])]
+    #[metric(describe = "Latency for builder client forwarded rpc calls (excluding the engine api)", labels = ["target", "method"])]
     #[allow(dead_code)]
-    pub builder_forwarded_call: Histogram,
+    pub forwarded_call: Histogram,
 
-    #[metric(describe = "Number of builder client rpc responses", labels = ["http_status_code", "rpc_status_code", "method"])]
+    #[metric(describe = "Number of builder client rpc responses", labels = ["target", "http_status_code", "rpc_status_code", "method"])]
     #[allow(dead_code)]
-    pub builder_rpc_response_count: Counter,
-
-    // L2 proxy metrics
-    #[metric(describe = "Latency for l2 client forwarded rpc calls (excluding the engine api)", labels = ["method"])]
-    #[allow(dead_code)]
-    pub l2_forwarded_call: Histogram,
-
-    #[metric(describe = "Number of l2 client rpc responses", labels = ["http_status_code", "rpc_status_code", "method"])]
-    #[allow(dead_code)]
-    pub l2_rpc_response_count: Counter,
+    pub forwarded_call_response_count: Counter,
 }
 
 impl ServerMetrics {
+    /*
     pub fn record_new_payload_v3(&self, latency: Duration, code: String, source: PayloadSource) {
         match source {
             PayloadSource::L2 => {
@@ -133,6 +91,7 @@ impl ServerMetrics {
             }
         }
     }
+    */
 
     pub fn record_builder_forwarded_call(&self, latency: Duration, method: String) {
         histogram!("rpc.builder_forwarded_call", "method" => method).record(latency.as_secs_f64());

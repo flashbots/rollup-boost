@@ -718,19 +718,13 @@ mod tests {
 
             let l2_auth_rpc = Uri::from_str(&format!("http://{}:{}", HOST, L2_PORT)).unwrap();
             let l2_client =
-                ExecutionClient::new(l2_auth_rpc, jwt_secret, 2000, None, PayloadSource::L2)
-                    .unwrap();
+                ExecutionClient::new(l2_auth_rpc, jwt_secret, 2000, PayloadSource::L2).unwrap();
 
             let builder_auth_rpc =
                 Uri::from_str(&format!("http://{}:{}", HOST, BUILDER_PORT)).unwrap();
-            let builder_client = ExecutionClient::new(
-                builder_auth_rpc,
-                jwt_secret,
-                2000,
-                None,
-                PayloadSource::Builder,
-            )
-            .unwrap();
+            let builder_client =
+                ExecutionClient::new(builder_auth_rpc, jwt_secret, 2000, PayloadSource::Builder)
+                    .unwrap();
 
             let rollup_boost_client =
                 RollupBoostServer::new(l2_client, builder_client, boost_sync, None);
