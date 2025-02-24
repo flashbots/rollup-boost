@@ -1,12 +1,12 @@
 use crate::auth_layer::secret_to_bearer_header;
 use alloy_rpc_types_engine::JwtSecret;
-use http::header::AUTHORIZATION;
 use http::Uri;
+use http::header::AUTHORIZATION;
 use hyper_rustls::HttpsConnector;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
+use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
-use jsonrpsee::core::{http_helpers, BoxError};
+use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
@@ -200,7 +200,7 @@ async fn forward_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::{hex, Bytes, B256, U128, U64};
+    use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::ConditionalOptions;
     use http_body_util::BodyExt;
@@ -208,12 +208,12 @@ mod tests {
     use hyper_util::rt::TokioIo;
     use jsonrpsee::server::Server;
     use jsonrpsee::{
-        core::{client::ClientT, ClientError},
+        RpcModule,
+        core::{ClientError, client::ClientT},
         http_client::HttpClient,
         rpc_params,
         server::{ServerBuilder, ServerHandle},
         types::{ErrorCode, ErrorObject},
-        RpcModule,
     };
     use serde_json::json;
     use std::{
@@ -393,7 +393,7 @@ mod tests {
                 }
             };
 
-            return Ok(hyper::Response::new(response.to_string()));
+            Ok(hyper::Response::new(response.to_string()))
         }
     }
 
@@ -510,7 +510,7 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt.clone(), l2_auth_uri, jwt);
+        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
 
         // Create a layered server
         let server = ServerBuilder::default()
@@ -525,9 +525,10 @@ mod tests {
             .register_method("engine_method", |_, _, _| "engine response")
             .unwrap();
         module
-            .register_method("eth_sendRawTransaction", |_, _, _| {
-                "raw transaction response"
-            })
+            .register_method(
+                "eth_sendRawTransaction",
+                |_, _, _| "raw transaction response",
+            )
             .unwrap();
         module
             .register_method("non_existent_method", |_, _, _| "no proxy response")
@@ -691,7 +692,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (gas_price.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (gas_price,))
             .await?;
 
         let expected_price = json!(gas_price);
@@ -725,7 +726,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (gas_limit.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (gas_limit,))
             .await?;
 
         let expected_price = json!(gas_limit);
@@ -759,7 +760,7 @@ mod tests {
 
         test_harness
             .proxy_client
-            .request::<serde_json::Value, _>(expected_method, (mock_data.clone(),))
+            .request::<serde_json::Value, _>(expected_method, (mock_data,))
             .await?;
 
         let expected_price = json!(mock_data);
