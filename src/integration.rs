@@ -288,7 +288,6 @@ mod test {
         harness.send_messages(vec!["six"]);
         harness.wait_for_messages_to_drain().await;
 
-
         assert_eq!(
             vec!["one", "two", "three", "four", "five", "six"],
             harness.messages_for_client(client_one)
@@ -301,6 +300,9 @@ mod test {
             vec!["one", "two"],
             harness.messages_for_client(client_three)
         );
-        assert_eq!(vec!["five", "six"], harness.messages_for_client(client_four));
+        assert_eq!(
+            vec!["five", "six"],
+            harness.messages_for_client(client_four)
+        );
     }
 }
