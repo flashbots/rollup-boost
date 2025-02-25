@@ -10,11 +10,17 @@ pub struct ServerMetrics {
     #[metric(describe = "Count of new_payload_v3 calls proxied to the builder")]
     pub new_payload_count: Counter,
 
+    #[metric(describe = "Count of new_payload_v4 calls proxied to the builder")]
+    pub new_payload_v4_count: Counter,
+
     #[metric(describe = "Count of get_payload_v3 calls proxied to the builder")]
     pub get_payload_count: Counter,
 
     #[metric(describe = "Latency for `engine_newPayloadV3`")]
     pub new_payload_v3: Histogram,
+
+    #[metric(describe = "Latency for `engine_newPayloadV4`")]
+    pub new_payload_v4: Histogram,
 
     #[metric(describe = "Latency for `engine_getPayloadV3`")]
     pub get_payload_v3: Histogram,

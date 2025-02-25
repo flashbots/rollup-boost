@@ -1,7 +1,7 @@
 use crate::client::ExecutionClient;
 use crate::debug_api;
 use crate::metrics::ServerMetrics;
-use alloy_primitives::B256;
+use alloy_primitives::{Bytes, B256};
 use debug_api::DebugServer;
 use std::num::NonZero;
 use std::sync::Arc;
@@ -35,6 +35,29 @@ pub struct PayloadTraceContext {
     block_hash_to_payload_ids: Arc<Mutex<LruCache<B256, Vec<PayloadId>>>>,
     payload_id_to_span: Arc<Mutex<LruCache<PayloadId, Arc<BoxedSpan>>>>,
     local_to_external_payload_ids: Arc<Mutex<LruCache<PayloadId, PayloadId>>>,
+}
+
+enum PayloadVersion {
+    V3,
+    V4(Vec<Bytes>),
+}
+
+impl PayloadVersion {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PayloadVersion::V3 => "v3",
+            PayloadVersion::V4(_) => "v4",
+        }
+    }
+}
+
+impl Clone for PayloadVersion {
+    fn clone(&self) -> Self {
+        match self {
+            PayloadVersion::V3 => PayloadVersion::V3,
+            PayloadVersion::V4(execution_requests) => PayloadVersion::V4(execution_requests.clone())
+        }
+    }
 }
 
 impl PayloadTraceContext {
@@ -203,6 +226,15 @@ pub trait EngineApi {
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> RpcResult<PayloadStatus>;
+
+    #[method(name = "newPayloadV4")]
+    async fn new_payload_v4(
+        &self,
+        payload: ExecutionPayloadV3,
+        versioned_hashes: Vec<B256>,
+        parent_beacon_block_root: B256,
+        execution_requests: Vec<Bytes>,
+    ) -> RpcResult<PayloadStatus>;
 }
 
 #[async_trait]
@@ -244,11 +276,29 @@ impl EngineApiServer for RollupBoostServer {
     ) -> RpcResult<PayloadStatus> {
         let start = Instant::now();
         let res = self
-            .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
+            .new_payload(PayloadVersion::V3, payload, versioned_hashes, parent_beacon_block_root)
             .await;
         let elapsed = start.elapsed();
         if let Some(metrics) = &self.metrics {
             metrics.new_payload_v3.record(elapsed);
+        }
+        res
+    }
+
+    async fn new_payload_v4(
+        &self,
+        payload: ExecutionPayloadV3,
+        versioned_hashes: Vec<B256>,
+        parent_beacon_block_root: B256,
+        execution_requests: Vec<Bytes>,
+    ) -> RpcResult<PayloadStatus> {
+        let start = Instant::now();
+        let res = self
+            .new_payload(PayloadVersion::V4(execution_requests), payload, versioned_hashes, parent_beacon_block_root)
+            .await;
+        let elapsed = start.elapsed();
+        if let Some(metrics) = &self.metrics {
+            metrics.new_payload_v4.record(elapsed);
         }
         res
     }
@@ -543,20 +593,26 @@ impl RollupBoostServer {
         })
     }
 
-    async fn new_payload_v3(
+    async fn new_payload(
         &self,
+        version: PayloadVersion,
         payload: ExecutionPayloadV3,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> RpcResult<PayloadStatus> {
+        let label = version.as_str();
         let execution_payload = ExecutionPayload::from(payload.clone());
         let block_hash = execution_payload.block_hash();
         let parent_hash = execution_payload.parent_hash();
-        info!(message = "received new_payload_v3", "block_hash" = %block_hash);
+        info!(message = format!("received new_payload_{}", label), "block_hash" = %block_hash);
         // async call to builder to sync the builder node
         if self.boost_sync {
             if let Some(metrics) = &self.metrics {
-                metrics.new_payload_count.increment(1);
+                let metric = match version {
+                    PayloadVersion::V3 => &metrics.new_payload_count,
+                    PayloadVersion::V4(_) => &metrics.new_payload_v4_count,
+                };
+                metric.increment(1);
             }
             let parent_spans = self
                 .payload_trace_context
@@ -579,18 +635,23 @@ impl RollupBoostServer {
                 .await;
 
             let builder = self.builder_client.clone();
+            let builder_version = version.clone();
             let builder_payload = payload.clone();
             let builder_versioned_hashes = versioned_hashes.clone();
             tokio::spawn(async move {
-                let _ = builder.auth_client.new_payload_v3(builder_payload, builder_versioned_hashes, parent_beacon_block_root).await
+                let builder_future = match builder_version {
+                    PayloadVersion::V3 => builder.auth_client.new_payload_v3(builder_payload, builder_versioned_hashes, parent_beacon_block_root),
+                    PayloadVersion::V4(execution_requests) => builder.auth_client.new_payload_v4(builder_payload, builder_versioned_hashes, parent_beacon_block_root, execution_requests),
+                };
+                let _ = builder_future.await
                 .map(|response: PayloadStatus| {
                     if response.is_invalid() {
-                        error!(message = "builder rejected new_payload_v3", "url" = ?builder.auth_rpc, "block_hash" = %block_hash);
+                        error!(message = format!("builder rejected new_payload_{}", label), "url" = ?builder.auth_rpc, "block_hash" = %block_hash);
                     } else {
-                        info!(message = "called new_payload_v3 to builder", "url" = ?builder.auth_rpc, "payload_status" = %response.status, "block_hash" = %block_hash);
+                        info!(message = format!("called new_payload_{} to builder", label), "url" = ?builder.auth_rpc, "payload_status" = %response.status, "block_hash" = %block_hash);
                     }
                 }).map_err(|e| {
-                    error!(message = "error calling new_payload_v3 to builder", "url" = ?builder.auth_rpc, "error" = %e, "block_hash" = %block_hash);
+                    error!(message = format!("error calling new_payload_{} to builder", label), "url" = ?builder.auth_rpc, "error" = %e, "block_hash" = %block_hash);
                     e
                 });
                 if let Some(mut spans) = spans {
@@ -598,15 +659,21 @@ impl RollupBoostServer {
                 };
             });
         }
-        self.l2_client
-            .auth_client
-            .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
-            .await
+        
+        let l2_future = match version {
+            PayloadVersion::V3 => self.l2_client
+                .auth_client
+                .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root),
+            PayloadVersion::V4(execution_requests) => self.l2_client
+                .auth_client
+                .new_payload_v4(payload, versioned_hashes, parent_beacon_block_root, execution_requests),
+        };
+        l2_future.await
             .map_err(|e| match e {
                 ClientError::Call(err) => err, // Already an ErrorObjectOwned, so just return it
                 other_error => {
                     error!(
-                        message = "error calling new_payload_v3",
+                        message = format!("error calling new_payload_{}", label),
                         "url" = ?self.l2_client.auth_rpc,
                         "error" = %other_error,
                         "block_hash" = %block_hash
