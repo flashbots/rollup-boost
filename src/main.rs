@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, trace, Level};
+use tracing::{error, info, trace, warn, Level};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -85,6 +85,14 @@ struct Args {
     #[arg(long, env, default_value = "0.0.0.0:9000")]
     metrics_addr: SocketAddr,
 
+    /// Tags to add to every metrics emitted, should be in the format --metrics-global-labels label1=value1,label2=value2
+    #[arg(long, env, default_value = "")]
+    metrics_global_labels: String,
+
+    /// Add the hostname as a label to all Prometheus metrics
+    #[arg(long, env, default_value = "false")]
+    metrics_host_label: bool,
+
     /// Maximum backoff allowed for upstream connections
     #[arg(long, env, default_value = "20")]
     subscriber_max_interval: u64,
@@ -117,8 +125,21 @@ async fn main() {
             address = args.metrics_addr.to_string()
         );
 
-        PrometheusBuilder::new()
-            .with_http_listener(args.metrics_addr)
+        let mut builder = PrometheusBuilder::new().with_http_listener(args.metrics_addr);
+
+        if args.metrics_host_label {
+            let hostname = hostname::get()
+                .expect("could not find hostname")
+                .into_string()
+                .expect("could not convert hostname to string");
+            builder = builder.add_global_label("hostname", hostname);
+        }
+
+        for (key, value) in parse_global_metrics(args.metrics_global_labels) {
+            builder = builder.add_global_label(key, value);
+        }
+
+        builder
             .install()
             .expect("failed to setup Prometheus endpoint")
     }
@@ -189,5 +210,76 @@ async fn main() {
             info!("process terminated, shutting down");
             token.cancel();
         }
+    }
+}
+
+fn parse_global_metrics(metrics: String) -> Vec<(String, String)> {
+    let mut result = Vec::new();
+
+    for metric in metrics.split(',') {
+        if metric.is_empty() {
+            continue;
+        }
+
+        let parts = metric
+            .splitn(2, '=')
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        if parts.len() != 2 {
+            warn!(
+                message = "malformed global metric: invalid count",
+                metric = metric
+            );
+            continue;
+        }
+
+        let label = parts[0].to_string();
+        let value = parts[1].to_string();
+
+        if label.is_empty() || value.is_empty() {
+            warn!(
+                message = "malformed global metric: empty value",
+                metric = metric
+            );
+            continue;
+        }
+
+        result.push((label, value));
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod test {
+    use crate::parse_global_metrics;
+
+    #[test]
+    fn test_parse_global_metrics() {
+        assert_eq!(
+            parse_global_metrics("".into()),
+            Vec::<(String, String)>::new(),
+        );
+
+        assert_eq!(
+            parse_global_metrics("key=value".into()),
+            vec![("key".into(), "value".into())]
+        );
+
+        assert_eq!(
+            parse_global_metrics("key=value,key2=value2".into()),
+            vec![
+                ("key".into(), "value".into()),
+                ("key2".into(), "value2".into())
+            ],
+        );
+
+        assert_eq!(parse_global_metrics("gibberish".into()), Vec::new());
+
+        assert_eq!(
+            parse_global_metrics("key=value,key2=,".into()),
+            vec![("key".into(), "value".into())],
+        );
     }
 }
