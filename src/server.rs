@@ -805,10 +805,14 @@ mod tests {
     pub struct MockEngineServer {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
         get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
+        get_payload_v4_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
+        new_payload_v4_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256, Vec<Bytes>)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
         get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
+        get_payload_v4_response: RpcResult<OpExecutionPayloadEnvelopeV4>,
         new_payload_response: RpcResult<PayloadStatus>,
+        new_payload_v4_response: RpcResult<PayloadStatus>,
 
         pub override_payload_id: Option<PayloadId>,
     }
@@ -818,7 +822,9 @@ mod tests {
             Self {
                 fcu_requests: Arc::new(Mutex::new(vec![])),
                 get_payload_requests: Arc::new(Mutex::new(vec![])),
+                get_payload_v4_requests: Arc::new(Mutex::new(vec![])),
                 new_payload_requests: Arc::new(Mutex::new(vec![])),
+                new_payload_v4_requests: Arc::new(Mutex::new(vec![])),
                 fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))),
                 get_payload_response: Ok(OpExecutionPayloadEnvelopeV3{
                     execution_payload: ExecutionPayloadV3 {
@@ -850,12 +856,47 @@ mod tests {
                         proofs: vec![],
                         blobs: vec![],
                     },
-                should_override_builder: false,
-                parent_beacon_block_root: B256::ZERO,
-            }),
-            override_payload_id: None,
-            new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
-        }
+                    should_override_builder: false,
+                    parent_beacon_block_root: B256::ZERO,
+                }),
+                get_payload_v4_response: Ok(OpExecutionPayloadEnvelopeV4{
+                    execution_payload: ExecutionPayloadV3 {
+                            payload_inner: ExecutionPayloadV2 {
+                                payload_inner: ExecutionPayloadV1 {
+                                    base_fee_per_gas:  U256::from(7u64),
+                                    block_number: 0xa946u64,
+                                    block_hash: hex!("a5ddd3f286f429458a39cafc13ffe89295a7efa8eb363cf89a1a4887dbcf272b").into(),
+                                    logs_bloom: hex!("00200004000000000000000080000000000200000000000000000000000000000000200000000000000000000000000000000000800000000200000000000000000000000000000000000008000000200000000000000000000001000000000000000000000000000000800000000000000000000100000000000030000000000000000040000000000000000000000000000000000800080080404000000000000008000000000008200000000000200000000000000000000000000000000000000002000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000100000000000000000000").into(),
+                                    extra_data: hex!("d883010d03846765746888676f312e32312e31856c696e7578").into(),
+                                    gas_limit: 0x1c9c380,
+                                    gas_used: 0x1f4a9,
+                                    timestamp: 0x651f35b8,
+                                    fee_recipient: hex!("f97e180c050e5ab072211ad2c213eb5aee4df134").into(),
+                                    parent_hash: hex!("d829192799c73ef28a7332313b3c03af1f2d5da2c36f8ecfafe7a83a3bfb8d1e").into(),
+                                    prev_randao: hex!("753888cc4adfbeb9e24e01c84233f9d204f4a9e1273f0e29b43c4c148b2b8b7e").into(),
+                                    receipts_root: hex!("4cbc48e87389399a0ea0b382b1c46962c4b8e398014bf0cc610f9c672bee3155").into(),
+                                    state_root: hex!("017d7fa2b5adb480f5e05b2c95cb4186e12062eed893fc8822798eed134329d1").into(),
+                                    transactions: vec![],
+                                },
+                                withdrawals: vec![],
+                            },
+                            blob_gas_used: 0xc0000,
+                        excess_blob_gas: 0x580000,
+                        },
+                        block_value: U256::from(0),
+                        blobs_bundle: BlobsBundleV1{
+                            commitments: vec![],
+                            proofs: vec![],
+                            blobs: vec![],
+                        },
+                    should_override_builder: false,
+                    parent_beacon_block_root: B256::ZERO,
+                    execution_requests: vec![],
+                }),
+                override_payload_id: None,
+                new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
+                new_payload_v4_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
+            }
         }
     }
 
@@ -987,6 +1028,49 @@ mod tests {
         assert_eq!(req.2, B256::ZERO);
         drop(new_payload_requests_mu);
 
+        // test new_payload_v4 success
+        let new_payload_response = test_harness
+            .client
+            .new_payload_v4(
+                test_harness
+                    .l2_mock
+                    .get_payload_v4_response
+                    .clone()
+                    .unwrap()
+                    .execution_payload
+                    .clone(),
+                vec![],
+                B256::ZERO,
+                vec![],
+            )
+            .await;
+        if let Err(ref err) = new_payload_response {
+            println!("Test encountered error: {:?}", err);
+        }
+        assert!(new_payload_response.is_ok());
+        let new_payload_requests = test_harness.l2_mock.new_payload_v4_requests.clone();
+        let new_payload_requests_mu = new_payload_requests.lock().unwrap();
+        let new_payload_requests_builder = test_harness.builder_mock.new_payload_v4_requests.clone();
+        let new_payload_requests_builder_mu = new_payload_requests_builder.lock().unwrap();
+        assert_eq!(new_payload_requests_mu.len(), 1);
+        assert_eq!(new_payload_requests_builder_mu.len(), 0);
+        let req: &(ExecutionPayloadV3, Vec<FixedBytes<32>>, B256, Vec<Bytes>) =
+            new_payload_requests_mu.first().unwrap();
+        assert_eq!(
+            req.0,
+            test_harness
+                .l2_mock
+                .get_payload_v4_response
+                .clone()
+                .unwrap()
+                .execution_payload
+                .clone()
+        );
+        assert_eq!(req.1, Vec::<FixedBytes<32>>::new());
+        assert_eq!(req.2, B256::ZERO);
+        assert_eq!(req.3, Vec::<Bytes>::new());
+        drop(new_payload_requests_mu);
+
         // test get_payload_v3 success
         let get_payload_response = test_harness
             .client
@@ -1004,6 +1088,24 @@ mod tests {
         assert_eq!(new_payload_requests_mu.len(), 2);
         let req: &PayloadId = get_payload_requests_mu.first().unwrap();
         assert_eq!(*req, PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]));
+        
+        // test get_payload_v4 success
+        let get_payload_response = test_harness
+            .client
+            .get_payload_v4(PayloadId::new([0, 0, 0, 0, 0, 0, 1, 0]))
+            .await;
+        assert!(get_payload_response.is_ok());
+        let get_payload_requests = test_harness.l2_mock.get_payload_v4_requests.clone();
+        let get_payload_requests_mu = get_payload_requests.lock().unwrap();
+        let get_payload_requests_builder = test_harness.builder_mock.get_payload_v4_requests.clone();
+        let get_payload_requests_builder_mu = get_payload_requests_builder.lock().unwrap();
+        let new_payload_requests = test_harness.l2_mock.new_payload_v4_requests.clone();
+        let new_payload_requests_mu = new_payload_requests.lock().unwrap();
+        assert_eq!(get_payload_requests_builder_mu.len(), 1);
+        assert_eq!(get_payload_requests_mu.len(), 1);
+        assert_eq!(new_payload_requests_mu.len(), 2);
+        let req: &PayloadId = get_payload_requests_mu.first().unwrap();
+        assert_eq!(*req, PayloadId::new([0, 0, 0, 0, 0, 0, 1, 0]));
 
         test_harness.cleanup().await;
     }
@@ -1112,6 +1214,17 @@ mod tests {
             .unwrap();
 
         module
+            .register_method("engine_getPayloadV4", move |params, _, _| {
+                let params: (PayloadId,) = params.parse()?;
+                let mut get_payload_requests =
+                    mock_engine_server.get_payload_v4_requests.lock().unwrap();
+                get_payload_requests.push(params.0);
+
+                mock_engine_server.get_payload_v4_response.clone()
+            })
+            .unwrap();
+
+        module
             .register_method("engine_newPayloadV3", move |params, _, _| {
                 let params: (ExecutionPayloadV3, Vec<B256>, B256) = params.parse()?;
                 let mut new_payload_requests =
@@ -1119,6 +1232,17 @@ mod tests {
                 new_payload_requests.push(params);
 
                 mock_engine_server.new_payload_response.clone()
+            })
+            .unwrap();
+
+        module
+            .register_method("engine_newPayloadV4", move |params, _, _| {
+                let params: (ExecutionPayloadV3, Vec<B256>, B256, Vec<Bytes>) = params.parse()?;
+                let mut new_payload_requests =
+                    mock_engine_server.new_payload_v4_requests.lock().unwrap();
+                new_payload_requests.push(params);
+
+                mock_engine_server.new_payload_v4_response.clone()
             })
             .unwrap();
 
