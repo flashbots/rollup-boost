@@ -16,7 +16,7 @@ use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use jsonrpsee::types::{ErrorCode, ErrorObject};
 use jsonrpsee::RpcModule;
 use lru::LruCache;
-use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
+use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4};
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
 use opentelemetry::trace::{Span, TraceContextExt, Tracer};
 use opentelemetry::{Context, KeyValue};
@@ -56,6 +56,36 @@ impl Clone for PayloadVersion {
         match self {
             PayloadVersion::V3 => PayloadVersion::V3,
             PayloadVersion::V4(execution_requests) => PayloadVersion::V4(execution_requests.clone())
+        }
+    }
+}
+
+enum OpExecutionPayloadEnvelope {
+    V3(OpExecutionPayloadEnvelopeV3),
+    V4(OpExecutionPayloadEnvelopeV4),
+}
+
+impl OpExecutionPayloadEnvelope {
+    fn execution_payload(&self) -> ExecutionPayloadV3 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(envelope) => envelope.execution_payload.clone(),
+            OpExecutionPayloadEnvelope::V4(envelope) => envelope.execution_payload.clone(),
+        }
+    }
+
+    fn parent_beacon_block_root(&self) -> B256 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(envelope) => envelope.parent_beacon_block_root,
+            OpExecutionPayloadEnvelope::V4(envelope) => envelope.parent_beacon_block_root,
+        }
+    }
+}
+
+impl Clone for OpExecutionPayloadEnvelope {
+    fn clone(&self) -> Self {
+        match self {
+            OpExecutionPayloadEnvelope::V3(envelope) => OpExecutionPayloadEnvelope::V3(envelope.clone()),
+            OpExecutionPayloadEnvelope::V4(envelope) => OpExecutionPayloadEnvelope::V4(envelope.clone()),
         }
     }
 }
@@ -219,6 +249,12 @@ pub trait EngineApi {
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3>;
 
+    #[method(name = "getPayloadV4")]
+    async fn get_payload_v4(
+        &self,
+        payload_id: PayloadId,
+    ) -> RpcResult<OpExecutionPayloadEnvelopeV4>;
+
     #[method(name = "newPayloadV3")]
     async fn new_payload_v3(
         &self,
@@ -260,12 +296,31 @@ impl EngineApiServer for RollupBoostServer {
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
         let start = Instant::now();
-        let res = self.get_payload_v3(payload_id).await;
+        let res = self.get_payload(PayloadVersion::V3, payload_id).await;
         let elapsed = start.elapsed();
         if let Some(metrics) = &self.metrics {
             metrics.get_payload_v3.record(elapsed);
         }
-        res
+        res.and_then(|envelope| match envelope {
+            OpExecutionPayloadEnvelope::V3(payload) => Ok(payload),
+            _ => Err(ErrorCode::InternalError.into()),
+        })
+    }
+
+    async fn get_payload_v4(
+        &self,
+        payload_id: PayloadId,
+    ) -> RpcResult<OpExecutionPayloadEnvelopeV4> {
+        let start = Instant::now();
+        let res = self.get_payload(PayloadVersion::V4(vec![]), payload_id).await;
+        let elapsed = start.elapsed();
+        if let Some(metrics) = &self.metrics {
+            metrics.get_payload_v4.record(elapsed);
+        }
+        res.and_then(|envelope| match envelope {
+            OpExecutionPayloadEnvelope::V4(payload) => Ok(payload),
+            _ => Err(ErrorCode::InternalError.into()),
+        })
     }
 
     async fn new_payload_v3(
@@ -458,12 +513,21 @@ impl RollupBoostServer {
         Ok(l2_response)
     }
 
-    async fn get_payload_v3(
+    async fn get_payload(
         &self,
+        version: PayloadVersion,
         payload_id: PayloadId,
-    ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
-        info!(message = "received get_payload_v3", "payload_id" = %payload_id);
-        let l2_client_future = self.l2_client.auth_client.get_payload_v3(payload_id);
+    ) -> RpcResult<OpExecutionPayloadEnvelope> {
+        let label = version.as_str();
+        info!(message = format!("received get_payload_{}", label), "payload_id" = %payload_id);
+        
+        let l2_version = version.clone();
+        let l2_client_future = async move {
+            match l2_version {
+                PayloadVersion::V3 => self.l2_client.auth_client.get_payload_v3(payload_id).await.map(OpExecutionPayloadEnvelope::V3),
+                PayloadVersion::V4(_) => self.l2_client.auth_client.get_payload_v4(payload_id).await.map(OpExecutionPayloadEnvelope::V4),
+            }
+        };
 
         let builder_client_future = Box::pin(async move {
             let dry_run = self.dry_run.lock().await;
@@ -479,7 +543,11 @@ impl RollupBoostServer {
             }
 
             if let Some(metrics) = &self.metrics {
-                metrics.get_payload_count.increment(1);
+                let metric = match version {
+                    PayloadVersion::V3 => &metrics.get_payload_count,
+                    PayloadVersion::V4(_) => &metrics.get_payload_v4_count,
+                };
+                metric.increment(1);
             }
             let parent_span = self
                 .payload_trace_context
@@ -518,22 +586,42 @@ impl RollupBoostServer {
             }
 
             let builder = self.builder_client.clone();
-            let payload = builder.auth_client.get_payload_v3(external_payload_id).await.map_err(|e| {
-                error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
-                e
-                })?;
+            let payload = match version {
+                PayloadVersion::V3 => {
+                    let payload = builder.auth_client.get_payload_v3(external_payload_id).await.map_err(|e| {
+                        error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
+                        e
+                    })?;
+                    OpExecutionPayloadEnvelope::V3(payload)
+                },
+                PayloadVersion::V4(_) => {
+                    let payload = builder.auth_client.get_payload_v4(external_payload_id).await.map_err(|e| {
+                        error!(message = "error calling get_payload_v4 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
+                        e
+                    })?;
+                    OpExecutionPayloadEnvelope::V4(payload)
+                },
+            };
 
-            let block_hash = ExecutionPayload::from(payload.clone().execution_payload).block_hash();
+            let block_hash = ExecutionPayload::from(payload.clone().execution_payload()).block_hash();
             info!(message = "received payload from builder", "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id, "block_hash" = %block_hash);
 
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
             // If validation fails, return the local block since that one has already been validated.
             if let Some(metrics) = &self.metrics {
-                metrics.new_payload_count.increment(1);
+                let metric = match version {
+                    PayloadVersion::V3 => &metrics.new_payload_count,
+                    PayloadVersion::V4(_) => &metrics.new_payload_v4_count,
+                };
+                metric.increment(1);
             }
-            let payload_status = self.l2_client.auth_client.new_payload_v3(payload.execution_payload.clone(), vec![], payload.parent_beacon_block_root).await.map_err(|e| {
-                error!(message = "error calling new_payload_v3 to validate builder payload", "url" = ?self.l2_client.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
+            let l2_call = match version {
+                PayloadVersion::V3 => self.l2_client.auth_client.new_payload_v3(payload.execution_payload(), vec![], payload.parent_beacon_block_root()),
+                PayloadVersion::V4(execution_requests) => self.l2_client.auth_client.new_payload_v4(payload.execution_payload(), vec![], payload.parent_beacon_block_root(), execution_requests)
+            };
+            let payload_status = l2_call.await.map_err(|e| {
+                error!(message = format!("error calling new_payload_{} to validate builder payload", label), "url" = ?self.l2_client.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 e
             })?;
             if let Some(mut s) = span {
@@ -566,7 +654,7 @@ impl RollupBoostServer {
                 ClientError::Call(err) => Err(err), // Already an ErrorObjectOwned, so just return it
                 other_error => {
                     error!(
-                        message = "error calling get_payload_v3",
+                        message = format!("error calling get_payload_{}", label),
                         "error" = %other_error,
                         "payload_id" = %payload_id
                     );
@@ -575,7 +663,7 @@ impl RollupBoostServer {
             },
         };
         payload.map(|(payload, context)| {
-            let inner_payload = ExecutionPayload::from(payload.clone().execution_payload);
+            let inner_payload = ExecutionPayload::from(payload.clone().execution_payload());
             let block_hash = inner_payload.block_hash();
             let block_number = inner_payload.block_number();
 
@@ -589,6 +677,7 @@ impl RollupBoostServer {
                 "context" = %context,
                 "payload_id" = %payload_id
             );
+
             payload
         })
     }
