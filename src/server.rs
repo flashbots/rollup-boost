@@ -22,6 +22,7 @@ use opentelemetry::trace::{Span, TraceContextExt, Tracer};
 use opentelemetry::{Context, KeyValue};
 use reth_optimism_payload_builder::{OpPayloadAttributes, OpPayloadBuilderAttributes};
 use reth_payload_primitives::PayloadBuilderAttributes;
+use reth_optimism_primitives::OpTransactionSigned;
 
 use tokio::sync::Mutex;
 use tracing::{error, info};
@@ -412,7 +413,7 @@ impl RollupBoostServer {
                     .payload_trace_context
                     .tracer
                     .start_with_context("build-block", &Context::current());
-                let builder_attrs = OpPayloadBuilderAttributes::try_new(
+                let builder_attrs = OpPayloadBuilderAttributes::<OpTransactionSigned>::try_new(
                     fork_choice_state.head_block_hash,
                     payload_attributes,
                     3,
