@@ -56,6 +56,8 @@ impl FlashblockBuilder {
     }
 
     pub fn extend(&mut self, payload: FlashblocksPayloadV1) -> Result<(), FlashblocksError> {
+        tracing::debug!(message = "Extending payload", payload_id = %payload.payload_id, index = payload.index, has_base=payload.base.is_some());
+
         // Check base payload rules
         match (payload.index, payload.base) {
             // First payload must have a base
