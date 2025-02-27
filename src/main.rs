@@ -1,6 +1,8 @@
 use clap::{arg, Parser, Subcommand};
 use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
-use debug_api::{DebugClient, SetDryRunRequestAction};
+use debug_api::DebugClient;
+use metrics::{ClientMetrics, ServerMetrics};
+use server::ExecutionMode;
 use std::{net::SocketAddr, sync::Arc};
 
 use alloy_rpc_types_engine::JwtSecret;
@@ -13,14 +15,13 @@ use hyper_util::rt::TokioIo;
 use jsonrpsee::http_client::HttpBody;
 use jsonrpsee::server::Server;
 use jsonrpsee::RpcModule;
-use metrics::ServerMetrics;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::layers::{PrefixLayer, Stack};
 use opentelemetry::global;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::Config, Resource};
 use proxy::ProxyLayer;
-use server::RollupBoostServer;
+use server::{PayloadSource, RollupBoostServer};
 
 use crate::flashblocks::Flashblocks;
 use tokio::net::TcpListener;
@@ -125,27 +126,37 @@ enum Commands {
 
 #[derive(Subcommand, Debug)]
 enum DebugCommands {
-    /// Toggle dry run mode
-    DryRun {},
+    /// Set the execution mode
+    SetExecutionMode { execution_mode: ExecutionMode },
+
+    /// Get the execution mode
+    ExecutionMode {},
 }
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     // Load .env file
     dotenv().ok();
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install TLS ring CryptoProvider");
     let args: Args = Args::parse();
 
     // Handle commands if present
     if let Some(cmd) = args.command {
         match cmd {
             Commands::Debug { command } => match command {
-                DebugCommands::DryRun {} => {
+                DebugCommands::SetExecutionMode { execution_mode } => {
                     let client = DebugClient::default();
-                    let result = client
-                        .set_dry_run(SetDryRunRequestAction::ToggleDryRun)
-                        .await
-                        .unwrap();
-                    println!("Response: {:?}", result);
+                    let result = client.set_execution_mode(execution_mode).await.unwrap();
+                    println!("Response: {:?}", result.execution_mode);
+
+                    return Ok(());
+                }
+                DebugCommands::ExecutionMode {} => {
+                    let client = DebugClient::default();
+                    let result = client.get_execution_mode().await.unwrap();
+                    println!("Execution mode: {:?}", result.execution_mode);
 
                     return Ok(());
                 }
@@ -184,7 +195,6 @@ async fn main() -> eyre::Result<()> {
         let metrics_addr = format!("{}:{}", args.metrics_host, args.metrics_port);
         let addr: SocketAddr = metrics_addr.parse()?;
         tokio::spawn(init_metrics_server(addr, handle)); // Run the metrics server in a separate task
-
         Some(Arc::new(ServerMetrics::default()))
     } else {
         None
@@ -205,10 +215,17 @@ async fn main() -> eyre::Result<()> {
         bail!("Missing L2 Client JWT secret");
     };
 
+    let l2_metrics = if args.metrics {
+        Some(Arc::new(ClientMetrics::new(&PayloadSource::L2)))
+    } else {
+        None
+    };
     let l2_client = ExecutionClient::new(
         l2_client_args.l2_url.clone(),
         l2_auth_jwt,
         l2_client_args.l2_timeout,
+        l2_metrics,
+        PayloadSource::L2,
     )?;
 
     let builder_args = args.builder;
@@ -220,10 +237,18 @@ async fn main() -> eyre::Result<()> {
         bail!("Missing Builder JWT secret");
     };
 
+    let builder_metrics = if args.metrics {
+        Some(Arc::new(ClientMetrics::new(&PayloadSource::Builder)))
+    } else {
+        None
+    };
+
     let builder_client = ExecutionClient::new(
         builder_args.builder_url.clone(),
         builder_auth_jwt,
         builder_args.builder_timeout,
+        builder_metrics,
+        PayloadSource::Builder,
     )?;
 
     let boost_sync_enabled = !args.no_boost_sync;
@@ -244,7 +269,7 @@ async fn main() -> eyre::Result<()> {
         l2_client,
         builder_client,
         boost_sync_enabled,
-        metrics,
+        metrics.clone(),
         flashblocks_client,
     );
 
@@ -263,6 +288,7 @@ async fn main() -> eyre::Result<()> {
         l2_auth_jwt,
         builder_args.builder_url,
         builder_auth_jwt,
+        metrics,
     ));
 
     let server = Server::builder()
@@ -329,7 +355,10 @@ async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre
                 tokio::task::spawn(async move {
                     let service = service_fn(move |_req: Request<hyper::body::Incoming>| {
                         let response = match _req.uri().path() {
-                            "/metrics" => Response::new(HttpBody::from(handle.render())),
+                            "/metrics" => Response::builder()
+                                .header("content-type", "text/plain")
+                                .body(HttpBody::from(handle.render()))
+                                .unwrap(),
                             _ => Response::builder()
                                 .status(StatusCode::NOT_FOUND)
                                 .body(HttpBody::empty())
@@ -359,6 +388,8 @@ mod tests {
     use jsonrpsee::core::client::ClientT;
 
     use crate::auth_layer::AuthClientService;
+    use crate::server::PayloadSource;
+    use alloy_rpc_types_engine::JwtSecret;
     use jsonrpsee::http_client::transport::Error as TransportError;
     use jsonrpsee::http_client::transport::HttpBackend;
     use jsonrpsee::http_client::HttpClient;
@@ -369,7 +400,7 @@ mod tests {
         server::{ServerBuilder, ServerHandle},
     };
     use predicates::prelude::*;
-    use reth_rpc_layer::{AuthLayer, JwtAuthValidator, JwtSecret};
+    use reth_rpc_layer::{AuthLayer, JwtAuthValidator};
     use std::result::Result;
     use std::str::FromStr;
 
@@ -399,7 +430,7 @@ mod tests {
         let secret = JwtSecret::from_hex(SECRET).unwrap();
 
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
-        let client = ExecutionClient::new(auth_rpc, secret, 1000).unwrap();
+        let client = ExecutionClient::new(auth_rpc, secret, 1000, None, PayloadSource::L2).unwrap();
         let response = send_request(client.auth_client).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");
@@ -408,7 +439,7 @@ mod tests {
     async fn invalid_jwt() {
         let secret = JwtSecret::random();
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
-        let client = ExecutionClient::new(auth_rpc, secret, 1000).unwrap();
+        let client = ExecutionClient::new(auth_rpc, secret, 1000, None, PayloadSource::L2).unwrap();
         let response = send_request(client.auth_client).await;
         assert!(response.is_err());
         assert!(matches!(

@@ -1,7 +1,7 @@
 use crate::auth_layer::{AuthClientLayer, AuthClientService};
 use crate::debug_api::DebugClient;
 use crate::server::EngineApiClient;
-use crate::server::PayloadCreator;
+use crate::server::PayloadSource;
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::JwtSecret;
@@ -14,10 +14,12 @@ use jsonrpsee::proc_macros::rpc;
 use lazy_static::lazy_static;
 use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
 use proxy::{start_proxy_server, DynHandlerFn};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Mutex;
+use std::time::UNIX_EPOCH;
 use std::{
     fs::{File, OpenOptions},
     io,
@@ -577,8 +579,29 @@ impl RollupBoostTestHarnessBuilder {
 
         let jwt_path = framework.write_file("jwt.hex", DEFAULT_JWT_TOKEN)?;
 
-        let genesis_path =
-            framework.write_file("genesis.json", include_str!("testdata/genesis.json"))?;
+        // Write the genesis file to the test directory and update the timestamp to the current time
+        let genesis_path = {
+            // Read the template file
+            let template = include_str!("testdata/genesis.json");
+
+            // Parse the JSON
+            let mut genesis: Value = serde_json::from_str(template).unwrap();
+
+            // Update the timestamp field
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            if let Some(config) = genesis.as_object_mut() {
+                // Assuming timestamp is at the root level - adjust path as needed
+                config["timestamp"] = Value::String(format!("0x{:x}", timestamp));
+            }
+
+            framework.write_file(
+                "genesis.json",
+                serde_json::to_string_pretty(&genesis).unwrap(),
+            )?
+        };
 
         // Start L2 Reth instance
         let l2_reth_config = service_reth::RethConfig::new()
@@ -687,7 +710,7 @@ impl SimpleBlockGenerator {
     pub async fn generate_block(
         &mut self,
         empty_blocks: bool,
-    ) -> eyre::Result<(B256, PayloadCreator)> {
+    ) -> eyre::Result<(B256, PayloadSource)> {
         // Submit forkchoice update with payload attributes for the next block
         let result = self
             .engine_api
@@ -711,6 +734,11 @@ impl SimpleBlockGenerator {
             .await?;
 
         let payload_id = result.payload_id.expect("missing payload id");
+
+        if !empty_blocks {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+
         let payload = self.engine_api.get_payload_v3(payload_id).await?;
 
         // Submit the new payload to the node
@@ -763,7 +791,7 @@ impl BlockBuilderCreatorValidator {
 }
 
 impl BlockBuilderCreatorValidator {
-    pub fn get_block_creator(&self, block_hash: B256) -> eyre::Result<Option<PayloadCreator>> {
+    pub fn get_block_creator(&self, block_hash: B256) -> eyre::Result<Option<PayloadSource>> {
         let mut file = File::open(&self.log_path).map_err(|_| IntegrationError::LogError)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)
@@ -785,8 +813,8 @@ impl BlockBuilderCreatorValidator {
                         .ok_or(eyre::eyre!("no context found"))?;
 
                     match context {
-                        "builder" => return Ok(Some(PayloadCreator::Builder)),
-                        "l2" => return Ok(Some(PayloadCreator::L2)),
+                        "builder" => return Ok(Some(PayloadSource::Builder)),
+                        "l2" => return Ok(Some(PayloadSource::L2)),
                         _ => panic!("Unknown context: {}", context),
                     }
                 } else {
