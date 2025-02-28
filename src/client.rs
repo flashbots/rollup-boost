@@ -12,7 +12,9 @@ use jsonrpsee::core::{ClientError, RpcResult};
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorCode;
-use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpPayloadAttributes};
+use op_alloy_rpc_types_engine::{
+    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpPayloadAttributes,
+};
 use paste::paste;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -195,7 +197,12 @@ impl ExecutionClient {
         let start = Instant::now();
         let response = self
             .auth_client
-            .new_payload_v4(payload, versioned_hashes, parent_beacon_block_root, execution_requests)
+            .new_payload_v4(
+                payload,
+                versioned_hashes,
+                parent_beacon_block_root,
+                execution_requests,
+            )
             .await
             .map_err(|e| match e {
                 ClientError::Call(err) => err,
