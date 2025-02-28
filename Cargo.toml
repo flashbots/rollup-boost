@@ -6,11 +6,12 @@ edition = "2021"
 [dependencies]
 op-alloy-rpc-types-engine = "0.7.3"
 op-alloy-rpc-types = "0.7.3"
-op-alloy-rpc-jsonrpsee = { version = "0.9.6", features = ["client"] }
+op-alloy-rpc-jsonrpsee = { version = "0.7.3", features = ["client"] }
+alloy-rlp = "0.3.10"
 alloy-rpc-types-engine = "0.7.3"
 alloy-rpc-types-eth = "0.7.3"
-alloy-primitives = { version = "0.8.10", features = ["rand"] }
-alloy-eips = { version = "0.9.2", features = ["serde"] }
+alloy-primitives = { version = "0.8.21", features = [ "getrandom" ] }
+alloy-eips = { version = "0.7.3", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1.4"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter", "json"] }
@@ -48,6 +49,7 @@ metrics-process = "2.3.1"
 metrics-util = "0.18.0"
 eyre = "0.6.12"
 paste = "1.0.15"
+url = { version = "2.3", default-features = false }
 
 # dev dependencies for integration tests
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
