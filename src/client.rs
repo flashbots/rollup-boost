@@ -1,7 +1,7 @@
 use crate::auth_layer::{AuthClientLayer, AuthClientService};
 use crate::metrics::ClientMetrics;
 use crate::server::{EngineApiClient, PayloadSource};
-use alloy_primitives::B256;
+use alloy_primitives::{Bytes, B256};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,
     PayloadId, PayloadStatus,
@@ -12,7 +12,10 @@ use jsonrpsee::core::{ClientError, RpcResult};
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorCode;
-use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
+use op_alloy_rpc_types_engine::{
+    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
+    OpPayloadAttributes,
+};
 use paste::paste;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -125,6 +128,33 @@ impl ExecutionClient {
         response
     }
 
+    pub async fn get_payload_v4(
+        &self,
+        payload_id: PayloadId,
+    ) -> RpcResult<(OpExecutionPayloadEnvelopeV4, PayloadSource)> {
+        let start = Instant::now();
+        let response = self
+            .auth_client
+            .get_payload_v4(payload_id)
+            .await
+            .map(|payload| (payload, self.payload_source.clone()))
+            .map_err(|e| match e {
+                ClientError::Call(err) => err,
+                other_error => {
+                    error!(
+                        message = "error calling get_payload_v4",
+                        "error" = %other_error,
+                        "payload_id" = %payload_id
+                    );
+                    ErrorCode::InternalError.into()
+                }
+            });
+        if let Some(metrics) = &self.metrics {
+            metrics.record_get_payload_v4(start.elapsed(), self.get_response_code(&response));
+        }
+        response
+    }
+
     pub async fn new_payload_v3(
         &self,
         payload: ExecutionPayloadV3,
@@ -152,6 +182,43 @@ impl ExecutionClient {
             });
         if let Some(metrics) = &self.metrics {
             metrics.record_new_payload_v3(start.elapsed(), self.get_response_code(&response));
+        }
+        response
+    }
+
+    pub async fn new_payload_v4(
+        &self,
+        payload: OpExecutionPayloadV4,
+        versioned_hashes: Vec<B256>,
+        parent_beacon_block_root: B256,
+        execution_requests: Vec<Bytes>,
+    ) -> RpcResult<PayloadStatus> {
+        let execution_payload = ExecutionPayload::from(payload.payload_inner.clone());
+        let block_hash = execution_payload.block_hash();
+        let start = Instant::now();
+        let response = self
+            .auth_client
+            .new_payload_v4(
+                payload,
+                versioned_hashes,
+                parent_beacon_block_root,
+                execution_requests,
+            )
+            .await
+            .map_err(|e| match e {
+                ClientError::Call(err) => err,
+                other_error => {
+                    error!(
+                        message = "error calling new_payload_v4",
+                        "url" = ?self.auth_rpc,
+                        "error" = %other_error,
+                        "block_hash" = %block_hash
+                    );
+                    ErrorCode::InternalError.into()
+                }
+            });
+        if let Some(metrics) = &self.metrics {
+            metrics.record_new_payload_v4(start.elapsed(), self.get_response_code(&response));
         }
         response
     }

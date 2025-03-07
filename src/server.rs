@@ -1,7 +1,7 @@
 use crate::client::ExecutionClient;
 use crate::debug_api;
 use crate::metrics::ServerMetrics;
-use alloy_primitives::B256;
+use alloy_primitives::{Bytes, B256};
 use debug_api::DebugServer;
 use std::num::NonZero;
 use std::sync::Arc;
@@ -13,10 +13,13 @@ use alloy_rpc_types_engine::{
 };
 use jsonrpsee::core::{async_trait, ClientError, RegisterMethodError, RpcResult};
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
-use jsonrpsee::types::ErrorObject;
+use jsonrpsee::types::{ErrorCode, ErrorObject};
 use jsonrpsee::RpcModule;
 use lru::LruCache;
-use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
+use op_alloy_rpc_types_engine::{
+    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
+    OpPayloadAttributes,
+};
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
 use opentelemetry::trace::{Span, TraceContextExt, Tracer};
 use opentelemetry::{Context, KeyValue};
@@ -34,6 +37,167 @@ pub struct PayloadTraceContext {
     block_hash_to_payload_ids: Arc<Mutex<LruCache<B256, Vec<PayloadId>>>>,
     payload_id_to_span: Arc<Mutex<LruCache<PayloadId, Arc<BoxedSpan>>>>,
     local_to_external_payload_ids: Arc<Mutex<LruCache<PayloadId, PayloadId>>>,
+}
+
+enum GetPayloadVersion {
+    V3,
+    V4,
+}
+
+impl GetPayloadVersion {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GetPayloadVersion::V3 => "v3",
+            GetPayloadVersion::V4 => "v4",
+        }
+    }
+
+    pub async fn get_payload(
+        &self,
+        client: &ExecutionClient,
+        payload_id: PayloadId,
+    ) -> RpcResult<(OpExecutionPayloadEnvelope, PayloadSource)> {
+        match self {
+            GetPayloadVersion::V3 => client
+                .get_payload_v3(payload_id)
+                .await
+                .map(|(payload, source)| (OpExecutionPayloadEnvelope::V3(payload), source)),
+            GetPayloadVersion::V4 => client
+                .get_payload_v4(payload_id)
+                .await
+                .map(|(payload, source)| (OpExecutionPayloadEnvelope::V4(payload), source)),
+        }
+    }
+}
+
+impl Clone for GetPayloadVersion {
+    fn clone(&self) -> Self {
+        match self {
+            GetPayloadVersion::V3 => GetPayloadVersion::V3,
+            GetPayloadVersion::V4 => GetPayloadVersion::V4,
+        }
+    }
+}
+
+struct NewPayloadV3 {
+    payload: ExecutionPayloadV3,
+    versioned_hashes: Vec<B256>,
+    parent_beacon_block_root: B256,
+}
+
+impl Clone for NewPayloadV3 {
+    fn clone(&self) -> Self {
+        NewPayloadV3 {
+            payload: self.payload.clone(),
+            versioned_hashes: self.versioned_hashes.clone(),
+            parent_beacon_block_root: self.parent_beacon_block_root,
+        }
+    }
+}
+
+struct NewPayloadV4 {
+    payload: OpExecutionPayloadV4,
+    versioned_hashes: Vec<B256>,
+    parent_beacon_block_root: B256,
+    execution_requests: Vec<Bytes>,
+}
+
+impl Clone for NewPayloadV4 {
+    fn clone(&self) -> Self {
+        NewPayloadV4 {
+            payload: self.payload.clone(),
+            versioned_hashes: self.versioned_hashes.clone(),
+            parent_beacon_block_root: self.parent_beacon_block_root,
+            execution_requests: self.execution_requests.clone(),
+        }
+    }
+}
+enum NewPayloadVersion {
+    V3(NewPayloadV3),
+    V4(NewPayloadV4),
+}
+
+impl NewPayloadVersion {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NewPayloadVersion::V3(_) => "v3",
+            NewPayloadVersion::V4(_) => "v4",
+        }
+    }
+
+    pub fn execution_payload(&self) -> ExecutionPayloadV3 {
+        match self {
+            NewPayloadVersion::V3(payload) => payload.payload.clone(),
+            NewPayloadVersion::V4(payload) => payload.payload.payload_inner.clone(),
+        }
+    }
+
+    pub async fn new_payload(&self, client: &ExecutionClient) -> RpcResult<PayloadStatus> {
+        match self {
+            NewPayloadVersion::V3(payload) => {
+                client
+                    .new_payload_v3(
+                        payload.payload.clone(),
+                        payload.versioned_hashes.clone(),
+                        payload.parent_beacon_block_root,
+                    )
+                    .await
+            }
+            NewPayloadVersion::V4(payload) => {
+                client
+                    .new_payload_v4(
+                        payload.payload.clone(),
+                        payload.versioned_hashes.clone(),
+                        payload.parent_beacon_block_root,
+                        payload.execution_requests.clone(),
+                    )
+                    .await
+            }
+        }
+    }
+}
+
+impl Clone for NewPayloadVersion {
+    fn clone(&self) -> Self {
+        match self {
+            NewPayloadVersion::V3(payload) => NewPayloadVersion::V3(payload.clone()),
+            NewPayloadVersion::V4(payload) => NewPayloadVersion::V4(payload.clone()),
+        }
+    }
+}
+
+enum OpExecutionPayloadEnvelope {
+    V3(OpExecutionPayloadEnvelopeV3),
+    V4(OpExecutionPayloadEnvelopeV4),
+}
+
+impl OpExecutionPayloadEnvelope {
+    fn execution_payload(&self) -> ExecutionPayloadV3 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(envelope) => envelope.execution_payload.clone(),
+            OpExecutionPayloadEnvelope::V4(envelope) => envelope.execution_payload.clone(),
+        }
+    }
+
+    fn parent_beacon_block_root(&self) -> B256 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(envelope) => envelope.parent_beacon_block_root,
+            OpExecutionPayloadEnvelope::V4(envelope) => envelope.parent_beacon_block_root,
+        }
+    }
+}
+
+impl Clone for OpExecutionPayloadEnvelope {
+    fn clone(&self) -> Self {
+        match self {
+            OpExecutionPayloadEnvelope::V3(envelope) => {
+                OpExecutionPayloadEnvelope::V3(envelope.clone())
+            }
+            OpExecutionPayloadEnvelope::V4(envelope) => {
+                OpExecutionPayloadEnvelope::V4(envelope.clone())
+            }
+        }
+    }
 }
 
 impl PayloadTraceContext {
@@ -217,12 +381,27 @@ pub trait EngineApi {
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3>;
 
+    #[method(name = "getPayloadV4")]
+    async fn get_payload_v4(
+        &self,
+        payload_id: PayloadId,
+    ) -> RpcResult<OpExecutionPayloadEnvelopeV4>;
+
     #[method(name = "newPayloadV3")]
     async fn new_payload_v3(
         &self,
         payload: ExecutionPayloadV3,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
+    ) -> RpcResult<PayloadStatus>;
+
+    #[method(name = "newPayloadV4")]
+    async fn new_payload_v4(
+        &self,
+        payload: OpExecutionPayloadV4,
+        versioned_hashes: Vec<B256>,
+        parent_beacon_block_root: B256,
+        execution_requests: Vec<Bytes>,
     ) -> RpcResult<PayloadStatus>;
 }
 
@@ -249,12 +428,31 @@ impl EngineApiServer for RollupBoostServer {
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
         let start = Instant::now();
-        let res = self.get_payload_v3(payload_id).await;
+        let res = self.get_payload(GetPayloadVersion::V3, payload_id).await;
         let elapsed = start.elapsed();
         if let Some(metrics) = &self.metrics {
             metrics.get_payload_v3_total.record(elapsed);
         }
-        res
+        res.and_then(|envelope| match envelope {
+            OpExecutionPayloadEnvelope::V3(payload) => Ok(payload),
+            _ => Err(ErrorCode::InternalError.into()),
+        })
+    }
+
+    async fn get_payload_v4(
+        &self,
+        payload_id: PayloadId,
+    ) -> RpcResult<OpExecutionPayloadEnvelopeV4> {
+        let start = Instant::now();
+        let res = self.get_payload(GetPayloadVersion::V4, payload_id).await;
+        let elapsed = start.elapsed();
+        if let Some(metrics) = &self.metrics {
+            metrics.get_payload_v4_total.record(elapsed);
+        }
+        res.and_then(|envelope| match envelope {
+            OpExecutionPayloadEnvelope::V4(payload) => Ok(payload),
+            _ => Err(ErrorCode::InternalError.into()),
+        })
     }
 
     async fn new_payload_v3(
@@ -265,11 +463,38 @@ impl EngineApiServer for RollupBoostServer {
     ) -> RpcResult<PayloadStatus> {
         let start = Instant::now();
         let res = self
-            .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
+            .new_payload(NewPayloadVersion::V3(NewPayloadV3 {
+                payload,
+                versioned_hashes,
+                parent_beacon_block_root,
+            }))
             .await;
         let elapsed = start.elapsed();
         if let Some(metrics) = &self.metrics {
             metrics.new_payload_v3_total.record(elapsed);
+        }
+        res
+    }
+
+    async fn new_payload_v4(
+        &self,
+        payload: OpExecutionPayloadV4,
+        versioned_hashes: Vec<B256>,
+        parent_beacon_block_root: B256,
+        execution_requests: Vec<Bytes>,
+    ) -> RpcResult<PayloadStatus> {
+        let start = Instant::now();
+        let res = self
+            .new_payload(NewPayloadVersion::V4(NewPayloadV4 {
+                payload,
+                versioned_hashes,
+                parent_beacon_block_root,
+                execution_requests,
+            }))
+            .await;
+        let elapsed = start.elapsed();
+        if let Some(metrics) = &self.metrics {
+            metrics.new_payload_v4_total.record(elapsed);
         }
         res
     }
@@ -425,12 +650,17 @@ impl RollupBoostServer {
         Ok(l2_response)
     }
 
-    async fn get_payload_v3(
+    async fn get_payload(
         &self,
+        version: GetPayloadVersion,
         payload_id: PayloadId,
-    ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
-        info!(message = "received get_payload_v3", "payload_id" = %payload_id);
-        let l2_client_future = self.l2_client.get_payload_v3(payload_id);
+    ) -> RpcResult<OpExecutionPayloadEnvelope> {
+        let label = version.as_str();
+        info!(message = format!("received get_payload_{}", label), "payload_id" = %payload_id);
+
+        let l2_version = version.clone();
+        let l2_client_future =
+            async move { l2_version.get_payload(&self.l2_client, payload_id).await };
 
         let builder_client_future = Box::pin(async move {
             let execution_mode = self.execution_mode.lock().await;
@@ -482,19 +712,36 @@ impl RollupBoostServer {
             }
 
             let builder = self.builder_client.clone();
-            let (payload, source) = builder.get_payload_v3(external_payload_id).await.map_err(|e| {
-                error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
+            let (payload, source) = version.get_payload(&builder, external_payload_id).await.map_err(|e| {
+                error!(message = "error calling get_payload from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 e
-                })?;
+            })?;
 
-            let block_hash = ExecutionPayload::from(payload.clone().execution_payload).block_hash();
+            let block_hash =
+                ExecutionPayload::from(payload.clone().execution_payload()).block_hash();
             info!(message = "received payload from builder", "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id, "block_hash" = %block_hash);
 
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
             // If validation fails, return the local block since that one has already been validated.
-            let payload_status = self.l2_client.auth_client.new_payload_v3(payload.execution_payload.clone(), vec![], payload.parent_beacon_block_root).await.map_err(|e| {
-                error!(message = "error calling new_payload_v3 to validate builder payload", "url" = ?self.l2_client.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
+            let l2_call = match version {
+                GetPayloadVersion::V3 => self.l2_client.auth_client.new_payload_v3(
+                    payload.execution_payload(),
+                    vec![],
+                    payload.parent_beacon_block_root(),
+                ),
+                GetPayloadVersion::V4 => self.l2_client.auth_client.new_payload_v4(
+                    OpExecutionPayloadV4 {
+                        payload_inner: payload.execution_payload(),
+                        withdrawals_root: B256::ZERO,
+                    },
+                    vec![],
+                    payload.parent_beacon_block_root(),
+                    vec![],
+                ),
+            };
+            let payload_status = l2_call.await.map_err(|e| {
+                error!(message = format!("error calling new_payload_{} to validate builder payload", label), "url" = ?self.l2_client.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
                 e
             })?;
             if let Some(mut s) = span {
@@ -527,7 +774,7 @@ impl RollupBoostServer {
             (Err(_), Err(e)) => Err(e),
         };
         payload.map(|(payload, context)| {
-            let inner_payload = ExecutionPayload::from(payload.clone().execution_payload);
+            let inner_payload = ExecutionPayload::from(payload.clone().execution_payload());
             let block_hash = inner_payload.block_hash();
             let block_number = inner_payload.block_number();
 
@@ -545,20 +792,17 @@ impl RollupBoostServer {
                 "context" = %context,
                 "payload_id" = %payload_id
             );
+
             payload
         })
     }
 
-    async fn new_payload_v3(
-        &self,
-        payload: ExecutionPayloadV3,
-        versioned_hashes: Vec<B256>,
-        parent_beacon_block_root: B256,
-    ) -> RpcResult<PayloadStatus> {
-        let execution_payload = ExecutionPayload::from(payload.clone());
+    async fn new_payload(&self, version: NewPayloadVersion) -> RpcResult<PayloadStatus> {
+        let label = version.as_str();
+        let execution_payload = ExecutionPayload::from(version.execution_payload());
         let block_hash = execution_payload.block_hash();
         let parent_hash = execution_payload.parent_hash();
-        info!(message = "received new_payload_v3", "block_hash" = %block_hash);
+        info!(message = format!("received new_payload_{}", label), "block_hash" = %block_hash);
         // async call to builder to sync the builder node
         let execution_mode = self.execution_mode.lock().await;
         if self.boost_sync && !execution_mode.is_disabled() {
@@ -583,18 +827,18 @@ impl RollupBoostServer {
                 .await;
 
             let builder = self.builder_client.clone();
-            let builder_payload = payload.clone();
-            let builder_versioned_hashes = versioned_hashes.clone();
+            let builder_version = version.clone();
             tokio::spawn(async move {
-                let _ = builder.new_payload_v3(builder_payload, builder_versioned_hashes, parent_beacon_block_root).await
+                let new_payload_response = builder_version.new_payload(&builder).await;
+                let _ = new_payload_response
                 .map(|response: PayloadStatus| {
                     if response.is_invalid() {
-                        error!(message = "builder rejected new_payload_v3", "url" = ?builder.auth_rpc, "block_hash" = %block_hash);
+                        error!(message = format!("builder rejected new_payload_{}", label), "url" = ?builder.auth_rpc, "block_hash" = %block_hash);
                     } else {
-                        info!(message = "called new_payload_v3 to builder", "url" = ?builder.auth_rpc, "payload_status" = %response.status, "block_hash" = %block_hash);
+                        info!(message = format!("called new_payload_{} to builder", label), "url" = ?builder.auth_rpc, "payload_status" = %response.status, "block_hash" = %block_hash);
                     }
                 }).map_err(|e| {
-                    error!(message = "error calling new_payload_v3 to builder", "url" = ?builder.auth_rpc, "error" = %e, "block_hash" = %block_hash);
+                    error!(message = format!("error calling new_payload_{} to builder", label), "url" = ?builder.auth_rpc, "error" = %e, "block_hash" = %block_hash);
                     e
                 });
                 if let Some(mut spans) = spans {
@@ -602,9 +846,8 @@ impl RollupBoostServer {
                 };
             });
         }
-        self.l2_client
-            .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
-            .await
+
+        version.new_payload(&self.l2_client).await
     }
 }
 
@@ -640,57 +883,78 @@ mod tests {
     pub struct MockEngineServer {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
         get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
+        get_payload_v4_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
+        new_payload_v4_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256, Vec<Bytes>)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
         get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
+        get_payload_v4_response: RpcResult<OpExecutionPayloadEnvelopeV4>,
         new_payload_response: RpcResult<PayloadStatus>,
+        new_payload_v4_response: RpcResult<PayloadStatus>,
 
         pub override_payload_id: Option<PayloadId>,
     }
 
     impl MockEngineServer {
         pub fn new() -> Self {
+            let execution_payload = ExecutionPayloadV3 {
+                payload_inner: ExecutionPayloadV2 {
+                    payload_inner: ExecutionPayloadV1 {
+                        base_fee_per_gas:  U256::from(7u64),
+                        block_number: 0xa946u64,
+                        block_hash: hex!("a5ddd3f286f429458a39cafc13ffe89295a7efa8eb363cf89a1a4887dbcf272b").into(),
+                        logs_bloom: hex!("00200004000000000000000080000000000200000000000000000000000000000000200000000000000000000000000000000000800000000200000000000000000000000000000000000008000000200000000000000000000001000000000000000000000000000000800000000000000000000100000000000030000000000000000040000000000000000000000000000000000800080080404000000000000008000000000008200000000000200000000000000000000000000000000000000002000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000100000000000000000000").into(),
+                        extra_data: hex!("d883010d03846765746888676f312e32312e31856c696e7578").into(),
+                        gas_limit: 0x1c9c380,
+                        gas_used: 0x1f4a9,
+                        timestamp: 0x651f35b8,
+                        fee_recipient: hex!("f97e180c050e5ab072211ad2c213eb5aee4df134").into(),
+                        parent_hash: hex!("d829192799c73ef28a7332313b3c03af1f2d5da2c36f8ecfafe7a83a3bfb8d1e").into(),
+                        prev_randao: hex!("753888cc4adfbeb9e24e01c84233f9d204f4a9e1273f0e29b43c4c148b2b8b7e").into(),
+                        receipts_root: hex!("4cbc48e87389399a0ea0b382b1c46962c4b8e398014bf0cc610f9c672bee3155").into(),
+                        state_root: hex!("017d7fa2b5adb480f5e05b2c95cb4186e12062eed893fc8822798eed134329d1").into(),
+                        transactions: vec![],
+                    },
+                    withdrawals: vec![],
+                },
+                blob_gas_used: 0xc0000,
+                excess_blob_gas: 0x580000,
+            };
+
+            let base_payload_envelope = OpExecutionPayloadEnvelopeV3 {
+                execution_payload: execution_payload.clone(),
+                block_value: U256::from(0),
+                blobs_bundle: BlobsBundleV1 {
+                    commitments: vec![],
+                    proofs: vec![],
+                    blobs: vec![],
+                },
+                should_override_builder: false,
+                parent_beacon_block_root: B256::ZERO,
+            };
+
             Self {
                 fcu_requests: Arc::new(Mutex::new(vec![])),
                 get_payload_requests: Arc::new(Mutex::new(vec![])),
+                get_payload_v4_requests: Arc::new(Mutex::new(vec![])),
                 new_payload_requests: Arc::new(Mutex::new(vec![])),
-                fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))),
-                get_payload_response: Ok(OpExecutionPayloadEnvelopeV3{
-                    execution_payload: ExecutionPayloadV3 {
-                            payload_inner: ExecutionPayloadV2 {
-                                payload_inner: ExecutionPayloadV1 {
-                                    base_fee_per_gas:  U256::from(7u64),
-                                    block_number: 0xa946u64,
-                                    block_hash: hex!("a5ddd3f286f429458a39cafc13ffe89295a7efa8eb363cf89a1a4887dbcf272b").into(),
-                                    logs_bloom: hex!("00200004000000000000000080000000000200000000000000000000000000000000200000000000000000000000000000000000800000000200000000000000000000000000000000000008000000200000000000000000000001000000000000000000000000000000800000000000000000000100000000000030000000000000000040000000000000000000000000000000000800080080404000000000000008000000000008200000000000200000000000000000000000000000000000000002000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000100000000000000000000").into(),
-                                    extra_data: hex!("d883010d03846765746888676f312e32312e31856c696e7578").into(),
-                                    gas_limit: 0x1c9c380,
-                                    gas_used: 0x1f4a9,
-                                    timestamp: 0x651f35b8,
-                                    fee_recipient: hex!("f97e180c050e5ab072211ad2c213eb5aee4df134").into(),
-                                    parent_hash: hex!("d829192799c73ef28a7332313b3c03af1f2d5da2c36f8ecfafe7a83a3bfb8d1e").into(),
-                                    prev_randao: hex!("753888cc4adfbeb9e24e01c84233f9d204f4a9e1273f0e29b43c4c148b2b8b7e").into(),
-                                    receipts_root: hex!("4cbc48e87389399a0ea0b382b1c46962c4b8e398014bf0cc610f9c672bee3155").into(),
-                                    state_root: hex!("017d7fa2b5adb480f5e05b2c95cb4186e12062eed893fc8822798eed134329d1").into(),
-                                    transactions: vec![],
-                                },
-                                withdrawals: vec![],
-                            },
-                            blob_gas_used: 0xc0000,
-                        excess_blob_gas: 0x580000,
-                    },
-                    block_value: U256::from(0),
-                    blobs_bundle: BlobsBundleV1{
-                        commitments: vec![],
-                        proofs: vec![],
-                        blobs: vec![],
-                    },
-                should_override_builder: false,
-                parent_beacon_block_root: B256::ZERO,
-            }),
-            override_payload_id: None,
-            new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
-        }
+                new_payload_v4_requests: Arc::new(Mutex::new(vec![])),
+                fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(
+                    PayloadStatusEnum::Valid,
+                ))),
+                get_payload_response: Ok(base_payload_envelope.clone()),
+                get_payload_v4_response: Ok(OpExecutionPayloadEnvelopeV4 {
+                    execution_payload: base_payload_envelope.execution_payload.clone(),
+                    block_value: base_payload_envelope.block_value,
+                    blobs_bundle: base_payload_envelope.blobs_bundle.clone(),
+                    should_override_builder: base_payload_envelope.should_override_builder,
+                    parent_beacon_block_root: base_payload_envelope.parent_beacon_block_root,
+                    execution_requests: vec![],
+                }),
+                override_payload_id: None,
+                new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
+                new_payload_v4_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
+            }
         }
     }
 
@@ -836,6 +1100,53 @@ mod tests {
         assert_eq!(req.2, B256::ZERO);
         drop(new_payload_requests_mu);
 
+        // test new_payload_v4 success
+        let new_payload_response = test_harness
+            .client
+            .new_payload_v4(
+                OpExecutionPayloadV4 {
+                    payload_inner: test_harness
+                        .l2_mock
+                        .get_payload_v4_response
+                        .clone()
+                        .unwrap()
+                        .execution_payload
+                        .clone(),
+                    withdrawals_root: B256::ZERO,
+                },
+                vec![],
+                B256::ZERO,
+                vec![],
+            )
+            .await;
+        if let Err(ref err) = new_payload_response {
+            println!("Test encountered error: {:?}", err);
+        }
+        assert!(new_payload_response.is_ok());
+        let new_payload_requests = test_harness.l2_mock.new_payload_v4_requests.clone();
+        let new_payload_requests_mu = new_payload_requests.lock().unwrap();
+        let new_payload_requests_builder =
+            test_harness.builder_mock.new_payload_v4_requests.clone();
+        let new_payload_requests_builder_mu = new_payload_requests_builder.lock().unwrap();
+        assert_eq!(new_payload_requests_mu.len(), 1);
+        assert_eq!(new_payload_requests_builder_mu.len(), 0);
+        let req: &(ExecutionPayloadV3, Vec<FixedBytes<32>>, B256, Vec<Bytes>) =
+            new_payload_requests_mu.first().unwrap();
+        assert_eq!(
+            req.0,
+            test_harness
+                .l2_mock
+                .get_payload_v4_response
+                .clone()
+                .unwrap()
+                .execution_payload
+                .clone()
+        );
+        assert_eq!(req.1, Vec::<FixedBytes<32>>::new());
+        assert_eq!(req.2, B256::ZERO);
+        assert_eq!(req.3, Vec::<Bytes>::new());
+        drop(new_payload_requests_mu);
+
         // test get_payload_v3 success
         let get_payload_response = test_harness
             .client
@@ -853,6 +1164,25 @@ mod tests {
         assert_eq!(new_payload_requests_mu.len(), 2);
         let req: &PayloadId = get_payload_requests_mu.first().unwrap();
         assert_eq!(*req, PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]));
+
+        // test get_payload_v4 success
+        let get_payload_response = test_harness
+            .client
+            .get_payload_v4(PayloadId::new([0, 0, 0, 0, 0, 0, 1, 0]))
+            .await;
+        assert!(get_payload_response.is_ok());
+        let get_payload_requests = test_harness.l2_mock.get_payload_v4_requests.clone();
+        let get_payload_requests_mu = get_payload_requests.lock().unwrap();
+        let get_payload_requests_builder =
+            test_harness.builder_mock.get_payload_v4_requests.clone();
+        let get_payload_requests_builder_mu = get_payload_requests_builder.lock().unwrap();
+        let new_payload_requests = test_harness.l2_mock.new_payload_v4_requests.clone();
+        let new_payload_requests_mu = new_payload_requests.lock().unwrap();
+        assert_eq!(get_payload_requests_builder_mu.len(), 1);
+        assert_eq!(get_payload_requests_mu.len(), 1);
+        assert_eq!(new_payload_requests_mu.len(), 2);
+        let req: &PayloadId = get_payload_requests_mu.first().unwrap();
+        assert_eq!(*req, PayloadId::new([0, 0, 0, 0, 0, 0, 1, 0]));
 
         test_harness.cleanup().await;
     }
@@ -961,6 +1291,17 @@ mod tests {
             .unwrap();
 
         module
+            .register_method("engine_getPayloadV4", move |params, _, _| {
+                let params: (PayloadId,) = params.parse()?;
+                let mut get_payload_requests =
+                    mock_engine_server.get_payload_v4_requests.lock().unwrap();
+                get_payload_requests.push(params.0);
+
+                mock_engine_server.get_payload_v4_response.clone()
+            })
+            .unwrap();
+
+        module
             .register_method("engine_newPayloadV3", move |params, _, _| {
                 let params: (ExecutionPayloadV3, Vec<B256>, B256) = params.parse()?;
                 let mut new_payload_requests =
@@ -968,6 +1309,17 @@ mod tests {
                 new_payload_requests.push(params);
 
                 mock_engine_server.new_payload_response.clone()
+            })
+            .unwrap();
+
+        module
+            .register_method("engine_newPayloadV4", move |params, _, _| {
+                let params: (ExecutionPayloadV3, Vec<B256>, B256, Vec<Bytes>) = params.parse()?;
+                let mut new_payload_requests =
+                    mock_engine_server.new_payload_v4_requests.lock().unwrap();
+                new_payload_requests.push(params);
+
+                mock_engine_server.new_payload_v4_response.clone()
             })
             .unwrap();
 
