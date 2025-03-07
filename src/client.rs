@@ -13,7 +13,8 @@ use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorCode;
 use op_alloy_rpc_types_engine::{
-    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpPayloadAttributes,
+    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
+    OpPayloadAttributes,
 };
 use paste::paste;
 use std::path::PathBuf;
@@ -187,12 +188,12 @@ impl ExecutionClient {
 
     pub async fn new_payload_v4(
         &self,
-        payload: ExecutionPayloadV3,
+        payload: OpExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Vec<Bytes>,
     ) -> RpcResult<PayloadStatus> {
-        let execution_payload = ExecutionPayload::from(payload.clone());
+        let execution_payload = ExecutionPayload::from(payload.payload_inner.clone());
         let block_hash = execution_payload.block_hash();
         let start = Instant::now();
         let response = self

@@ -17,7 +17,8 @@ use jsonrpsee::types::{ErrorCode, ErrorObject};
 use jsonrpsee::RpcModule;
 use lru::LruCache;
 use op_alloy_rpc_types_engine::{
-    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpPayloadAttributes,
+    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
+    OpPayloadAttributes,
 };
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
 use opentelemetry::trace::{Span, TraceContextExt, Tracer};
@@ -95,7 +96,7 @@ impl Clone for NewPayloadV3 {
 }
 
 struct NewPayloadV4 {
-    payload: ExecutionPayloadV3,
+    payload: OpExecutionPayloadV4,
     versioned_hashes: Vec<B256>,
     parent_beacon_block_root: B256,
     execution_requests: Vec<Bytes>,
@@ -127,7 +128,7 @@ impl NewPayloadVersion {
     pub fn execution_payload(&self) -> ExecutionPayloadV3 {
         match self {
             NewPayloadVersion::V3(payload) => payload.payload.clone(),
-            NewPayloadVersion::V4(payload) => payload.payload.clone(),
+            NewPayloadVersion::V4(payload) => payload.payload.payload_inner.clone(),
         }
     }
 
@@ -397,7 +398,7 @@ pub trait EngineApi {
     #[method(name = "newPayloadV4")]
     async fn new_payload_v4(
         &self,
-        payload: ExecutionPayloadV3,
+        payload: OpExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Vec<Bytes>,
@@ -477,7 +478,7 @@ impl EngineApiServer for RollupBoostServer {
 
     async fn new_payload_v4(
         &self,
-        payload: ExecutionPayloadV3,
+        payload: OpExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Vec<Bytes>,
@@ -730,7 +731,10 @@ impl RollupBoostServer {
                     payload.parent_beacon_block_root(),
                 ),
                 GetPayloadVersion::V4 => self.l2_client.auth_client.new_payload_v4(
-                    payload.execution_payload(),
+                    OpExecutionPayloadV4 {
+                        payload_inner: payload.execution_payload(),
+                        withdrawals_root: B256::ZERO,
+                    },
                     vec![],
                     payload.parent_beacon_block_root(),
                     vec![],
@@ -1100,13 +1104,16 @@ mod tests {
         let new_payload_response = test_harness
             .client
             .new_payload_v4(
-                test_harness
-                    .l2_mock
-                    .get_payload_v4_response
-                    .clone()
-                    .unwrap()
-                    .execution_payload
-                    .clone(),
+                OpExecutionPayloadV4 {
+                    payload_inner: test_harness
+                        .l2_mock
+                        .get_payload_v4_response
+                        .clone()
+                        .unwrap()
+                        .execution_payload
+                        .clone(),
+                    withdrawals_root: B256::ZERO,
+                },
                 vec![],
                 B256::ZERO,
                 vec![],
