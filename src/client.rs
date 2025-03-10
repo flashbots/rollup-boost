@@ -6,7 +6,7 @@ use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,
     PayloadId, PayloadStatus,
 };
-use clap::{arg, Parser};
+use clap::{arg, ArgGroup, Parser};
 use http::{StatusCode, Uri};
 use jsonrpsee::core::{ClientError, RpcResult};
 use jsonrpsee::http_client::transport::HttpBackend;
@@ -20,14 +20,17 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tracing::error;
 
+/// Default URI for the engine-API RPC server.
+pub const DEFAULT_AUTH_URI: &str = "127.0.0.1:8551";
+
 #[derive(Error, Debug)]
 pub enum ExecutionClientError {
     #[error(transparent)]
     HttpClient(#[from] jsonrpsee::core::client::Error),
     #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
     Jwt(#[from] JwtError),
+    #[error("Missing JWT secret")]
+    MissingJwtSecret,
 }
 
 /// Client interface for interacting with execution layer node's Engine API.
@@ -170,9 +173,17 @@ macro_rules! define_rpc_args {
         $(
             paste! {
                 #[derive(Parser, Debug, Clone, PartialEq, Eq)]
+                #[clap(group(ArgGroup::new(concat!(stringify!($prefix), "_auth_jwt")).required(true).multiple(false).args(&[
+                    concat!(stringify!($prefix), "_jwt_path"),
+                    concat!(stringify!($prefix), "_jwt_token")])))
+                ]
+                #[clap(group(ArgGroup::new(concat!(stringify!($prefix), "_forward_jwt")).required(false).multiple(false).args(&[
+                    concat!(stringify!($prefix), "_forward_jwt_path"),
+                    concat!(stringify!($prefix), "_forward_jwt_token")])))
+                ]
                 pub struct $name {
                     /// Auth server address
-                    #[arg(long, env, default_value = "127.0.0.1:8551")]
+                    #[arg(long, env, default_value = DEFAULT_AUTH_URI)]
                     pub [<$prefix _url>]: Uri,
 
                     /// Hex encoded JWT secret to use for the authenticated engine-API RPC server.
@@ -186,6 +197,54 @@ macro_rules! define_rpc_args {
                     /// Timeout for http calls in milliseconds
                     #[arg(long, env, default_value_t = 1000)]
                     pub [<$prefix _timeout>]: u64,
+
+                    /// Optional Forward-RPC endpoint for non engine-API RPC requests.
+                    ///
+                    /// NOTE: If unspecified, the engine-API RPC server will be used for all forwarded requests.
+                    #[arg(long, env, required = false)]
+                    pub [<$prefix _forward_url>]: Option<Uri>,
+
+                    /// Hex encoded JWT secret to use for a authenticated http-API RPC server.
+                    #[arg(long, env, value_name = "HEX")]
+                    pub [<$prefix _forward_jwt_token>]: Option<JwtSecret>,
+
+                    /// Path to a JWT secret to use for a authenticated http-API RPC server.
+                    #[arg(long, env, value_name = "PATH")]
+                    pub [<$prefix _forward_jwt_path>]: Option<PathBuf>,
+                }
+
+                impl $name {
+                    pub fn get_forward_url(&self) -> Uri {
+                        if let Some(url) = &self.[<$prefix _forward_url>] {
+                            url.clone()
+                        } else {
+                            self.[<$prefix _url>].clone()
+                        }
+                    }
+
+                    pub fn get_jwt(&self) -> Result<JwtSecret, ExecutionClientError> {
+                        if let Some(secret) = &self.[<$prefix _jwt_token>] {
+                            Ok(secret.clone())
+                        } else if let Some(path) = &self.[<$prefix _jwt_path>] {
+                            Ok(JwtSecret::from_file(path)?)
+                        } else {
+                            Err(ExecutionClientError::MissingJwtSecret)
+                        }
+                    }
+
+                    pub fn get_forward_jwt(&self) -> Result<Option<JwtSecret>, ExecutionClientError> {
+                        if let Some(_) = &self.[<$prefix _forward_url>] {
+                            if let Some(secret) = &self.[<$prefix _forward_jwt_token>] {
+                                Ok(Some(secret.clone()))
+                            } else if let Some(path) = &self.[<$prefix _forward_jwt_path>] {
+                                Ok(Some(JwtSecret::from_file(path)?))
+                            } else {
+                                Ok(None)
+                            }
+                        } else {
+                            Ok(Some(self.get_jwt()?))
+                        }
+                    }
                 }
             }
         )*

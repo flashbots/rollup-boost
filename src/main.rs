@@ -1,13 +1,7 @@
 use clap::{arg, Parser, Subcommand};
 use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
 use debug_api::DebugClient;
-use metrics::{ClientMetrics, ServerMetrics};
-use server::ExecutionMode;
-use std::{net::SocketAddr, sync::Arc};
-
-use alloy_rpc_types_engine::JwtSecret;
 use dotenv::dotenv;
-use eyre::bail;
 use http::StatusCode;
 use hyper::service::service_fn;
 use hyper::{server::conn::http1, Request, Response};
@@ -15,13 +9,16 @@ use hyper_util::rt::TokioIo;
 use jsonrpsee::http_client::HttpBody;
 use jsonrpsee::server::Server;
 use jsonrpsee::RpcModule;
+use metrics::{ClientMetrics, ServerMetrics};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::layers::{PrefixLayer, Stack};
 use opentelemetry::global;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::Config, Resource};
 use proxy::ProxyLayer;
+use server::ExecutionMode;
 use server::{PayloadSource, RollupBoostServer};
+use std::{net::SocketAddr, sync::Arc};
 
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal as unix_signal, SignalKind};
@@ -196,14 +193,7 @@ async fn main() -> eyre::Result<()> {
     }
 
     let l2_client_args = args.l2_client;
-
-    let l2_auth_jwt = if let Some(secret) = l2_client_args.l2_jwt_token {
-        secret
-    } else if let Some(path) = l2_client_args.l2_jwt_path.as_ref() {
-        JwtSecret::from_file(path)?
-    } else {
-        bail!("Missing L2 Client JWT secret");
-    };
+    let l2_auth_jwt = l2_client_args.get_jwt()?;
 
     let l2_metrics = if args.metrics {
         Some(Arc::new(ClientMetrics::new(&PayloadSource::L2)))
@@ -219,13 +209,7 @@ async fn main() -> eyre::Result<()> {
     )?;
 
     let builder_args = args.builder;
-    let builder_auth_jwt = if let Some(secret) = builder_args.builder_jwt_token {
-        secret
-    } else if let Some(path) = builder_args.builder_jwt_path.as_ref() {
-        JwtSecret::from_file(path)?
-    } else {
-        bail!("Missing Builder JWT secret");
-    };
+    let builder_auth_jwt = builder_args.get_jwt()?;
 
     let builder_metrics = if args.metrics {
         Some(Arc::new(ClientMetrics::new(&PayloadSource::Builder)))
@@ -262,11 +246,21 @@ async fn main() -> eyre::Result<()> {
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
 
+    // Grab the L2 client forward RPC, and Optional JWT.
+    // This will default to `l2_url` and `l2_auth_jwt` if not specified.
+    let l2_forward_uri = l2_client_args.get_forward_url();
+    let l2_forward_jwt = l2_client_args.get_forward_jwt()?;
+
+    // Grab the Builder client forward RPC URI, and Optional JWT.
+    // This will default to `builder_url` and `builder_auth_jwt` if not specified.
+    let builder_forward_uri = builder_args.get_forward_url();
+    let builder_forward_jwt = builder_args.get_forward_jwt()?;
+
     let service_builder = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-        l2_client_args.l2_url,
-        l2_auth_jwt,
-        builder_args.builder_url,
-        builder_auth_jwt,
+        l2_forward_uri,
+        l2_forward_jwt,
+        builder_forward_uri,
+        builder_forward_jwt,
         metrics,
     ));
 
