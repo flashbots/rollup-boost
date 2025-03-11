@@ -11,8 +11,14 @@ pub struct ServerMetrics {
     #[metric(describe = "Total latency for server `engine_newPayloadV3` call")]
     pub new_payload_v3_total: Histogram,
 
+    #[metric(describe = "Total latency for server `engine_newPayloadV4` call")]
+    pub new_payload_v4_total: Histogram,
+
     #[metric(describe = "Total latency for server `engine_getPayloadV3` call")]
     pub get_payload_v3_total: Histogram,
+
+    #[metric(describe = "Total latency for server `engine_getPayloadV4` call")]
+    pub get_payload_v4_total: Histogram,
 
     #[metric(describe = "Total latency for server `engine_forkChoiceUpdatedV3` call")]
     pub fork_choice_updated_v3_total: Histogram,
@@ -43,17 +49,33 @@ pub struct ClientMetrics {
     #[allow(dead_code)]
     pub new_payload_v3: Histogram,
 
+    #[metric(describe = "Latency for client `engine_newPayloadV4` call")]
+    #[allow(dead_code)]
+    pub new_payload_v4: Histogram,
+
     #[metric(describe = "Number of client `engine_newPayloadV3` responses", labels = ["code"])]
     #[allow(dead_code)]
     pub new_payload_v3_response_count: Counter,
+
+    #[metric(describe = "Number of client `engine_newPayloadV4` responses", labels = ["code"])]
+    #[allow(dead_code)]
+    pub new_payload_v4_response_count: Counter,
 
     #[metric(describe = "Latency for client `engine_getPayloadV3` call")]
     #[allow(dead_code)]
     pub get_payload_v3: Histogram,
 
+    #[metric(describe = "Latency for client `engine_getPayloadV4` call")]
+    #[allow(dead_code)]
+    pub get_payload_v4: Histogram,
+
     #[metric(describe = "Number of client `engine_getPayloadV3` responses", labels = ["code"])]
     #[allow(dead_code)]
     pub get_payload_v3_response_count: Counter,
+
+    #[metric(describe = "Number of client `engine_getPayloadV4` responses", labels = ["code"])]
+    #[allow(dead_code)]
+    pub get_payload_v4_response_count: Counter,
 
     #[metric(describe = "Latency for client `engine_forkChoiceUpdatedV3` call")]
     #[allow(dead_code)]
@@ -111,9 +133,13 @@ impl ClientMetrics {
         Self {
             new_payload_v3: histogram!("rpc.new_payload_v3", "target" => source.to_string()),
             get_payload_v3: histogram!("rpc.get_payload_v3", "target" => source.to_string()),
+            new_payload_v4: histogram!("rpc.new_payload_v4", "target" => source.to_string()),
+            get_payload_v4: histogram!("rpc.get_payload_v4", "target" => source.to_string()),
             fork_choice_updated_v3: histogram!("rpc.fork_choice_updated_v3", "target" => source.to_string()),
             new_payload_v3_response_count: counter!("rpc.new_payload_v3_response_count"),
             get_payload_v3_response_count: counter!("rpc.get_payload_v3_response_count"),
+            new_payload_v4_response_count: counter!("rpc.new_payload_v4_response_count"),
+            get_payload_v4_response_count: counter!("rpc.get_payload_v4_response_count"),
             fork_choice_updated_v3_response_count: counter!(
                 "rpc.fork_choice_updated_v3_response_count"
             ),
@@ -128,6 +154,16 @@ impl ClientMetrics {
     pub fn record_get_payload_v3(&self, latency: Duration, code: String) {
         self.get_payload_v3.record(latency.as_secs_f64());
         counter!("rpc.get_payload_v3_response_count", "code" => code).increment(1);
+    }
+
+    pub fn record_new_payload_v4(&self, latency: Duration, code: String) {
+        self.new_payload_v4.record(latency.as_secs_f64());
+        counter!("rpc.new_payload_v4_response_count", "code" => code).increment(1);
+    }
+
+    pub fn record_get_payload_v4(&self, latency: Duration, code: String) {
+        self.get_payload_v4.record(latency.as_secs_f64());
+        counter!("rpc.get_payload_v4_response_count", "code" => code).increment(1);
     }
 
     pub fn record_fork_choice_updated_v3(&self, latency: Duration, code: String) {
