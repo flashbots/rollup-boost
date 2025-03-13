@@ -40,27 +40,52 @@ where
     }
 
     pub async fn run(&mut self, token: CancellationToken) {
-        info!("starting upstream subscription");
+        // Added the URI to the log message for better identification
+        info!(
+            message = "starting upstream subscription",
+            uri = self.uri.to_string()
+        );
         loop {
             select! {
                 _ = token.cancelled() => {
-                    info!("cancelled upstream subscription");
+                    info!(
+                        message = "cancelled upstream subscription",
+                        uri = self.uri.to_string()
+                    );
                     return;
                 }
                 result = self.connect_and_listen() => {
                     match result {
                         Ok(()) => {
-                            info!(message="upstream connection closed");
+                            info!(
+                                message = "upstream connection closed",
+                                uri = self.uri.to_string()
+                            );
                         }
                         Err(e) => {
-                            error!(message="upstream websocket error", error=e.to_string());
+                            // Added URI to the error log for better debugging
+                            error!(
+                                message = "upstream websocket error", 
+                                uri = self.uri.to_string(), 
+                                error = e.to_string()
+                            );
                             self.metrics.upstream_errors.increment(1);
+                            // Decrement the active connections count when connection fails
+                            self.metrics.upstream_connections.decrement(1);
 
                             if let Some(duration) = self.backoff.next_backoff() {
-                                warn!(message="recconecting", seconds=duration.as_secs());
+                                // Added URI to the warning message
+                                warn!(
+                                    message = "reconnecting", 
+                                    uri = self.uri.to_string(), 
+                                    seconds = duration.as_secs()
+                                );
                                 select! {
                                     _ = token.cancelled() => {
-                                        info!(message="cancelled subscriber during backoff");
+                                        info!(
+                                            message = "cancelled subscriber during backoff", 
+                                            uri = self.uri.to_string()
+                                        );
                                         return
                                     }
                                     _ = tokio::time::sleep(duration) => {}
@@ -79,8 +104,31 @@ where
             uri = self.uri.to_string()
         );
 
-        let (ws_stream, _) = connect_async(&self.uri).await?;
-        info!(message = "websocket connection established");
+        // Increment connection attempts counter for metrics
+        self.metrics.upstream_connection_attempts.increment(1);
+
+        // Modified connection with success/failure metrics tracking
+        let (ws_stream, _) = match connect_async(&self.uri).await {
+            Ok(connection) => {
+                // Track successful connections
+                self.metrics.upstream_connection_successes.increment(1);
+                connection
+            },
+            Err(e) => {
+                // Track failed connections
+                self.metrics.upstream_connection_failures.increment(1);
+                return Err(e);
+            }
+        };
+
+        info!(
+            message = "websocket connection established", 
+            uri = self.uri.to_string()
+        );
+
+        // Increment active connections counter
+        self.metrics.upstream_connections.increment(1);
+        // Reset backoff timer on successful connection
         self.backoff.reset();
 
         let (_, mut read) = ws_stream.split();
@@ -89,12 +137,20 @@ where
             match message {
                 Ok(msg) => {
                     let text = msg.to_text()?;
-                    trace!(message = "received message", payload = text);
+                    trace!(
+                        message = "received message", 
+                        uri = self.uri.to_string(), 
+                        payload = text
+                    );
                     self.metrics.upstream_messages.increment(1);
                     (self.handler)(text.into());
                 }
                 Err(e) => {
-                    error!(message = "error receiving message", error = e.to_string());
+                    error!(
+                        message = "error receiving message", 
+                        uri = self.uri.to_string(), 
+                        error = e.to_string()
+                    );
                     return Err(e);
                 }
             }

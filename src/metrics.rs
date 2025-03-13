@@ -29,4 +29,17 @@ pub struct Metrics {
 
     #[metric(describe = "Count of messages received from the upstream source")]
     pub upstream_messages: Gauge,
+
+    // New metrics for multiple upstream connections
+    #[metric(describe = "Number of active upstream connections")]
+    pub upstream_connections: Gauge,
+
+    #[metric(describe = "Number of upstream connection attempts")]
+    pub upstream_connection_attempts: Counter,
+
+    #[metric(describe = "Number of successful upstream connections")]
+    pub upstream_connection_successes: Counter,
+
+    #[metric(describe = "Number of failed upstream connection attempts")]
+    pub upstream_connection_failures: Counter,
 }
