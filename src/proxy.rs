@@ -3,6 +3,7 @@ use crate::metrics::ServerMetrics;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
 use flate2::read::GzDecoder;
+use futures_util::future::FutureExt;
 use http::header::AUTHORIZATION;
 use http::response::Parts;
 use http::{StatusCode, Uri};
@@ -19,7 +20,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 const MULTIPLEX_METHODS: [&str; 4] = [
     "engine_",
@@ -98,9 +99,159 @@ pub struct ProxyService<S> {
     metrics: Option<Arc<ServerMetrics>>,
 }
 
+impl<S> ProxyService<S>
+where
+    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
+    S::Response: 'static,
+    S::Error: Into<BoxError> + 'static,
+    S::Future: Send + 'static,
+{
+    #[instrument(skip(self), err)]
+    async fn call(&mut self, req: HttpRequest<HttpBody>) -> Result<HttpResponse, BoxError> {
+        #[derive(serde::Deserialize, Debug)]
+        struct RpcRequest<'a> {
+            #[serde(borrow)]
+            method: &'a str,
+        }
+
+        let (parts, body) = req.into_parts();
+        let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+
+        // Deserialize the bytes to find the method
+        let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
+            .method
+            .to_string();
+
+        if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
+            if FORWARD_REQUESTS.contains(&method.as_str()) {
+                let builder_client = self.client.clone();
+                let builder_req =
+                    HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
+                let builder_method = method.clone();
+                let builder_metrics = self.metrics.clone();
+                let builder_auth_uri = self.builder_auth_uri.clone();
+                let builder_auth_secret = self.builder_auth_secret.clone();
+                tokio::spawn(async move {
+                    let _ = forward_request(
+                        &builder_client,
+                        builder_req,
+                        builder_method,
+                        builder_auth_uri,
+                        builder_auth_secret,
+                        builder_metrics,
+                        PayloadSource::Builder,
+                    )
+                    .await;
+                });
+
+                let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+                forward_request(
+                    &self.client,
+                    l2_req,
+                    method,
+                    self.l2_auth_uri.clone(),
+                    self.l2_auth_secret,
+                    self.metrics.clone(),
+                    PayloadSource::L2,
+                )
+                .await
+            } else {
+                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+            }
+        } else {
+            let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+            forward_request(
+                &self.client,
+                req,
+                method,
+                self.l2_auth_uri.clone(),
+                self.l2_auth_secret.clone(),
+                self.metrics.clone(),
+                PayloadSource::L2,
+            )
+            .await
+        }
+
+        self.inner.call(req).await.map_err(|e| e.into())
+    }
+
+    #[instrument(skip(self), err)]
+    async fn proxy(&mut self, req: HttpRequest<HttpBody>) -> Result<HttpResponse, BoxError> {
+        #[derive(serde::Deserialize, Debug)]
+        struct RpcRequest<'a> {
+            #[serde(borrow)]
+            method: &'a str,
+        }
+
+        let (parts, body) = req.into_parts();
+        let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+
+        // Deserialize the bytes to find the method
+        let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
+            .method
+            .to_string();
+
+        if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
+            if FORWARD_REQUESTS.contains(&method.as_str()) {
+                let builder_client = self.client.clone();
+                let builder_req =
+                    HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
+                let builder_method = method.clone();
+                let builder_metrics = self.metrics.clone();
+                let builder_auth_uri = self.builder_auth_uri.clone();
+                let builder_auth_secret = self.builder_auth_secret.clone();
+                tokio::spawn(async move {
+                    let _ = forward_request(
+                        &builder_client,
+                        builder_req,
+                        builder_method,
+                        builder_auth_uri,
+                        builder_auth_secret,
+                        builder_metrics,
+                        PayloadSource::Builder,
+                    )
+                    .await;
+                });
+
+                let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+                forward_request(
+                    &self.client,
+                    l2_req,
+                    method,
+                    self.l2_auth_uri.clone(),
+                    self.l2_auth_secret,
+                    self.metrics.clone(),
+                    PayloadSource::L2,
+                )
+                .await
+            } else {
+                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+            }
+        } else {
+            let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+            forward_request(
+                &self.client,
+                req,
+                method,
+                self.l2_auth_uri.clone(),
+                self.l2_auth_secret.clone(),
+                self.metrics.clone(),
+                PayloadSource::L2,
+            )
+            .await
+        }
+
+        self.inner.call(req).await.map_err(|e| e.into())
+    }
+}
+
 impl<S> Service<HttpRequest<HttpBody>> for ProxyService<S>
 where
-    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Clone + 'static,
+    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
     S::Response: 'static,
     S::Error: Into<BoxError> + 'static,
     S::Future: Send + 'static,
@@ -115,91 +266,13 @@ where
     }
 
     fn call(&mut self, req: HttpRequest<HttpBody>) -> Self::Future {
-        if req.uri().path() == "/healthz" {
-            return Box::pin(async { Ok(Self::Response::new(HttpBody::from("OK"))) });
-        }
-
-        let client = self.client.clone();
-        let mut inner = self.inner.clone();
-        let builder_uri = self.builder_auth_uri.clone();
-        let builder_secret = self.builder_auth_secret;
-        let l2_uri = self.l2_auth_uri.clone();
-        let l2_secret = self.l2_auth_secret;
-        let metrics = self.metrics.clone();
-
-        #[derive(serde::Deserialize, Debug)]
-        struct RpcRequest<'a> {
-            #[serde(borrow)]
-            method: &'a str,
-        }
-
-        let fut = async move {
-            let (parts, body) = req.into_parts();
-            let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
-
-            // Deserialize the bytes to find the method
-            let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
-                .method
-                .to_string();
-
-            if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
-                if FORWARD_REQUESTS.contains(&method.as_str()) {
-                    let builder_client = client.clone();
-                    let builder_req =
-                        HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
-                    let builder_method = method.clone();
-                    let builder_metrics = metrics.clone();
-                    tokio::spawn(async move {
-                        let _ = forward_request(
-                            builder_client,
-                            builder_req,
-                            builder_method,
-                            builder_uri,
-                            builder_secret,
-                            builder_metrics,
-                            PayloadSource::Builder,
-                        )
-                        .await;
-                    });
-
-                    let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                    forward_request(
-                        client,
-                        l2_req,
-                        method,
-                        l2_uri,
-                        l2_secret,
-                        metrics,
-                        PayloadSource::L2,
-                    )
-                    .await
-                } else {
-                    let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                    inner.call(req).await.map_err(|e| e.into())
-                }
-            } else {
-                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                forward_request(
-                    client,
-                    req,
-                    method,
-                    l2_uri,
-                    l2_secret,
-                    metrics,
-                    PayloadSource::L2,
-                )
-                .await
-            }
-        };
-        Box::pin(fut)
+        self.call(req).boxed()
     }
 }
 
 /// Forwards an HTTP request to the `authrpc``, attaching the provided JWT authorization.
 async fn forward_request(
-    client: Client<HttpsConnector<HttpConnector>, HttpBody>,
+    client: &Client<HttpsConnector<HttpConnector>, HttpBody>,
     mut req: http::Request<HttpBody>,
     method: String,
     uri: Uri,

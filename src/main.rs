@@ -3,6 +3,7 @@ use ::tracing::{Level, error, info};
 use clap::{Parser, Subcommand, arg};
 use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
 use debug_api::DebugClient;
+use health::HealthLayer;
 use metrics::init_metrics;
 use std::net::SocketAddr;
 use tracing::init_tracing;
@@ -27,6 +28,7 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 mod auth_layer;
 mod client;
 mod debug_api;
+mod health;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
@@ -225,13 +227,16 @@ async fn main() -> eyre::Result<()> {
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
 
-    let service_builder = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-        l2_client_args.l2_url,
-        l2_auth_jwt,
-        builder_args.builder_url,
-        builder_auth_jwt,
-        metrics,
-    ));
+    let service_builder = tower::ServiceBuilder::new()
+        .layer(HealthLayer)
+        .layer(ProxyLayer::new(
+            l2_client_args.l2_url,
+            l2_auth_jwt,
+            builder_args.builder_url,
+            builder_auth_jwt,
+            metrics,
+        ))
+        .layer(HealthLayer);
 
     let server = Server::builder()
         .set_http_middleware(service_builder)

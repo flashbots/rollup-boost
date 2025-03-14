@@ -59,12 +59,12 @@ impl ServerMetrics {
         rpc_status_code: Option<String>,
         method: String,
     ) {
-        counter!("rpc.l2_response_count",
-            "http_status_code" => http_status_code,
-            "rpc_status_code" => rpc_status_code.unwrap_or("".to_string()),
-            "method" => method,
-        )
-        .increment(1);
+        let mut labels = vec![("http_status_code", http_status_code), ("method", method)];
+        if let Some(rpc_status_code) = rpc_status_code {
+            labels.push(("rpc_status_code", rpc_status_code));
+        }
+
+        counter!("rpc.l2_response_count", &labels).increment(1);
     }
 }
 
