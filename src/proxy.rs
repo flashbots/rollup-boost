@@ -38,26 +38,26 @@ const FORWARD_REQUESTS: [&str; 6] = [
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
-    l2_auth_uri: Uri,
-    l2_auth_secret: JwtSecret,
-    builder_auth_uri: Uri,
-    builder_auth_secret: JwtSecret,
+    l2_forward_uri: Uri,
+    l2_forward_secret: Option<JwtSecret>,
+    builder_forward_uri: Uri,
+    builder_forward_secret: Option<JwtSecret>,
     metrics: Option<Arc<ServerMetrics>>,
 }
 
 impl ProxyLayer {
     pub fn new(
-        l2_auth_uri: Uri,
-        l2_auth_secret: JwtSecret,
-        builder_auth_uri: Uri,
-        builder_auth_secret: JwtSecret,
+        l2_forward_uri: Uri,
+        l2_forward_secret: Option<JwtSecret>,
+        builder_forward_uri: Uri,
+        builder_forward_secret: Option<JwtSecret>,
         metrics: Option<Arc<ServerMetrics>>,
     ) -> Self {
         ProxyLayer {
-            l2_auth_uri,
-            l2_auth_secret,
-            builder_auth_uri,
-            builder_auth_secret,
+            l2_forward_uri,
+            l2_forward_secret,
+            builder_forward_uri,
+            builder_forward_secret,
             metrics,
         }
     }
@@ -78,10 +78,10 @@ impl<S> Layer<S> for ProxyLayer {
         ProxyService {
             inner,
             client: Client::builder(TokioExecutor::new()).build(connector),
-            l2_auth_uri: self.l2_auth_uri.clone(),
-            l2_auth_secret: self.l2_auth_secret,
-            builder_auth_uri: self.builder_auth_uri.clone(),
-            builder_auth_secret: self.builder_auth_secret,
+            l2_forward_uri: self.l2_forward_uri.clone(),
+            l2_forward_secret: self.l2_forward_secret,
+            builder_forward_uri: self.builder_forward_uri.clone(),
+            builder_forward_secret: self.builder_forward_secret,
             metrics: self.metrics.clone(),
         }
     }
@@ -91,10 +91,10 @@ impl<S> Layer<S> for ProxyLayer {
 pub struct ProxyService<S> {
     inner: S,
     client: Client<HttpsConnector<HttpConnector>, HttpBody>,
-    l2_auth_uri: Uri,
-    l2_auth_secret: JwtSecret,
-    builder_auth_uri: Uri,
-    builder_auth_secret: JwtSecret,
+    l2_forward_uri: Uri,
+    l2_forward_secret: Option<JwtSecret>,
+    builder_forward_uri: Uri,
+    builder_forward_secret: Option<JwtSecret>,
     metrics: Option<Arc<ServerMetrics>>,
 }
 
@@ -121,10 +121,10 @@ where
 
         let client = self.client.clone();
         let mut inner = self.inner.clone();
-        let builder_uri = self.builder_auth_uri.clone();
-        let builder_secret = self.builder_auth_secret;
-        let l2_uri = self.l2_auth_uri.clone();
-        let l2_secret = self.l2_auth_secret;
+        let builder_uri = self.builder_forward_uri.clone();
+        let builder_secret = self.builder_forward_secret;
+        let l2_uri = self.l2_forward_uri.clone();
+        let l2_secret = self.l2_forward_secret;
         let metrics = self.metrics.clone();
 
         #[derive(serde::Deserialize, Debug)]
@@ -203,15 +203,16 @@ async fn forward_request(
     mut req: http::Request<HttpBody>,
     method: String,
     uri: Uri,
-    auth: JwtSecret,
+    auth: Option<JwtSecret>,
     metrics: Option<Arc<ServerMetrics>>,
     source: PayloadSource,
 ) -> Result<http::Response<HttpBody>, BoxError> {
     let start = Instant::now();
     *req.uri_mut() = uri.clone();
-    req.headers_mut()
-        .insert(AUTHORIZATION, secret_to_bearer_header(&auth));
-
+    if let Some(auth) = auth {
+        req.headers_mut()
+            .insert(AUTHORIZATION, secret_to_bearer_header(&auth));
+    }
     debug!(
         target: "proxy::forward_request",
         url = ?uri,
@@ -428,9 +429,9 @@ mod tests {
             let l2 = MockHttpServer::serve().await?;
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
+                Some(JwtSecret::random()),
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
+                Some(JwtSecret::random()),
                 None,
             ));
 
@@ -692,7 +693,8 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt, None);
+        let proxy_layer =
+            ProxyLayer::new(l2_auth_uri.clone(), Some(jwt), l2_auth_uri, Some(jwt), None);
 
         // Create a layered server
         let server = ServerBuilder::default()
