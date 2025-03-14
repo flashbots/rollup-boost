@@ -100,6 +100,10 @@ struct Args {
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     execution_mode: ExecutionMode,
+
+    /// percentage multipler to the local payload gas used for choosing payloads
+    #[arg(long, env, default_value = "0")]
+    l2_boost_factor: u64,
 }
 
 #[derive(Subcommand, Debug)]
@@ -252,6 +256,7 @@ async fn main() -> eyre::Result<()> {
         boost_sync_enabled,
         metrics.clone(),
         args.execution_mode,
+        args.l2_boost_factor,
     );
 
     // Spawn the debug server

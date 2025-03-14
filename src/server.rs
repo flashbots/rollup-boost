@@ -124,6 +124,7 @@ pub struct RollupBoostServer {
     pub metrics: Option<Arc<ServerMetrics>>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
+    l2_boost_factor: u64,
 }
 
 impl RollupBoostServer {
@@ -133,6 +134,7 @@ impl RollupBoostServer {
         boost_sync: bool,
         metrics: Option<Arc<ServerMetrics>>,
         initial_execution_mode: ExecutionMode,
+        l2_boost_factor: u64,
     ) -> Self {
         Self {
             l2_client,
@@ -141,6 +143,7 @@ impl RollupBoostServer {
             metrics,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
+            l2_boost_factor,
         }
     }
 
@@ -509,7 +512,21 @@ impl RollupBoostServer {
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let payload = match (builder_payload, l2_payload) {
-            (Ok(builder), _) => Ok(builder),
+            (Ok(builder), Ok(l2)) => {
+                let builder_gas_used = builder
+                    .0
+                    .execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .gas_used;
+                let l2_gas_used = l2.0.execution_payload.payload_inner.payload_inner.gas_used;
+                if builder_gas_used >= l2_gas_used * self.l2_boost_factor {
+                    Ok(builder)
+                } else {
+                    Ok(l2)
+                }
+            }
+            (Ok(builder), Err(_)) => Ok(builder),
             (Err(_), Ok(l2)) => Ok(l2),
             (Err(_), Err(e)) => Err(e),
         };
@@ -719,6 +736,7 @@ mod tests {
                 boost_sync,
                 None,
                 ExecutionMode::Enabled,
+                0,
             );
 
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
