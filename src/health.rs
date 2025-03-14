@@ -10,6 +10,7 @@ use jsonrpsee::{
 };
 use tower::{Layer, Service, util::Either};
 
+/// A [`Layer`] that filters out /healthz requests and responds with a 200 OK.
 pub(crate) struct HealthLayer;
 
 impl<S> Layer<S> for HealthLayer {
