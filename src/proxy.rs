@@ -103,18 +103,6 @@ pub struct ProxyService<S> {
     metrics: Option<Arc<ServerMetrics>>,
 }
 
-// impl<S> ProxyService<S>
-// where
-//     S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
-//     S::Response: 'static,
-//     S::Error: Into<BoxError> + 'static,
-//     S::Future: Send + 'static,
-// {
-//     #[instrument(skip(self), err)]
-//     async fn proxy(self, req: HttpRequest<HttpBody>) -> Result<HttpResponse, BoxError> {
-//     }
-// }
-
 impl<S> Service<HttpRequest<HttpBody>> for ProxyService<S>
 where
     S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
@@ -132,78 +120,6 @@ where
     }
 
     fn call(&mut self, req: HttpRequest<HttpBody>) -> Self::Future {
-        // // self.proxy(req).boxed()
-        // #[derive(serde::Deserialize, Debug)]
-        // struct RpcRequest<'a> {
-        //     #[serde(borrow)]
-        //     method: &'a str,
-        // }
-        //
-        // let (parts, body) = req.into_parts();
-        // let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
-        //
-        // // Deserialize the bytes to find the method
-        // let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
-        //     .method
-        //     .to_string();
-        //
-        // if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
-        //     if FORWARD_REQUESTS.contains(&method.as_str()) {
-        //         let builder_client = self.client.clone();
-        //         let builder_req =
-        //             HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
-        //         let builder_method = method.clone();
-        //         let builder_metrics = self.metrics.clone();
-        //         let builder_auth_uri = self.builder_auth_uri.clone();
-        //         let builder_auth_secret = self.builder_auth_secret.clone();
-        //         tokio::spawn(async move {
-        //             let _ = forward_request(
-        //                 &builder_client,
-        //                 builder_req,
-        //                 builder_method,
-        //                 builder_auth_uri,
-        //                 builder_auth_secret,
-        //                 builder_metrics,
-        //                 PayloadSource::Builder,
-        //             )
-        //             .await;
-        //         });
-        //
-        //         let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-        //         info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-        //         forward_request(
-        //             &self.client,
-        //             l2_req,
-        //             method,
-        //             self.l2_auth_uri.clone(),
-        //             self.l2_auth_secret,
-        //             self.metrics.clone(),
-        //             PayloadSource::L2,
-        //         )
-        //         .await
-        //     } else {
-        //         let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-        //         info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-        //     }
-        // } else {
-        //     let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-        //     forward_request(
-        //         &self.client,
-        //         req,
-        //         method,
-        //         self.l2_auth_uri.clone(),
-        //         self.l2_auth_secret.clone(),
-        //         self.metrics.clone(),
-        //         PayloadSource::L2,
-        //     )
-        //     .await
-        // }
-        //
-        // self.inner.call(req).await.map_err(|e| e.into())
-        if req.uri().path() == "/healthz" {
-            return Box::pin(async { Ok(Self::Response::new(HttpBody::from("OK"))) });
-        }
-
         let client = self.client.clone();
         let mut inner = self.inner.clone();
         let builder_uri = self.builder_auth_uri.clone();
@@ -282,17 +198,6 @@ where
     }
 }
 
-impl<S> RpcServiceT<'_> for ProxyService<S>
-where
-    for<'a> S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
-{
-    type Future = Pin<Box<dyn Future<Output = MethodResponse> + Send + 'static>>;
-
-    fn call(&self, request: Request<'_>) -> Self::Future {
-        todo!()
-    }
-}
-
 /// Forwards an HTTP request to the `authrpc``, attaching the provided JWT authorization.
 #[instrument(
     skip(client, req, auth, metrics),
@@ -308,69 +213,48 @@ async fn forward_request(
     metrics: Option<Arc<ServerMetrics>>,
     target: PayloadSource,
 ) -> Result<http::Response<HttpBody>, BoxError> {
+    debug!("forwarding {} to {}", method, target);
     let start = Instant::now();
+
     *req.uri_mut() = url.clone();
     req.headers_mut()
         .insert(AUTHORIZATION, secret_to_bearer_header(&auth));
 
-    debug!("forwarding request to {}", url);
+    let res = client.request(req).await?;
 
-    match client.request(req).await {
-        Ok(resp) => {
-            let (parts, body) = resp.into_parts();
-            let body_bytes = body
-                .collect()
-                .await
-                .map_err(|e| {
-                    error!(
-                        target: "proxy::forward_request",
-                        message = "error collecting body",
-                        error = %e,
-                    );
-                    e
-                })?
-                .to_bytes()
-                .to_vec();
-            let parts_clone = parts.clone();
-            let body_bytes_clone = body_bytes.clone();
-
-            tokio::spawn(async move {
-                let _ = process_response(
-                    parts_clone,
-                    body_bytes_clone,
-                    metrics,
-                    method,
-                    start.elapsed(),
-                    target,
-                )
-                .await;
-            });
-
-            Ok(http::Response::from_parts(
-                parts,
-                HttpBody::from(body_bytes),
-            ))
-        }
-        Err(e) => {
+    let (parts, body) = res.into_parts();
+    let body_bytes = body
+        .collect()
+        .await
+        .map_err(|e| {
             error!(
-                target: "proxy::call",
-                message = "error forwarding request",
-                url = ?url,
-                method = %method,
+                target: "proxy::forward_request",
+                message = "error collecting body",
                 error = %e,
             );
-            record_metrics(
-                metrics,
-                StatusCode::INTERNAL_SERVER_ERROR.to_string(),
-                None,
-                method,
-                start.elapsed(),
-                target,
-            )
-            .await;
-            Err(e.into())
-        }
-    }
+            e
+        })?
+        .to_bytes()
+        .to_vec();
+    let parts_clone = parts.clone();
+    let body_bytes_clone = body_bytes.clone();
+
+    tokio::spawn(async move {
+        let _ = process_response(
+            parts_clone,
+            body_bytes_clone,
+            metrics,
+            method,
+            start.elapsed(),
+            target,
+        )
+        .await;
+    });
+
+    Ok(http::Response::from_parts(
+        parts,
+        HttpBody::from(body_bytes),
+    ))
 }
 
 async fn process_response(

@@ -17,7 +17,7 @@ use hyper::{Request, Response, server::conn::http1};
 use hyper_util::rt::TokioIo;
 use jsonrpsee::RpcModule;
 use jsonrpsee::http_client::HttpBody;
-use jsonrpsee::server::{RpcServiceBuilder, Server};
+use jsonrpsee::server::Server;
 use metrics_exporter_prometheus::PrometheusHandle;
 use proxy::ProxyLayer;
 use server::{ExecutionMode, PayloadSource, RollupBoostServer};
@@ -227,19 +227,18 @@ async fn main() -> eyre::Result<()> {
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
 
-    let http_middleware = tower::ServiceBuilder::new().layer(HealthLayer);
-
-    let rpc_middleware = RpcServiceBuilder::new().layer(ProxyLayer::new(
-        l2_client_args.l2_url,
-        l2_auth_jwt,
-        builder_args.builder_url,
-        builder_auth_jwt,
-        metrics,
-    ));
+    let http_middleware = tower::ServiceBuilder::new()
+        .layer(HealthLayer)
+        .layer(ProxyLayer::new(
+            l2_client_args.l2_url,
+            l2_auth_jwt,
+            builder_args.builder_url,
+            builder_auth_jwt,
+            metrics,
+        ));
 
     let server = Server::builder()
         .set_http_middleware(http_middleware)
-        .set_rpc_middleware(rpc_middleware)
         .build(format!("{}:{}", args.rpc_host, args.rpc_port).parse::<SocketAddr>()?)
         .await?;
     let handle = server.start(module);
