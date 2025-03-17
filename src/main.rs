@@ -14,7 +14,7 @@ use crate::server::Server;
 use crate::subscriber::WebsocketSubscriber;
 use axum::http::Uri;
 use clap::Parser;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::net::SocketAddr;
 use std::sync::Arc;
