@@ -98,7 +98,6 @@ impl FlashblockBuilder {
             .flashblocks
             .iter()
             .flat_map(|diff| diff.withdrawals.clone())
-            .map(|w| w.into())
             .collect();
 
         Ok(OpExecutionPayloadEnvelopeV3 {
@@ -114,7 +113,7 @@ impl FlashblockBuilder {
                 blob_gas_used: 0,
                 excess_blob_gas: 0,
                 payload_inner: ExecutionPayloadV2 {
-                    withdrawals: withdrawals,
+                    withdrawals,
                     payload_inner: ExecutionPayloadV1 {
                         parent_hash: base.parent_hash,
                         fee_recipient: base.fee_recipient,
@@ -129,7 +128,7 @@ impl FlashblockBuilder {
                         extra_data: base.extra_data,
                         base_fee_per_gas: base.base_fee_per_gas,
                         block_hash: diff.block_hash,
-                        transactions: transactions,
+                        transactions,
                     },
                 },
             },
