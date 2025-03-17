@@ -14,8 +14,7 @@ tracing = "0.1.41"
 clap = { version = "4", features = ["derive", "env"] }
 # Replace dotenv with dotenvy (maintained fork)
 dotenvy = "0.15.7"
-# Replace backoff with backoff-rs (maintained fork)
-backoff-rs = "0.1.0"
+backoff = "0.4.0"
 futures = "0.3.31"
 tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
 tokio-util = "0.7.12"

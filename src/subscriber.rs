@@ -1,6 +1,6 @@
 use crate::metrics::Metrics;
 use axum::http::Uri;
-use backoff_rs::{backoff::Backoff, ExponentialBackoff};
+use backoff::{backoff::Backoff, ExponentialBackoff};
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
