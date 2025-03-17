@@ -79,7 +79,7 @@ impl FlashblockBuilder {
         Ok(())
     }
 
-    pub fn to_envelope(self) -> Result<OpExecutionPayloadEnvelopeV3, FlashblocksError> {
+    pub fn into_envelope(self) -> Result<OpExecutionPayloadEnvelopeV3, FlashblocksError> {
         let base = self.base.ok_or(FlashblocksError::MissingPayload)?;
 
         // There must be at least one delta
@@ -163,7 +163,7 @@ impl FlashblocksService {
         // consume the best payload and reset the builder
         let payload = {
             let mut builder = self.best_payload.write().await;
-            std::mem::take(&mut *builder).to_envelope()?
+            std::mem::take(&mut *builder).into_envelope()?
         };
         *self.best_payload.write().await = FlashblockBuilder::new();
 
