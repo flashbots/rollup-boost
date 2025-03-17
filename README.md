@@ -193,6 +193,18 @@ To run rollup-boost in debug mode with a specific execution mode, you can use th
 rollup-boost debug set-execution-mode [enabled|dry-run|disabled]
 ```
 
+### Block Selection
+
+The L2 Boost Factor is a percentage multipler to the local payload gas used to choose between local and builder payloads. This is useful for operators that want to prioritize local payloads over builder payloads under certain conditions.
+
+e.g. to configure the payload selection rule such that the local payload is chosen if it has at least 30% more gas used than the builder payload, you can add the following command:
+
+```
+rollup-boost --l2-boost-factor 130
+```
+
+By default, the L2 Boost Factor is 0, meaning that the builder payload will always be chosen over the local payload.
+
 ## License
 
 The code in this project is free software under the [MIT License](/LICENSE).
