@@ -183,14 +183,18 @@ async fn main() {
         let metrics_clone = metrics.clone();
 
         let mut subscriber = WebsocketSubscriber::new(
-            uri_clone,
+            uri_clone.clone(),
             listener_clone,
             args.subscriber_max_interval,
             metrics_clone,
         );
-        
+
         let task = tokio::spawn(async move {
-            info!(message = "starting subscriber", index = index, uri = uri_clone.to_string());
+            info!(
+                message = "starting subscriber",
+                index = index,
+                uri = uri_clone.to_string()
+            );
             subscriber.run(token_clone).await;
         });
 

@@ -65,8 +65,8 @@ where
                         Err(e) => {
                             // Added URI to the error log for better debugging
                             error!(
-                                message = "upstream websocket error", 
-                                uri = self.uri.to_string(), 
+                                message = "upstream websocket error",
+                                uri = self.uri.to_string(),
                                 error = e.to_string()
                             );
                             self.metrics.upstream_errors.increment(1);
@@ -76,14 +76,14 @@ where
                             if let Some(duration) = self.backoff.next_backoff() {
                                 // Added URI to the warning message
                                 warn!(
-                                    message = "reconnecting", 
-                                    uri = self.uri.to_string(), 
+                                    message = "reconnecting",
+                                    uri = self.uri.to_string(),
                                     seconds = duration.as_secs()
                                 );
                                 select! {
                                     _ = token.cancelled() => {
                                         info!(
-                                            message = "cancelled subscriber during backoff", 
+                                            message = "cancelled subscriber during backoff",
                                             uri = self.uri.to_string()
                                         );
                                         return
@@ -113,7 +113,7 @@ where
                 // Track successful connections
                 self.metrics.upstream_connection_successes.increment(1);
                 connection
-            },
+            }
             Err(e) => {
                 // Track failed connections
                 self.metrics.upstream_connection_failures.increment(1);
@@ -122,7 +122,7 @@ where
         };
 
         info!(
-            message = "websocket connection established", 
+            message = "websocket connection established",
             uri = self.uri.to_string()
         );
 
@@ -138,8 +138,8 @@ where
                 Ok(msg) => {
                     let text = msg.to_text()?;
                     trace!(
-                        message = "received message", 
-                        uri = self.uri.to_string(), 
+                        message = "received message",
+                        uri = self.uri.to_string(),
                         payload = text
                     );
                     self.metrics.upstream_messages.increment(1);
@@ -147,8 +147,8 @@ where
                 }
                 Err(e) => {
                     error!(
-                        message = "error receiving message", 
-                        uri = self.uri.to_string(), 
+                        message = "error receiving message",
+                        uri = self.uri.to_string(),
                         error = e.to_string()
                     );
                     return Err(e);
