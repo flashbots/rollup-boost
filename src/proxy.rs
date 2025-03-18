@@ -76,7 +76,7 @@ impl<S> Layer<S> for ProxyLayer {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
@@ -107,7 +107,11 @@ where
             method: &'a str,
         }
 
+        // See https://github.com/tower-rs/tower/blob/abb375d08cf0ba34c1fe76f66f1aba3dc4341013/tower-service/src/lib.rs#L276
+        // for an explanation of this pattern
         let mut service = self.clone();
+        service.inner = std::mem::replace(&mut self.inner, service.inner);
+
         let fut = async move {
             let (parts, body) = req.into_parts();
             let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
