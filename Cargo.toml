@@ -22,7 +22,7 @@ moka = { version = "0.12.10", features = ["sync"] }
 reqwest = "0.12.5"
 http = "1.1.0"
 dotenv = "0.15.0"
-tower = { version = "0.4.13", features = ["filter"] }
+tower = "0.4.13"
 http-body = "1.0.1"
 http-body-util = "0.1.2"
 hyper = { version = "1.4.1", features = ["full"] }
