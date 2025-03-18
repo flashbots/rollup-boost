@@ -131,7 +131,7 @@ fn handle_response_code(body_bytes: &[u8]) -> eyre::Result<()> {
         serde_json::from_slice::<RpcResponse>(body_bytes).context("error deserializing body")?;
 
     if let Some(e) = res.error {
-        return Err(eyre::eyre!("code: {}", e.code));
+        eyre::bail!("code: {}", e.code)
     }
 
     Ok(())
