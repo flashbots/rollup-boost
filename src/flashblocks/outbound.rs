@@ -3,7 +3,7 @@ use futures::{SinkExt, StreamExt};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     net::TcpListener,
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info};
