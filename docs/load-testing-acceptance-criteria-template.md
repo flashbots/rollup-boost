@@ -1,7 +1,7 @@
 # Rollup Boost - Load Testing Acceptance Criteria
 
 ## Overview
-This document serves as a generic acceptance criteria checklist for deploying a **block builder** on any blockchain network. Copy this checklist and fill it out with the appropriate data for your specific chain before proceeding to mainnet deployment.
+This document serves as a generic acceptance criteria checklist for load testing a **block builder** on a Layer 2 network. It's designed to be used with [Contender](https://github.com/flashbots/contender), a high-performance Ethereum network testing tool for benchmarking and stress-testing clients and networks. Copy this checklist and fill it out with the appropriate data for your specific chain before proceeding to mainnet deployment.
 
 ## Environment
 - **Network:** [Specify the blockchain network]
@@ -56,7 +56,7 @@ This document serves as a generic acceptance criteria checklist for deploying a 
    - Supporting Data: [Link to results]
 
 ✅ **100% Transaction Forwarding Acceptance**
-   - Expected: All transactions sent should be logged in both the chain operator’s environment and the block builder’s environment
+   - Expected: All transactions sent should be logged in both the chain operator's environment and the block builder's environment
    - Measured: `____`
    - Supporting Data: [Link to results]
 
