@@ -1,7 +1,8 @@
 #![allow(clippy::complexity)]
+use crate::client::rpc::{BuilderArgs, L2ClientArgs, RpcClient};
 use ::tracing::{Level, error, info};
 use clap::{Parser, Subcommand, arg};
-use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
+use client::auth::AuthClientLayer;
 use debug_api::DebugClient;
 use health::HealthLayer;
 use metrics::init_metrics;
@@ -25,7 +26,6 @@ use server::{ExecutionMode, PayloadSource, RollupBoostServer};
 use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 
-mod auth_layer;
 mod client;
 mod debug_api;
 mod health;
@@ -184,7 +184,7 @@ async fn main() -> eyre::Result<()> {
         bail!("Missing L2 Client JWT secret");
     };
 
-    let l2_client = ExecutionClient::new(
+    let l2_client = RpcClient::new(
         l2_client_args.l2_url.clone(),
         l2_auth_jwt,
         l2_client_args.l2_timeout,
@@ -200,7 +200,7 @@ async fn main() -> eyre::Result<()> {
         bail!("Missing Builder JWT secret");
     };
 
-    let builder_client = ExecutionClient::new(
+    let builder_client = RpcClient::new(
         builder_args.builder_url.clone(),
         builder_auth_jwt,
         builder_args.builder_timeout,
@@ -227,8 +227,11 @@ async fn main() -> eyre::Result<()> {
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
 
+    // let auth = AuthClientLayer::new(builder_args.builder_jwt_token.unwrap());
+
     let http_middleware = tower::ServiceBuilder::new()
         .layer(HealthLayer)
+        // .layer(auth)
         .layer(ProxyLayer::new(
             l2_client_args.l2_url,
             l2_auth_jwt,

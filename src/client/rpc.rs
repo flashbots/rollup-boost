@@ -1,4 +1,4 @@
-use crate::auth_layer::{AuthClientLayer, AuthClientService};
+use crate::client::auth::{AuthClientLayer, AuthClientService};
 use crate::server::{EngineApiClient, PayloadSource};
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{
@@ -18,10 +18,10 @@ use std::time::Duration;
 use thiserror::Error;
 use tracing::{error, info, instrument};
 
-pub(crate) type ClientResult<T> = Result<T, ClientError>;
+pub(crate) type ClientResult<T> = Result<T, RpcClientError>;
 
 #[derive(Error, Debug)]
-pub(crate) enum ClientError {
+pub(crate) enum RpcClientError {
     #[error(transparent)]
     Jsonrpsee(#[from] jsonrpsee::core::client::Error),
     #[error("Invalid payload: {0}")]
@@ -32,10 +32,10 @@ pub(crate) enum ClientError {
     Jwt(#[from] JwtError),
 }
 
-impl From<ClientError> for ErrorObjectOwned {
-    fn from(err: ClientError) -> Self {
+impl From<RpcClientError> for ErrorObjectOwned {
+    fn from(err: RpcClientError) -> Self {
         match err {
-            ClientError::Jsonrpsee(jsonrpsee::core::ClientError::Call(error_object)) => {
+            RpcClientError::Jsonrpsee(jsonrpsee::core::ClientError::Call(error_object)) => {
                 error_object
             }
             // Status code 13 == internal error
@@ -49,7 +49,7 @@ impl From<ClientError> for ErrorObjectOwned {
 /// - **Engine API** calls are faciliated via the `auth_client` (requires JWT authentication).
 ///
 #[derive(Clone)]
-pub(crate) struct ExecutionClient {
+pub(crate) struct RpcClient {
     /// Handles requests to the authenticated Engine API (requires JWT authentication)
     auth_client: HttpClient<AuthClientService<HttpBackend>>,
     /// Uri of the RPC server for authenticated Engine API calls
@@ -58,14 +58,14 @@ pub(crate) struct ExecutionClient {
     payload_source: PayloadSource,
 }
 
-impl ExecutionClient {
+impl RpcClient {
     /// Initializes a new [ExecutionClient] with JWT auth for the Engine API and without auth for general execution layer APIs.
     pub fn new(
         auth_rpc: Uri,
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
         payload_source: PayloadSource,
-    ) -> Result<Self, ClientError> {
+    ) -> Result<Self, RpcClientError> {
         let auth_layer = AuthClientLayer::new(auth_rpc_jwt_secret);
         let auth_client = HttpClientBuilder::new()
             .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
@@ -106,7 +106,7 @@ impl ExecutionClient {
         }
 
         if res.is_invalid() {
-            return Err(ClientError::InvalidPayload(
+            return Err(RpcClientError::InvalidPayload(
                 res.payload_status.status.to_string(),
             ));
         }
@@ -159,7 +159,7 @@ impl ExecutionClient {
             .await?;
 
         if res.is_invalid() {
-            return Err(ClientError::InvalidPayload(res.status.to_string()));
+            return Err(RpcClientError::InvalidPayload(res.status.to_string()));
         }
 
         Ok(res)
@@ -202,7 +202,7 @@ mod tests {
     use http::Uri;
     use jsonrpsee::core::client::ClientT;
 
-    use crate::auth_layer::AuthClientService;
+    use crate::client::auth::AuthClientService;
     use crate::server::PayloadSource;
     use alloy_rpc_types_engine::JwtSecret;
     use jsonrpsee::RpcModule;
@@ -241,7 +241,7 @@ mod tests {
         let secret = JwtSecret::from_hex(SECRET).unwrap();
 
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
-        let client = ExecutionClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
+        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
         let response = send_request(client.auth_client).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");
@@ -251,7 +251,7 @@ mod tests {
     async fn invalid_jwt() {
         let secret = JwtSecret::random();
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
-        let client = ExecutionClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
+        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
         let response = send_request(client.auth_client).await;
         assert!(response.is_err());
         assert!(matches!(
