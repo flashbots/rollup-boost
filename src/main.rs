@@ -1,4 +1,4 @@
-use clap::{arg, Parser, Subcommand};
+use clap::{Parser, Subcommand, arg};
 use client::{BuilderArgs, ExecutionClient, L2ClientArgs};
 use debug_api::DebugClient;
 use metrics::{ClientMetrics, ServerMetrics};
@@ -10,23 +10,23 @@ use dotenv::dotenv;
 use eyre::bail;
 use http::StatusCode;
 use hyper::service::service_fn;
-use hyper::{server::conn::http1, Request, Response};
+use hyper::{Request, Response, server::conn::http1};
 use hyper_util::rt::TokioIo;
+use jsonrpsee::RpcModule;
 use jsonrpsee::http_client::HttpBody;
 use jsonrpsee::server::Server;
-use jsonrpsee::RpcModule;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::layers::{PrefixLayer, Stack};
 use opentelemetry::global;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::Config, Resource};
+use opentelemetry_sdk::{Resource, propagation::TraceContextPropagator, trace::Config};
 use proxy::ProxyLayer;
 use server::{PayloadSource, RollupBoostServer};
 
 use crate::flashblocks::Flashblocks;
 use tokio::net::TcpListener;
-use tokio::signal::unix::{signal as unix_signal, SignalKind};
-use tracing::{error, info, Level};
+use tokio::signal::unix::{SignalKind, signal as unix_signal};
+use tracing::{Level, error, info};
 use tracing_subscriber::EnvFilter;
 
 mod auth_layer;
@@ -91,9 +91,17 @@ struct Args {
     #[arg(long, env, default_value = "text")]
     log_format: String,
 
+    /// Host to run the debug server on
+    #[arg(long, env, default_value = "127.0.0.1")]
+    debug_host: String,
+
     /// Debug server port
     #[arg(long, env, default_value = "5555")]
     debug_server_port: u16,
+
+    /// Execution mode to start rollup boost with
+    #[arg(long, env, default_value = "enabled")]
+    execution_mode: ExecutionMode,
 
     /// Enable Flashblocks client
     #[clap(flatten)]
@@ -142,26 +150,29 @@ async fn main() -> eyre::Result<()> {
         .expect("Failed to install TLS ring CryptoProvider");
     let args: Args = Args::parse();
 
+    let debug_addr = format!("{}:{}", args.debug_host, args.debug_server_port);
+
     // Handle commands if present
     if let Some(cmd) = args.command {
-        match cmd {
+        let debug_addr = format!("http://{}", debug_addr);
+        return match cmd {
             Commands::Debug { command } => match command {
                 DebugCommands::SetExecutionMode { execution_mode } => {
-                    let client = DebugClient::default();
+                    let client = DebugClient::new(debug_addr.as_str())?;
                     let result = client.set_execution_mode(execution_mode).await.unwrap();
                     println!("Response: {:?}", result.execution_mode);
 
-                    return Ok(());
+                    Ok(())
                 }
                 DebugCommands::ExecutionMode {} => {
-                    let client = DebugClient::default();
-                    let result = client.get_execution_mode().await.unwrap();
+                    let client = DebugClient::new(debug_addr.as_str())?;
+                    let result = client.get_execution_mode().await?;
                     println!("Execution mode: {:?}", result.execution_mode);
 
-                    return Ok(());
+                    Ok(())
                 }
             },
-        }
+        };
     }
 
     // Initialize logging
@@ -271,12 +282,11 @@ async fn main() -> eyre::Result<()> {
         boost_sync_enabled,
         metrics.clone(),
         flashblocks_client,
+        args.execution_mode,
     );
 
     // Spawn the debug server
-    rollup_boost
-        .start_debug_server(args.debug_server_port)
-        .await?;
+    rollup_boost.start_debug_server(debug_addr.as_str()).await?;
 
     let module: RpcModule<()> = rollup_boost.try_into()?;
 
@@ -390,10 +400,10 @@ mod tests {
     use crate::auth_layer::AuthClientService;
     use crate::server::PayloadSource;
     use alloy_rpc_types_engine::JwtSecret;
+    use jsonrpsee::RpcModule;
+    use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::http_client::transport::Error as TransportError;
     use jsonrpsee::http_client::transport::HttpBackend;
-    use jsonrpsee::http_client::HttpClient;
-    use jsonrpsee::RpcModule;
     use jsonrpsee::{
         core::ClientError,
         rpc_params,

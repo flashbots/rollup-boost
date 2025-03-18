@@ -1,14 +1,12 @@
-use jsonrpsee::core::{async_trait, RpcResult};
+use jsonrpsee::core::{RpcResult, async_trait};
 use jsonrpsee::http_client::HttpClient;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::server::Server;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use crate::server::ExecutionMode;
-
-const DEFAULT_DEBUG_API_PORT: u16 = 5555;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetExecutionModeRequest {
@@ -46,22 +44,26 @@ impl DebugServer {
         Self { execution_mode }
     }
 
-    pub async fn run(self, port: Option<u16>) -> eyre::Result<()> {
-        let port = port.unwrap_or(DEFAULT_DEBUG_API_PORT);
-
-        let server = Server::builder()
-            .build(format!("127.0.0.1:{}", port))
-            .await?;
+    pub async fn run(self, debug_addr: &str) -> eyre::Result<()> {
+        let server = Server::builder().build(debug_addr).await?;
 
         let handle = server.start(self.into_rpc());
 
-        tracing::info!("Debug server started on port {}", port);
+        tracing::info!("Debug server listening on addr {}", debug_addr);
 
         // In this example we don't care about doing shutdown so let's it run forever.
         // You may use the `ServerHandle` to shut it down or manage it yourself.
         tokio::spawn(handle.stopped());
 
         Ok(())
+    }
+
+    pub fn execution_mode(&self) -> ExecutionMode {
+        *self.execution_mode.lock()
+    }
+
+    pub fn set_execution_mode(&self, mode: ExecutionMode) {
+        *self.execution_mode.lock() = mode;
     }
 }
 
@@ -71,8 +73,7 @@ impl DebugApiServer for DebugServer {
         &self,
         request: SetExecutionModeRequest,
     ) -> RpcResult<SetExecutionModeResponse> {
-        let mut execution_mode = self.execution_mode.lock().await;
-        *execution_mode = request.execution_mode.clone();
+        self.set_execution_mode(request.execution_mode);
 
         tracing::info!("Set execution mode to {:?}", request.execution_mode);
 
@@ -82,9 +83,8 @@ impl DebugApiServer for DebugServer {
     }
 
     async fn get_execution_mode(&self) -> RpcResult<GetExecutionModeResponse> {
-        let execution_mode = self.execution_mode.lock().await;
         Ok(GetExecutionModeResponse {
-            execution_mode: execution_mode.clone(),
+            execution_mode: self.execution_mode(),
         })
     }
 }
@@ -115,15 +115,11 @@ impl DebugClient {
     }
 }
 
-impl Default for DebugClient {
-    fn default() -> Self {
-        Self::new(format!("http://localhost:{}", DEFAULT_DEBUG_API_PORT).as_str()).unwrap()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const DEFAULT_ADDR: &str = "127.0.0.1:5555";
 
     #[tokio::test]
     async fn test_debug_client() {
@@ -131,9 +127,9 @@ mod tests {
         let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
         let server = DebugServer::new(execution_mode.clone());
-        let _ = server.run(None).await.unwrap();
+        server.run(DEFAULT_ADDR).await.unwrap();
 
-        let client = DebugClient::default();
+        let client = DebugClient::new(format!("http://{}", DEFAULT_ADDR).as_str()).unwrap();
 
         // Test setting execution mode to Disabled
         let result = client
