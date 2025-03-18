@@ -1,30 +1,15 @@
-use crate::RpcClient;
-use crate::client::auth::{AuthClientLayer, AuthClientService, secret_to_bearer_header};
+use crate::HealthLayer;
 use crate::client::http::HttpClient;
-use crate::metrics::ServerMetrics;
+use crate::health::HealthService;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
-use flate2::read::GzDecoder;
-use http::header::AUTHORIZATION;
-use http::response::Parts;
-use http::{Request, Uri};
-use http_body_util::BodyExt;
-use hyper_rustls::HttpsConnector;
-use hyper_util::client::legacy::Client;
-use hyper_util::client::legacy::connect::HttpConnector;
-use hyper_util::rt::TokioExecutor;
-use jsonrpsee::MethodResponse;
+use http::Uri;
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
-use jsonrpsee::server::middleware::rpc::RpcServiceT;
-use opentelemetry::trace::SpanKind;
-use std::io::Read;
-use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::info;
 
 const MULTIPLEX_METHODS: [&str; 4] = [
     "engine_",
@@ -43,54 +28,51 @@ const FORWARD_REQUESTS: [&str; 6] = [
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
-    l2_auth_uri: Uri,
+    l2_auth_rpc: Uri,
     l2_auth_secret: JwtSecret,
-    builder_auth_uri: Uri,
+    builder_auth_rpc: Uri,
     builder_auth_secret: JwtSecret,
-    metrics: Option<Arc<ServerMetrics>>,
 }
 
 impl ProxyLayer {
     pub fn new(
-        l2_auth_uri: Uri,
+        l2_auth_rpc: Uri,
         l2_auth_secret: JwtSecret,
-        builder_auth_uri: Uri,
+        builder_auth_rpc: Uri,
         builder_auth_secret: JwtSecret,
-        metrics: Option<Arc<ServerMetrics>>,
     ) -> Self {
         ProxyLayer {
-            l2_auth_uri,
+            l2_auth_rpc,
             l2_auth_secret,
-            builder_auth_uri,
+            builder_auth_rpc,
             builder_auth_secret,
-            metrics,
         }
     }
 }
 
 impl<S> Layer<S> for ProxyLayer {
-    type Service = ProxyService<S>;
+    type Service = HealthService<ProxyService<S>>;
 
     fn layer(&self, inner: S) -> Self::Service {
         let l2_client = HttpClient::new(
-            self.l2_auth_uri.clone(),
+            self.l2_auth_rpc.clone(),
             self.l2_auth_secret.clone(),
             PayloadSource::L2,
         );
 
         let builder_client = HttpClient::new(
-            self.builder_auth_uri.clone(),
+            self.builder_auth_rpc.clone(),
             self.builder_auth_secret.clone(),
             PayloadSource::Builder,
         );
 
-        let auth_layer = AuthClientLayer::new(self.l2_auth_secret.clone());
-
-        ProxyService {
+        let proxy = ProxyService {
             inner,
             l2_client,
             builder_client,
-        }
+        };
+
+        HealthLayer.layer(proxy)
     }
 }
 
@@ -170,7 +152,9 @@ mod tests {
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
     use http_body_util::BodyExt;
     use hyper::service::service_fn;
-    use hyper_util::rt::TokioIo;
+    use hyper_util::client::legacy::Client;
+    use hyper_util::client::legacy::connect::HttpConnector;
+    use hyper_util::rt::{TokioExecutor, TokioIo};
     use jsonrpsee::server::Server;
     use jsonrpsee::{
         RpcModule,
@@ -215,7 +199,7 @@ mod tests {
                 JwtSecret::random(),
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
-                None,
+                // None,
             ));
 
             let temp_listener = TcpListener::bind("0.0.0.0:0").await?;
@@ -477,7 +461,7 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt, None);
+        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
 
         // Create a layered server
         let server = ServerBuilder::default()

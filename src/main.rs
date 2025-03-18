@@ -1,8 +1,7 @@
 #![allow(clippy::complexity)]
 use crate::client::rpc::{BuilderArgs, L2ClientArgs, RpcClient};
-use ::tracing::{Level, error, info};
+use ::tracing::{Level, info};
 use clap::{Parser, Subcommand, arg};
-use client::auth::AuthClientLayer;
 use debug_api::DebugClient;
 use health::HealthLayer;
 use metrics::init_metrics;
@@ -12,18 +11,11 @@ use tracing::init_tracing;
 use alloy_rpc_types_engine::JwtSecret;
 use dotenv::dotenv;
 use eyre::bail;
-use http::StatusCode;
-use hyper::service::service_fn;
-use hyper::{Request, Response, server::conn::http1};
-use hyper_util::rt::TokioIo;
 use jsonrpsee::RpcModule;
-use jsonrpsee::http_client::HttpBody;
 use jsonrpsee::server::Server;
-use metrics_exporter_prometheus::PrometheusHandle;
 use proxy::ProxyLayer;
 use server::{ExecutionMode, PayloadSource, RollupBoostServer};
 
-use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 
 mod client;
@@ -172,7 +164,7 @@ async fn main() -> eyre::Result<()> {
     }
 
     init_tracing(&args)?;
-    let metrics = init_metrics(&args)?;
+    init_metrics(&args)?;
 
     let l2_client_args = args.l2_client;
 
@@ -227,18 +219,12 @@ async fn main() -> eyre::Result<()> {
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
 
-    // let auth = AuthClientLayer::new(builder_args.builder_jwt_token.unwrap());
-
-    let http_middleware = tower::ServiceBuilder::new()
-        .layer(HealthLayer)
-        // .layer(auth)
-        .layer(ProxyLayer::new(
-            l2_client_args.l2_url,
-            l2_auth_jwt,
-            builder_args.builder_url,
-            builder_auth_jwt,
-            metrics,
-        ));
+    let http_middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
+        l2_client_args.l2_url,
+        l2_auth_jwt,
+        builder_args.builder_url,
+        builder_auth_jwt,
+    ));
 
     let server = Server::builder()
         .set_http_middleware(http_middleware)
@@ -268,41 +254,4 @@ async fn main() -> eyre::Result<()> {
     }
 
     Ok(())
-}
-
-async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre::Result<()> {
-    let listener = TcpListener::bind(addr).await?;
-    info!("Metrics server running on {}", addr);
-
-    loop {
-        match listener.accept().await {
-            Ok((stream, _)) => {
-                let handle = handle.clone(); // Clone the handle for each connection
-                tokio::task::spawn(async move {
-                    let service = service_fn(move |_req: Request<hyper::body::Incoming>| {
-                        let response = match _req.uri().path() {
-                            "/metrics" => Response::builder()
-                                .header("content-type", "text/plain")
-                                .body(HttpBody::from(handle.render()))
-                                .unwrap(),
-                            _ => Response::builder()
-                                .status(StatusCode::NOT_FOUND)
-                                .body(HttpBody::empty())
-                                .unwrap(),
-                        };
-                        async { Ok::<_, hyper::Error>(response) }
-                    });
-
-                    let io = TokioIo::new(stream);
-
-                    if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
-                        error!(message = "Error serving metrics connection", error = %err);
-                    }
-                });
-            }
-            Err(e) => {
-                error!(message = "Error accepting connection", error = %e);
-            }
-        }
-    }
 }

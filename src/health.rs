@@ -11,18 +11,21 @@ use jsonrpsee::{
 use tower::{Layer, Service, util::Either};
 
 /// A [`Layer`] that filters out /healthz requests and responds with a 200 OK.
+#[derive(Clone, Debug)]
 pub(crate) struct HealthLayer;
 
 impl<S> Layer<S> for HealthLayer {
     type Service = HealthService<S>;
 
-    fn layer(&self, service: S) -> Self::Service {
-        HealthService(service)
+    fn layer(&self, inner: S) -> Self::Service {
+        HealthService { inner }
     }
 }
 
-#[derive(Clone)]
-pub struct HealthService<S>(S);
+#[derive(Clone, Debug)]
+pub struct HealthService<S> {
+    inner: S,
+}
 
 impl<S> Service<HttpRequest<HttpBody>> for HealthService<S>
 where
@@ -39,14 +42,14 @@ where
     >;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.0.poll_ready(cx).map_err(Into::into)
+        self.inner.poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, request: HttpRequest<HttpBody>) -> Self::Future {
         if request.uri().path() == "/healthz" {
             Either::A(Self::healthz().boxed())
         } else {
-            Either::B(self.0.call(request))
+            Either::B(self.inner.call(request))
         }
     }
 }

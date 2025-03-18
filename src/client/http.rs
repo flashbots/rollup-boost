@@ -50,11 +50,11 @@ impl HttpClient {
     )]
     pub(crate) async fn forward(
         &mut self,
-        req: Request<HttpBody>,
+        mut req: Request<HttpBody>,
         method: String,
     ) -> Result<http::Response<HttpBody>, BoxError> {
+        *req.uri_mut() = self.url.clone();
         debug!("forwarding {} to {}", method, self.target);
-        debug!("{:?}", req);
 
         let res = self.client.call(req).await?;
 
