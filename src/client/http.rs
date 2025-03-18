@@ -1,6 +1,7 @@
 use crate::client::auth::{AuthClientLayer, AuthClientService};
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
+use eyre::Context;
 use flate2::read::GzDecoder;
 use http::response::Parts;
 use http::{Request, Uri};
@@ -14,7 +15,7 @@ use jsonrpsee::http_client::HttpBody;
 use opentelemetry::trace::SpanKind;
 use std::io::Read;
 use tower::{Layer, Service};
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, error, instrument};
 
 #[derive(Clone, Debug)]
 pub(crate) struct HttpClient {
@@ -75,9 +76,8 @@ impl HttpClient {
         let parts_clone = parts.clone();
         let body_bytes_clone = body_bytes.clone();
 
-        self.process_response(parts_clone, body_bytes_clone)
-            .await
-            .unwrap();
+        self.handle_response(parts_clone, body_bytes_clone)
+            .context("error fowarding request")?;
 
         Ok(http::Response::from_parts(
             parts,
@@ -85,43 +85,38 @@ impl HttpClient {
         ))
     }
 
-    async fn process_response(&self, parts: Parts, body_bytes: Vec<u8>) -> Result<(), BoxError> {
+    fn handle_response(&self, parts: Parts, body_bytes: Vec<u8>) -> eyre::Result<()> {
         // Check for GZIP compression
         let is_gzipped = parts
             .headers
             .get(http::header::CONTENT_ENCODING)
             .is_some_and(|val| val.as_bytes() == b"gzip");
+
         let decoded_body = if is_gzipped {
             // Decompress GZIP content
             let mut decoder = GzDecoder::new(&body_bytes[..]);
             let mut decoded = Vec::new();
-            decoder.read_to_end(&mut decoded).map_err(|e| {
-                warn!(
-                    target: "proxy::process_response",
-                    message = "error decompressing body",
-                    error = %e,
-                );
-                e
-            })?;
+            decoder
+                .read_to_end(&mut decoded)
+                .context("error decompressing body")?;
             decoded
         } else {
             body_bytes
         };
 
-        // log the decoded body
         debug!(
-        target: "proxy::forward_request",
-        message = "raw response body",
+            target: "proxy::forward_request",
+            message = "raw response body",
             body = %String::from_utf8_lossy(&decoded_body),
         );
 
-        let _ = parse_response_code(&decoded_body);
+        handle_response_code(&decoded_body)?;
 
         Ok(())
     }
 }
 
-fn parse_response_code(body_bytes: &[u8]) -> Option<String> {
+fn handle_response_code(body_bytes: &[u8]) -> eyre::Result<()> {
     #[derive(serde::Deserialize, Debug)]
     struct RpcResponse {
         error: Option<JsonRpcError>,
@@ -132,11 +127,12 @@ fn parse_response_code(body_bytes: &[u8]) -> Option<String> {
         code: i32,
     }
 
-    // Safely try to deserialize, return empty string on failure
-    serde_json::from_slice::<RpcResponse>(body_bytes)
-                .map_err(|e| {
-                    warn!(target: "proxy::parse_response_code", message = "error deserializing body", error = %e);
-                })
-                .ok()
-                .and_then(|r| r.error.map(|e| e.code.to_string()))
+    let res =
+        serde_json::from_slice::<RpcResponse>(body_bytes).context("error deserializing body")?;
+
+    if let Some(e) = res.error {
+        return Err(eyre::eyre!("code: {}", e.code));
+    }
+
+    Ok(())
 }
