@@ -79,7 +79,7 @@ impl FlashblockBuilder {
         Ok(())
     }
 
-    pub fn to_envelope(self) -> Result<OpExecutionPayloadEnvelopeV3, FlashblocksError> {
+    pub fn into_envelope(self) -> Result<OpExecutionPayloadEnvelopeV3, FlashblocksError> {
         let base = self.base.ok_or(FlashblocksError::MissingPayload)?;
 
         // There must be at least one delta
@@ -98,7 +98,6 @@ impl FlashblockBuilder {
             .flashblocks
             .iter()
             .flat_map(|diff| diff.withdrawals.clone())
-            .map(|w| w.into())
             .collect();
 
         Ok(OpExecutionPayloadEnvelopeV3 {
@@ -114,7 +113,7 @@ impl FlashblockBuilder {
                 blob_gas_used: 0,
                 excess_blob_gas: 0,
                 payload_inner: ExecutionPayloadV2 {
-                    withdrawals: withdrawals,
+                    withdrawals,
                     payload_inner: ExecutionPayloadV1 {
                         parent_hash: base.parent_hash,
                         fee_recipient: base.fee_recipient,
@@ -129,7 +128,7 @@ impl FlashblockBuilder {
                         extra_data: base.extra_data,
                         base_fee_per_gas: base.base_fee_per_gas,
                         block_hash: diff.block_hash,
-                        transactions: transactions,
+                        transactions,
                     },
                 },
             },
@@ -164,7 +163,7 @@ impl FlashblocksService {
         // consume the best payload and reset the builder
         let payload = {
             let mut builder = self.best_payload.write().await;
-            std::mem::take(&mut *builder).to_envelope()?
+            std::mem::take(&mut *builder).into_envelope()?
         };
         *self.best_payload.write().await = FlashblockBuilder::new();
 
