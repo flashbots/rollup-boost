@@ -10,8 +10,8 @@ use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::mpsc;
 use tokio::sync::RwLock;
+use tokio::sync::mpsc;
 use tracing::error;
 #[derive(Debug, Error)]
 pub enum FlashblocksError {
