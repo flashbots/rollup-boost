@@ -40,7 +40,6 @@ where
     }
 
     pub async fn run(&mut self, token: CancellationToken) {
-        // Added the URI to the log message for better identification
         info!(
             message = "starting upstream subscription",
             uri = self.uri.to_string()
@@ -63,7 +62,6 @@ where
                             );
                         }
                         Err(e) => {
-                            // Added URI to the error log for better debugging
                             error!(
                                 message = "upstream websocket error",
                                 uri = self.uri.to_string(),
@@ -74,7 +72,6 @@ where
                             self.metrics.upstream_connections.decrement(1);
 
                             if let Some(duration) = self.backoff.next_backoff() {
-                                // Added URI to the warning message
                                 warn!(
                                     message = "reconnecting",
                                     uri = self.uri.to_string(),
