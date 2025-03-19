@@ -159,3 +159,216 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::Metrics;
+    use axum::http::Uri;
+    use futures::SinkExt;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::sync::broadcast;
+    use tokio::time::{sleep, timeout, Duration};
+    use tokio_tungstenite::{accept_async, tungstenite::Message};
+
+    struct MockServer {
+        addr: SocketAddr,
+        message_sender: broadcast::Sender<String>,
+        shutdown: CancellationToken,
+    }
+
+    impl MockServer {
+        async fn new() -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let (tx, _) = broadcast::channel::<String>(100);
+            let shutdown = CancellationToken::new();
+            let shutdown_clone = shutdown.clone();
+            let tx_clone = tx.clone();
+
+            tokio::spawn(async move {
+                loop {
+                    select! {
+                        _ = shutdown_clone.cancelled() => {
+                            break;
+                        }
+                        accept_result = listener.accept() => {
+                            match accept_result {
+                                Ok((stream, _)) => {
+                                    let tx = tx_clone.clone();
+                                    let shutdown = shutdown_clone.clone();
+                                    tokio::spawn(async move {
+                                        Self::handle_connection(stream, tx, shutdown).await;
+                                    });
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to accept: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            Self {
+                addr,
+                message_sender: tx,
+                shutdown,
+            }
+        }
+
+        async fn handle_connection(
+            stream: TcpStream,
+            tx: broadcast::Sender<String>,
+            shutdown: CancellationToken,
+        ) {
+            let ws_stream = match accept_async(stream).await {
+                Ok(ws_stream) => ws_stream,
+                Err(e) => {
+                    eprintln!("Failed to accept websocket: {}", e);
+                    return;
+                }
+            };
+
+            let (mut ws_sender, _) = ws_stream.split();
+
+            let mut rx = tx.subscribe();
+
+            loop {
+                select! {
+                    _ = shutdown.cancelled() => {
+                        break;
+                    }
+                    msg = rx.recv() => {
+                        match msg {
+                            Ok(text) => {
+                                if let Err(e) = ws_sender.send(Message::Text(text.into())).await {
+                                    eprintln!("Error sending message: {}", e);
+                                    break;
+                                }
+                            }
+                            Err(_) => {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        async fn send_message(
+            &self,
+            msg: &str,
+        ) -> Result<usize, broadcast::error::SendError<String>> {
+            self.message_sender.send(msg.to_string())
+        }
+
+        async fn shutdown(self) {
+            self.shutdown.cancel();
+        }
+
+        fn uri(&self) -> Uri {
+            format!("ws://{}", self.addr)
+                .parse()
+                .expect("Failed to parse URI")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_multiple_subscribers_single_listener() {
+        // Create two mock servers
+        let server1 = MockServer::new().await;
+        let server2 = MockServer::new().await;
+
+        // Create a receiver for the messages
+        let received_messages = Arc::new(Mutex::new(Vec::new()));
+        let received_clone = received_messages.clone();
+
+        // Create a listener function that will be shared by both subscribers
+        let listener = move |data: String| {
+            if let Ok(mut messages) = received_clone.lock() {
+                messages.push(data);
+            }
+        };
+
+        // Create metrics
+        let metrics = Arc::new(Metrics::default());
+
+        // Create cancellation token
+        let token = CancellationToken::new();
+        let token_clone1 = token.clone();
+        let token_clone2 = token.clone();
+
+        // Create and run the first subscriber
+        let uri1 = server1.uri();
+        let listener_clone1 = listener.clone();
+        let metrics_clone1 = metrics.clone();
+
+        let mut subscriber1 =
+            WebsocketSubscriber::new(uri1.clone(), listener_clone1, 5, metrics_clone1);
+
+        // Create and run the second subscriber
+        let uri2 = server2.uri();
+        let listener_clone2 = listener.clone();
+        let metrics_clone2 = metrics.clone();
+
+        let mut subscriber2 =
+            WebsocketSubscriber::new(uri2.clone(), listener_clone2, 5, metrics_clone2);
+
+        // Spawn tasks for subscribers
+        let task1 = tokio::spawn(async move {
+            subscriber1.run(token_clone1).await;
+        });
+
+        let task2 = tokio::spawn(async move {
+            subscriber2.run(token_clone2).await;
+        });
+
+        // Wait for connections to establish
+        sleep(Duration::from_millis(500)).await;
+
+        // Send different messages from each server
+        let _ = server1.send_message("Message from server 1").await;
+        let _ = server2.send_message("Message from server 2").await;
+
+        // Wait for messages to be processed
+        sleep(Duration::from_millis(500)).await;
+
+        // Send more messages to ensure continuous operation
+        let _ = server1.send_message("Another message from server 1").await;
+        let _ = server2.send_message("Another message from server 2").await;
+
+        // Wait for messages to be processed
+        sleep(Duration::from_millis(500)).await;
+
+        // Cancel the token to shut down subscribers
+        token.cancel();
+
+        // Wait for tasks to complete
+        let _ = timeout(Duration::from_secs(1), task1).await;
+        let _ = timeout(Duration::from_secs(1), task2).await;
+
+        // Shutdown the mock servers
+        server1.shutdown().await;
+        server2.shutdown().await;
+
+        // Verify that messages were received
+        let messages = match received_messages.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+
+        assert_eq!(messages.len(), 4);
+
+        // Check that we received messages from both servers
+        assert!(messages.contains(&"Message from server 1".to_string()));
+        assert!(messages.contains(&"Message from server 2".to_string()));
+        assert!(messages.contains(&"Another message from server 1".to_string()));
+        assert!(messages.contains(&"Another message from server 2".to_string()));
+
+        assert!(messages.len() > 0);
+    }
+}
