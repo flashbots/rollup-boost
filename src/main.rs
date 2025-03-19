@@ -206,16 +206,12 @@ async fn main() -> eyre::Result<()> {
 
     let (probe_layer, probes) = ProbeLayer::new();
 
-    probes.set_health(true);
-    probes.set_ready(true);
-    probes.set_live(true);
-
     let rollup_boost = RollupBoostServer::new(
-        l2_client,
+        l2_client.clone(),
         builder_client,
         boost_sync_enabled,
         args.execution_mode,
-        probes,
+        probes.clone(),
     );
 
     // Spawn the debug server
@@ -240,6 +236,14 @@ async fn main() -> eyre::Result<()> {
         .build(format!("{}:{}", args.rpc_host, args.rpc_port).parse::<SocketAddr>()?)
         .await?;
     let handle = server.start(module);
+
+    while l2_client.health().await.is_err() {
+        info!("waiting for l2 client to be healthy");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+
+    probes.set_ready(true);
+    probes.set_health(true);
 
     let stop_handle = handle.clone();
 

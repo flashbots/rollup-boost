@@ -11,11 +11,21 @@ use jsonrpsee::{
 };
 use tower::{Layer, Service};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Probes {
     pub health: AtomicBool,
     pub ready: AtomicBool,
     pub live: AtomicBool,
+}
+
+impl Default for Probes {
+    fn default() -> Self {
+        Self {
+            health: AtomicBool::new(false),
+            ready: AtomicBool::new(false),
+            live: AtomicBool::new(true),
+        }
+    }
 }
 
 impl Probes {
@@ -27,10 +37,6 @@ impl Probes {
     pub fn set_ready(&self, value: bool) {
         self.ready
             .store(value, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn set_live(&self, value: bool) {
-        self.live.store(value, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn health(&self) -> bool {
