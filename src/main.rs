@@ -8,7 +8,7 @@ mod server;
 mod subscriber;
 
 use crate::metrics::Metrics;
-use crate::rate_limit::InMemoryRateLimit;
+use crate::rate_limit::{InMemoryRateLimit, RateLimit};
 use crate::registry::Registry;
 use crate::server::Server;
 use crate::subscriber::WebsocketSubscriber;
@@ -16,6 +16,7 @@ use axum::http::Uri;
 use clap::Parser;
 use dotenvy::dotenv;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use rate_limit::RedisRateLimit;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
@@ -96,6 +97,21 @@ struct Args {
     /// Maximum backoff allowed for upstream connections
     #[arg(long, env, default_value = "20")]
     subscriber_max_interval: u64,
+
+    #[arg(
+        long,
+        env,
+        help = "Redis URL for distributed rate limiting (e.g., redis://localhost:6379). If not provided, in-memory rate limiting will be used."
+    )]
+    redis_url: Option<String>,
+
+    #[arg(
+        long,
+        env,
+        default_value = "flashblocks",
+        help = "Prefix for Redis keys"
+    )]
+    redis_key_prefix: String,
 }
 
 #[tokio::main]
@@ -203,10 +219,40 @@ async fn main() {
 
     let registry = Registry::new(sender, metrics.clone());
 
-    let rate_limiter = Arc::new(InMemoryRateLimit::new(
-        args.global_connections_limit,
-        args.per_ip_connections_limit,
-    ));
+    let rate_limiter = match &args.redis_url {
+        Some(redis_url) => {
+            info!(message = "Using Redis rate limiter", redis_url = redis_url);
+            match RedisRateLimit::new(
+                redis_url,
+                args.global_connections_limit,
+                args.per_ip_connections_limit,
+                &args.redis_key_prefix,
+            ) {
+                Ok(limiter) => {
+                    info!(message = "Connected to Redis successfully");
+                    Arc::new(limiter) as Arc<dyn RateLimit>
+                }
+                Err(e) => {
+                    error!(
+                        message =
+                            "Failed to connect to Redis, falling back to in-memory rate limiting",
+                        error = e.to_string()
+                    );
+                    Arc::new(InMemoryRateLimit::new(
+                        args.global_connections_limit,
+                        args.per_ip_connections_limit,
+                    )) as Arc<dyn RateLimit>
+                }
+            }
+        }
+        None => {
+            info!(message = "Using in-memory rate limiter");
+            Arc::new(InMemoryRateLimit::new(
+                args.global_connections_limit,
+                args.per_ip_connections_limit,
+            )) as Arc<dyn RateLimit>
+        }
+    };
 
     let server = Server::new(
         args.listen_addr,

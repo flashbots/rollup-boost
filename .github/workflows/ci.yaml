@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Redis for tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
