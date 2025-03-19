@@ -372,9 +372,9 @@ impl EngineApiServer for RollupBoostServer {
             }
             (_, Ok(l2)) => {
                 // builder failed to return a payload
+                self.probes.set_ready(true);
                 if self.increment_builder_failures() > BUILDER_MISSED_PAYLOAD_THRESHOLD {
                     self.probes.set_health(false);
-                    self.probes.set_ready(true);
                 }
                 Ok((l2, "l2"))
             }
