@@ -52,7 +52,7 @@ impl Probes {
     }
 }
 
-/// A [`Layer`] that filters out /healthz requests and responds with a 200 OK.
+/// A [`Layer`] that adds probe endpoints to a service.
 #[derive(Clone, Debug)]
 pub struct ProbeLayer {
     probes: Arc<Probes>,
