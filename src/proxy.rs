@@ -1,15 +1,13 @@
-use crate::HealthLayer;
 use crate::client::http::HttpClient;
-use crate::health::HealthService;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
+use futures::FutureExt as _;
 use http::Uri;
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
-use tracing::info;
 
 const MULTIPLEX_METHODS: [&str; 4] = [
     "engine_",
@@ -17,6 +15,7 @@ const MULTIPLEX_METHODS: [&str; 4] = [
     "eth_sendRawTransaction",
     "miner_",
 ];
+
 const FORWARD_REQUESTS: [&str; 6] = [
     "eth_sendRawTransaction",
     "eth_sendRawTransactionConditional",
@@ -51,7 +50,7 @@ impl ProxyLayer {
 }
 
 impl<S> Layer<S> for ProxyLayer {
-    type Service = HealthService<ProxyService<S>>;
+    type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
         let l2_client = HttpClient::new(
@@ -66,13 +65,11 @@ impl<S> Layer<S> for ProxyLayer {
             PayloadSource::Builder,
         );
 
-        let proxy = ProxyService {
+        ProxyService {
             inner,
             l2_client,
             builder_client,
-        };
-
-        HealthLayer.layer(proxy)
+        }
     }
 }
 
@@ -112,44 +109,57 @@ where
         let mut service = self.clone();
         service.inner = std::mem::replace(&mut self.inner, service.inner);
 
-        let fut = async move {
-            let (parts, body) = req.into_parts();
-            let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+        async move {
+            let res = async move {
+                let (parts, body) = req.into_parts();
+                let (body_bytes, _) =
+                    http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
 
-            // Deserialize the bytes to find the method
-            let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
-                .method
-                .to_string();
+                // Deserialize the bytes to find the method
+                let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
+                    .method
+                    .to_string();
 
-            if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
-                if FORWARD_REQUESTS.contains(&method.as_str()) {
-                    let builder_req =
-                        HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
-                    let builder_method = method.clone();
-                    let mut builder_client = service.builder_client.clone();
-                    tokio::spawn(async move {
-                        let _ = builder_client.forward(builder_req, builder_method).await;
-                    });
+                if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
+                    if FORWARD_REQUESTS.contains(&method.as_str()) {
+                        let builder_req = HttpRequest::from_parts(
+                            parts.clone(),
+                            HttpBody::from(body_bytes.clone()),
+                        );
+                        let builder_method = method.clone();
+                        let mut builder_client = service.builder_client.clone();
+                        tokio::spawn(async move {
+                            let _ = builder_client.forward(builder_req, builder_method).await;
+                        });
 
-                    let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                    service.l2_client.forward(l2_req, method).await
+                        let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                        service.l2_client.forward(l2_req, method).await
+                    } else {
+                        let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                        service.inner.call(req).await.map_err(|e| e.into())
+                    }
                 } else {
                     let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                    service.inner.call(req).await.map_err(|e| e.into())
+                    service.l2_client.forward(req, method).await
                 }
-            } else {
-                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                service.l2_client.forward(req, method).await
             }
-        };
-        Box::pin(fut)
+            .await;
+
+            Ok(res.unwrap_or_else(|e| {
+                HttpResponse::builder()
+                    .status(500)
+                    .body(HttpBody::from(e.to_string()))
+                    .unwrap()
+            }))
+        }
+        .boxed()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::probe::ProbeLayer;
+
     use super::*;
     use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
@@ -166,7 +176,6 @@ mod tests {
         http_client::HttpClient,
         rpc_params,
         server::{ServerBuilder, ServerHandle},
-        types::{ErrorCode, ErrorObject},
     };
     use serde_json::json;
     use std::{
@@ -377,11 +386,6 @@ mod tests {
     async fn proxy_failure() {
         let response = send_request("non_existent_method").await;
         assert!(response.is_err());
-        let expected_error = ErrorObject::from(ErrorCode::MethodNotFound).into_owned();
-        assert!(matches!(
-            response.unwrap_err(),
-            ClientError::Call(e) if e == expected_error
-        ));
     }
 
     async fn does_not_proxy_engine_method() {
@@ -465,11 +469,20 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
+        let (probe_layer, probes) = ProbeLayer::new();
+        probes.set_health(true);
+        probes.set_ready(true);
+        probes.set_live(true);
+
         let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
 
         // Create a layered server
         let server = ServerBuilder::default()
-            .set_http_middleware(tower::ServiceBuilder::new().layer(proxy_layer))
+            .set_http_middleware(
+                tower::ServiceBuilder::new()
+                    .layer(probe_layer)
+                    .layer(proxy_layer),
+            )
             .build(addr.parse::<SocketAddr>().unwrap())
             .await
             .unwrap();

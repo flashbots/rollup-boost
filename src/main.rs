@@ -3,8 +3,8 @@ use crate::client::rpc::{BuilderArgs, L2ClientArgs, RpcClient};
 use ::tracing::{Level, info};
 use clap::{Parser, Subcommand, arg};
 use debug_api::DebugClient;
-use health::HealthLayer;
 use metrics::init_metrics;
+use probe::ProbeLayer;
 use std::net::SocketAddr;
 use tracing::init_tracing;
 
@@ -20,10 +20,10 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 
 mod client;
 mod debug_api;
-mod health;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
+mod probe;
 mod proxy;
 mod server;
 mod tracing;
@@ -204,11 +204,18 @@ async fn main() -> eyre::Result<()> {
         info!("Boost sync enabled");
     }
 
+    let (probe_layer, probes) = ProbeLayer::new();
+
+    probes.set_health(true);
+    probes.set_ready(true);
+    probes.set_live(true);
+
     let rollup_boost = RollupBoostServer::new(
         l2_client,
         builder_client,
         boost_sync_enabled,
         args.execution_mode,
+        probes,
     );
 
     // Spawn the debug server
@@ -219,12 +226,14 @@ async fn main() -> eyre::Result<()> {
     // Build and start the server
     info!("Starting server on :{}", args.rpc_port);
 
-    let http_middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-        l2_client_args.l2_url,
-        l2_auth_jwt,
-        builder_args.builder_url,
-        builder_auth_jwt,
-    ));
+    let http_middleware = tower::ServiceBuilder::new()
+        .layer(probe_layer)
+        .layer(ProxyLayer::new(
+            l2_client_args.l2_url,
+            l2_auth_jwt,
+            builder_args.builder_url,
+            builder_auth_jwt,
+        ));
 
     let server = Server::builder()
         .set_http_middleware(http_middleware)

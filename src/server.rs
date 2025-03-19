@@ -1,5 +1,6 @@
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
+use crate::probe::Probes;
 use alloy_primitives::B256;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
@@ -119,6 +120,7 @@ pub struct RollupBoostServer {
     pub boost_sync: bool,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
+    probes: Arc<Probes>,
 }
 
 impl RollupBoostServer {
@@ -127,6 +129,7 @@ impl RollupBoostServer {
         builder_client: RpcClient,
         boost_sync: bool,
         initial_execution_mode: ExecutionMode,
+        probes: Arc<Probes>,
     ) -> Self {
         Self {
             l2_client: Arc::new(l2_client),
@@ -134,6 +137,7 @@ impl RollupBoostServer {
             boost_sync,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
+            probes,
         }
     }
 
@@ -342,7 +346,12 @@ impl EngineApiServer for RollupBoostServer {
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let (payload, context) = match (builder_payload, l2_payload) {
-            (Ok(Some(builder)), _) => Ok((builder, "builder")),
+            (Ok(Some(builder)), _) => {
+                self.probes.set_live(true);
+                self.probes.set_ready(true);
+                self.probes.set_health(true);
+                Ok((builder, "builder"))
+            }
             (_, Ok(l2)) => Ok((l2, "l2")),
             (_, Err(e)) => Err(e),
         }?;
@@ -420,6 +429,8 @@ impl EngineApiServer for RollupBoostServer {
 #[cfg(test)]
 #[allow(clippy::complexity)]
 mod tests {
+    use crate::probe::ProbeLayer;
+
     use super::*;
     use alloy_primitives::hex;
     use alloy_primitives::{FixedBytes, U256};
@@ -529,11 +540,14 @@ mod tests {
             let builder_client =
                 RpcClient::new(builder_auth_rpc, jwt_secret, 2000, PayloadSource::Builder).unwrap();
 
+            let (_probe_layer, probes) = ProbeLayer::new();
+
             let rollup_boost_client = RollupBoostServer::new(
                 l2_client,
                 builder_client,
                 boost_sync,
                 ExecutionMode::Enabled,
+                probes,
             );
 
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();

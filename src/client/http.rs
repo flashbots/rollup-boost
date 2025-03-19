@@ -1,4 +1,4 @@
-use crate::client::auth::{AuthClientLayer, AuthClientService};
+use crate::client::auth::AuthLayer;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
 use eyre::Context;
@@ -17,9 +17,13 @@ use std::io::Read;
 use tower::{Layer, Service};
 use tracing::{debug, error, instrument};
 
+use super::auth::Auth;
+
+pub type HttpClientService = Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>;
+
 #[derive(Clone, Debug)]
 pub(crate) struct HttpClient {
-    client: AuthClientService<Client<HttpsConnector<HttpConnector>, HttpBody>>,
+    client: HttpClientService,
     url: Uri,
     target: PayloadSource,
 }
@@ -33,7 +37,7 @@ impl HttpClient {
             .enable_http1()
             .enable_http2()
             .build();
-        let auth = AuthClientLayer::new(secret);
+        let auth = AuthLayer::new(secret);
         let client: Client<HttpsConnector<HttpConnector>, HttpBody> =
             Client::builder(TokioExecutor::new()).build(connector);
         let client = auth.layer(client);
