@@ -14,7 +14,7 @@ use crate::server::Server;
 use crate::subscriber::WebsocketSubscriber;
 use axum::http::Uri;
 use clap::Parser;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ struct Args {
     listen_addr: SocketAddr,
 
     #[arg(long, env, help = "WebSocket URI of the upstream server to connect to")]
-    upstream_ws: Uri,
+    upstream_ws: Vec<Uri>,
 
     #[arg(
         long,
@@ -144,6 +144,14 @@ async fn main() {
             .expect("failed to setup Prometheus endpoint")
     }
 
+    // Validate that we have at least one upstream URI
+    if args.upstream_ws.is_empty() {
+        error!(message = "no upstream URIs provided");
+        panic!("No upstream URIs provided");
+    }
+
+    info!(message = "using upstream URIs", uris = ?args.upstream_ws);
+
     let metrics = Arc::new(Metrics::default());
     let metrics_clone = metrics.clone();
 
@@ -165,14 +173,33 @@ async fn main() {
     };
 
     let token = CancellationToken::new();
+    let mut subscriber_tasks = Vec::new();
 
-    let mut subscriber = WebsocketSubscriber::new(
-        args.upstream_ws,
-        listener,
-        args.subscriber_max_interval,
-        metrics.clone(),
-    );
-    let subscriber_task = subscriber.run(token.clone());
+    // Start a subscriber for each upstream URI
+    for (index, uri) in args.upstream_ws.iter().enumerate() {
+        let uri_clone = uri.clone();
+        let listener_clone = listener.clone();
+        let token_clone = token.clone();
+        let metrics_clone = metrics.clone();
+
+        let mut subscriber = WebsocketSubscriber::new(
+            uri_clone.clone(),
+            listener_clone,
+            args.subscriber_max_interval,
+            metrics_clone,
+        );
+
+        let task = tokio::spawn(async move {
+            info!(
+                message = "starting subscriber",
+                index = index,
+                uri = uri_clone.to_string()
+            );
+            subscriber.run(token_clone).await;
+        });
+
+        subscriber_tasks.push(task);
+    }
 
     let registry = Registry::new(sender, metrics.clone());
 
@@ -194,8 +221,8 @@ async fn main() {
     let mut terminate = signal(SignalKind::terminate()).unwrap();
 
     tokio::select! {
-        _ = subscriber_task => {
-            info!("subscriber task terminated");
+        _ = futures::future::join_all(subscriber_tasks) => {
+            info!("all subscriber tasks terminated");
             token.cancel();
         },
         _ = server_task => {
