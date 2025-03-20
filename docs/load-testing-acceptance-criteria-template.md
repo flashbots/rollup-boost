@@ -1,3 +1,7 @@
+## Overview
+
+This document serves as a generic acceptance criteria checklist template to be run through before deploying network upgrades through Rollup Boost. Copy this checklist and fill it out with the appropriate data for your specific chain before upgrading your network..
+
 ## **Environment**
 - **Network:** [Specify the network]
 - **RPC Endpoint:** [Specify the blockchain network RPC URL]
@@ -132,8 +136,7 @@
 - **Supporting Data:** [Link to results]
 
 🎯 **Observability: Full Transaction Traceability**
-
-**Description:** Verifies that transactions can be traced end-to-end across all infrastructure components.
+- **Description:** Verifies that transactions can be traced end-to-end across all infrastructure components.
 - **Expected:** Given a random transaction hash during load testing, timestamps for each step in the transaction pipeline can be observed.
 - **Measured:**
    - **Client Submission Timestamp:** [Measured result]
