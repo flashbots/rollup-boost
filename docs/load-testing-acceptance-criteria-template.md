@@ -1,11 +1,10 @@
 ## **Environment**
-
-- **Network:** Unichain Sepolia Experimental
+- **Network:** [Specify the network]
 - **RPC Endpoint:** [Specify the blockchain network RPC URL]
 - **Contender Load Testing Scenarios:**
 - **Block Builder Version:** [Specify the deployed version]
 - **OP Stack Version:** [GitHub link to release]
-- **Test Period:** March 18, 2025
+- **Test Period:** [Specify the test period]
 
 ## **Acceptance Criteria Checklist**
 ### **1. Overall Network Performance**
@@ -137,10 +136,10 @@
 **Description:** Verifies that transactions can be traced end-to-end across all infrastructure components.
 - **Expected:** Given a random transaction hash during load testing, timestamps for each step in the transaction pipeline can be observed.
 - **Measured:**
-- **Client Submission Timestamp:** [Measured result]
-- **Chain Operator Ingress Timestamp:** [Measured result]
-- **Block Builder Ingress Timestamp:** [Measured result]
-- **Block Submission Timestamp:** [Measured result]
+   - **Client Submission Timestamp:** [Measured result]
+   - **Chain Operator Ingress Timestamp:** [Measured result]
+   - **Block Builder Ingress Timestamp:** [Measured result]
+   - **Block Submission Timestamp:** [Measured result]
 
 ---
 
