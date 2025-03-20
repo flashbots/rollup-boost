@@ -1,97 +1,233 @@
-# Rollup Boost - Load Testing Acceptance Criteria
+## **Environment**
 
-## Overview
-This document serves as a generic acceptance criteria checklist for load testing a **block builder** on a Layer 2 network. It's designed to be used with [Contender](https://github.com/flashbots/contender), a high-performance Ethereum network testing tool for benchmarking and stress-testing clients and networks. Copy this checklist and fill it out with the appropriate data for your specific chain before proceeding to mainnet deployment.
+•	**Network:** Unichain Sepolia Experimental
 
-## Environment
-- **Network:** [Specify the blockchain network]
-- **RPC:** [Specify the blockchain network]
-- **Contender Scenarios:** [Specify scenarios used for load testing]
-- **Block Builder Version:** [Github link to release]
-- **OP Stack Version:** [Github link to release]
-- **Test Period:** [YYYY-MM-DD]
+•	**RPC Endpoint:** [Specify the blockchain network RPC URL]
 
-## Acceptance Criteria Checklist
+•	**Contender Load Testing Scenarios:**
 
-### **1. Transaction Throughput & Latency**
-✅ **Peak Transactions per Second (TPS)**
-   - Expected: ≥ X,XXX TPS
-   - Measured: `____`
-   - Supporting Data: [Link to results]
+•	**Fill Block** (C_FILL_PERCENT=50)
 
-✅ **Average Transaction Latency**
-   - Expected: ≤ XXX ms
-   - Measured: `____`
-   - Supporting Data: [Link to results]
+•	**Block Builder Version:** [Specify the deployed version]
 
-✅ **Max Transaction Latency (P99)**
-   - Expected: ≤ XXX ms
-   - Measured: `____`
-   - Supporting Data: [Link to results]
+•	**OP Stack Version:** [GitHub link to release]
 
-✅ **RPC Response Latency**
-   - Expected: ≤ XXX ms
-   - Measured: `____`
-   - Supporting Data: [Link to results]
+•	**Test Period:** March 18, 2025
 
-### **2. Block Production Performance**
-✅ **Average Block Time**
-   - Expected: ≤ XX seconds
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **Missed Blocks Rate**
-   - Expected: ≤ X% of total blocks
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **Internal Block Builder Latency**
-   - Expected: ≤ XXX ms
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **Latency from Chain RPC to Block Builder**
-   - Expected: ≤ XXX ms
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **100% Transaction Forwarding Acceptance**
-   - Expected: All transactions sent should be logged in both the chain operator's environment and the block builder's environment
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-### **3. Instance Health & Deployment Readiness**
-✅ **Chain Operator Health Checks** *(CPU, Memory, Disk, Networking)*
-   - Expected: No resource exhaustion or anomalies
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **Block Builder Health Checks** *(CPU, Memory, Disk, Networking)*
-   - Expected: No resource exhaustion or anomalies
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **RPC Endpoint Stability**
-   - Expected: No downtime or crashes
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **Able to Trace Transaction Hash End-to-End**
-   - Expected: Transactions can be fully traced from submission to inclusion in a block
-   - Measured: `____`
-   - Supporting Data: [Link to results]
-
-✅ **Verification of Non-Tx Related RPC Methods**
-   - Expected: No failures in non-transaction-related RPC calls
-   - Measured: `____`
-   - Supporting Data: [Link to results]
+## **Acceptance Criteria Checklist**
 
 ---
 
-## **Final Decision**
-✅ **All criteria met (Yes/No)?**  
-   - Decision: `____`
-   - Date: `____`
+### **1. Overall Network Performance**
 
-## **Notes & Recommendations**
-- `[Add additional observations, issues, or follow-ups]`
+🎯 **Peak Gas Utilization (GPS)**
+
+**Description:** Measures the highest observed gas consumption per second in the network.
+
+**Expected:** 5 million GPS
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Peak Transactions per Second (TPS)**
+
+**Description:** Measures the maximum number of transactions successfully processed per second.
+
+**Expected:** [Expected TPS]
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Average Block Time**
+
+**Description:** Time taken between consecutive block proposals.
+
+**Expected:** 1 second
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+---
+
+### **2. Chain Operator Performance Metrics**
+
+***RPC Ingress Metrics (Transaction Handling)***
+
+🎯 **Peak Burst Transactions per Second (TPS)**
+
+**Description:** Measures the highest rate at which transactions are submitted to the RPC within a short burst.
+
+**Expected:** 1,000 TPS
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Sustained Transactions per Second (TPS)**
+
+**Description:** Measures the average transaction ingress rate over a sustained 20-minute period.
+
+**Expected:** 200 TPS
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+***RPC Latency Metrics***
+
+🎯 **Average RPC Response Latency**
+
+**Description:** Measures the typical response time for RPC requests.
+
+**Expected:** ≤ 60 ms
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Max RPC Response Latency**
+
+**Description:** Measures the worst-case response time for RPC requests.
+
+**Expected:** ≤ 120 ms
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+***RPC Egress (Block Builder Communication)***
+
+🎯 **Average Block Builder Response Latency**
+
+**Expected:** ≤ 60 ms
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Max Block Builder Response Latency**
+
+**Expected:** ≤ 100 ms
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+***Sequencer & Rollup Boost Health Checks***
+
+🎯 **Sequencer Resource Utilization (CPU, Memory, Disk, Network)**
+
+**Expected:** No resource exhaustion or anomalies.
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Rollup Boost Resource Utilization (CPU, Memory, Disk, Network)**
+
+**Expected:** No resource exhaustion or anomalies.
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **RPC Endpoint Stability**
+
+**Expected:** No downtime or unexpected crashes.
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Non-Transaction RPC Method Stability**
+
+**Description:** Ensures non-transaction-related RPC methods function without failure.
+
+**Expected:** No failures.
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+---
+
+### **3. Block Builder Performance Metrics**
+
+🎯 **Missed Block Rate**
+
+**Description:** Percentage of expected blocks that were not produced.
+
+**Expected:** ≤ 10%
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **End-to-End Block Build Latency**
+
+**Description:** Time taken from transaction ingress to finalized block production.
+
+**Expected:** ≤ 100 ms
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Block Submission Response Latency**
+
+**Expected:** ≤ 100 ms
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Block Builder Health Checks (CPU, Memory, Disk, Network)**
+
+**Expected:** No resource exhaustion or anomalies.
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+---
+
+### **4. System-Wide Reliability Checks**
+
+🎯 **100% Transaction Forwarding Accuracy**
+
+**Description:** Ensures all transactions sent to the system are correctly received and logged.
+
+**Expected:** 100% transaction acceptance.
+
+**Measured:** [Insert measured value]
+
+**Supporting Data:** [Link to results]
+
+🎯 **Observability: Full Transaction Traceability**
+
+**Description:** Verifies that transactions can be traced end-to-end across all infrastructure components.
+
+**Expected:** Given a random transaction hash during load testing, timestamps for each step in the transaction pipeline can be observed.
+
+**Measured:**
+- **Client Submission Timestamp:** [Measured result]
+- **Chain Operator Ingress Timestamp:** [Measured result]
+- **Block Builder Ingress Timestamp:** [Measured result]
+- **Block Submission Timestamp:** [Measured result]
+
+---
+
+### **Final Decision**
+
+✅ **All criteria met?** (Yes / No)
+
+•	**Decision:** [Yes/No]
+
+•	**Date:** March 18, 2025
+
+**Notes & Recommendations**
+
+•	[Add any additional observations, issues, or follow-up actions]
