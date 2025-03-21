@@ -23,6 +23,7 @@ use opentelemetry_sdk::{Resource, propagation::TraceContextPropagator, trace::Co
 use proxy::ProxyLayer;
 use server::{PayloadSource, RollupBoostServer};
 
+use crate::flashblocks::Flashblocks;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, error, info};
@@ -31,6 +32,7 @@ use tracing_subscriber::EnvFilter;
 mod auth_layer;
 mod client;
 mod debug_api;
+mod flashblocks;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
@@ -100,6 +102,25 @@ struct Args {
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     execution_mode: ExecutionMode,
+
+    /// Enable Flashblocks client
+    #[clap(flatten)]
+    flashblocks: FlashblocksArgs,
+}
+
+#[derive(Parser, Debug)]
+struct FlashblocksArgs {
+    /// Enable Flashblocks client
+    #[arg(long, env, default_value = "false")]
+    flashblocks: bool,
+
+    /// Flashblocks WebSocket URL
+    #[arg(long, env, default_value = "ws://localhost:1111")]
+    flashblocks_url: String,
+
+    /// Flashblocks outbound WebSocket URL
+    #[arg(long, env, default_value = "127.0.0.1:1112")]
+    flashblocks_outbound_url: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -246,11 +267,21 @@ async fn main() -> eyre::Result<()> {
         info!("Boost sync enabled");
     }
 
+    let flashblocks_client = if args.flashblocks.flashblocks {
+        let inbound_url = args.flashblocks.flashblocks_url;
+        let outbound_url = args.flashblocks.flashblocks_outbound_url;
+
+        Some(Flashblocks::run(inbound_url, outbound_url).unwrap())
+    } else {
+        None
+    };
+
     let rollup_boost = RollupBoostServer::new(
         l2_client,
         builder_client,
         boost_sync_enabled,
         metrics.clone(),
+        flashblocks_client,
         args.execution_mode,
     );
 

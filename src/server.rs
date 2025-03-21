@@ -1,5 +1,6 @@
 use crate::client::ExecutionClient;
 use crate::debug_api::DebugServer;
+use crate::flashblocks::FlashblocksService;
 use crate::metrics::ServerMetrics;
 use alloy_primitives::B256;
 use moka::sync::Cache;
@@ -123,7 +124,8 @@ pub struct RollupBoostServer {
     pub boost_sync: bool,
     pub metrics: Option<Arc<ServerMetrics>>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
-    execution_mode: Arc<Mutex<ExecutionMode>>,
+    pub flashblocks_client: Option<Arc<FlashblocksService>>,
+    pub execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 impl RollupBoostServer {
@@ -132,6 +134,7 @@ impl RollupBoostServer {
         builder_client: ExecutionClient,
         boost_sync: bool,
         metrics: Option<Arc<ServerMetrics>>,
+        flashblocks_client: Option<FlashblocksService>,
         initial_execution_mode: ExecutionMode,
     ) -> Self {
         Self {
@@ -140,6 +143,7 @@ impl RollupBoostServer {
             boost_sync,
             metrics,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
+            flashblocks_client: flashblocks_client.map(Arc::new),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
         }
     }
@@ -332,6 +336,13 @@ impl RollupBoostServer {
                         fork_choice_state.head_block_hash,
                         parent_span,
                     );
+
+                    if let Some(flashblocks_client) = &self.flashblocks_client {
+                        flashblocks_client
+                            .set_current_payload_id(local_payload_id)
+                            .await;
+                    }
+
                     Some(
                         self.payload_trace_context
                             .tracer
@@ -468,11 +479,31 @@ impl RollupBoostServer {
                 )));
             }
 
+            // Use the flashblocks payload if available
+            let payload = if let Some(flashblocks_client) = &self.flashblocks_client {
+                match flashblocks_client.get_best_payload().await {
+                    Ok(payload) => payload,
+                    Err(e) => {
+                        error!(message = "error getting flashblocks payload", "error" = %e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             let builder = self.builder_client.clone();
-            let (payload, source) = builder.get_payload_v3(external_payload_id).await.map_err(|e| {
-                error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
-                e
-                })?;
+
+            // Fallback to the get_payload_v3 from the builder if no flashblocks payload is available
+            let (payload, source) = if let Some(payload) = payload {
+                info!(message = "using flashblocks payload");
+                (payload, PayloadSource::Builder)
+            } else {
+                builder.get_payload_v3(external_payload_id).await.map_err(|e| {
+                    error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
+                    e
+                })?
+            };
 
             let block_hash = ExecutionPayload::from(payload.clone().execution_payload).block_hash();
             info!(message = "received payload from builder", "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id, "block_hash" = %block_hash);
@@ -717,6 +748,7 @@ mod tests {
                 l2_client,
                 builder_client,
                 boost_sync,
+                None,
                 None,
                 ExecutionMode::Enabled,
             );
