@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use metrics::{Counter, Histogram, counter, histogram};
+use metrics::{Counter, Gauge, Histogram, counter, gauge, histogram};
 use metrics_derive::Metrics;
 
 use crate::server::PayloadSource;
@@ -25,6 +25,10 @@ pub struct ServerMetrics {
     #[metric(describe = "Number of builder client rpc responses", labels = ["http_status_code", "rpc_status_code", "method"])]
     #[allow(dead_code)]
     pub builder_rpc_response_count: Counter,
+
+    #[metric(describe = "Whether the builder client is up")]
+    #[allow(dead_code)]
+    pub builder_up: Gauge,
 
     // L2 proxy metrics
     #[metric(describe = "Latency for l2 client forwarded rpc calls (excluding the engine api)", labels = ["method"])]
@@ -71,6 +75,11 @@ impl ServerMetrics {
 
     pub fn record_builder_forwarded_call(&self, latency: Duration, method: String) {
         histogram!("rpc.builder_forwarded_call", "method" => method).record(latency.as_secs_f64());
+    }
+
+    pub fn record_builder_up(&self, up: bool) {
+        let val = if up { 1 } else { 0 };
+        gauge!("rpc.builder_up").set(val);
     }
 
     pub fn increment_builder_rpc_response_count(

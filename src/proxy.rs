@@ -339,6 +339,9 @@ async fn record_metrics(
     if let Some(metrics) = &metrics {
         match source {
             PayloadSource::Builder => {
+                metrics.record_builder_up(
+                    http_status_code == StatusCode::INTERNAL_SERVER_ERROR.to_string(),
+                );
                 metrics.record_builder_forwarded_call(duration, method.to_string());
                 metrics.increment_builder_rpc_response_count(
                     http_status_code,
