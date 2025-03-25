@@ -47,7 +47,7 @@ impl HttpClient {
         }
     }
 
-    /// Forwards an HTTP request to the `authrpc``, attaching the provided JWT authorization.
+    /// Forwards an HTTP request to the `authrpc`, attaching the provided JWT authorization.
     #[instrument(
         skip(self, req),
         fields(otel.kind = ?SpanKind::Client),
