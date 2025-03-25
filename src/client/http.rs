@@ -66,11 +66,8 @@ impl HttpClient {
         let (parts, body) = res.into_parts();
         let body_bytes = body.collect().await?.to_bytes().to_vec();
 
-        if let Err(e) = parse_response_code(&body_bytes) {
-            error!(
-                error = %e,
-                "error in forwarded response",
-            );
+        if let Some(code) = parse_response_code(&body_bytes)? {
+            error!(%code, "error in forwarded response");
         }
 
         Ok(http::Response::from_parts(
@@ -80,7 +77,7 @@ impl HttpClient {
     }
 }
 
-fn parse_response_code(body_bytes: &[u8]) -> eyre::Result<()> {
+fn parse_response_code(body_bytes: &[u8]) -> eyre::Result<Option<i32>> {
     #[derive(serde::Deserialize, Debug)]
     struct RpcResponse {
         error: Option<JsonRpcError>,
@@ -92,8 +89,6 @@ fn parse_response_code(body_bytes: &[u8]) -> eyre::Result<()> {
     }
 
     let res = serde_json::from_slice::<RpcResponse>(body_bytes)?;
-    if let Some(e) = res.error {
-        bail!("code: {}", e.code);
-    }
-    Ok(())
+
+    Ok(res.error.map(|e| e.code))
 }
