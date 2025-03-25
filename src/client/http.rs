@@ -1,6 +1,5 @@
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
-use eyre::bail;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper_rustls::HttpsConnector;
