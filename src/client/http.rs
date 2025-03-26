@@ -1,10 +1,7 @@
 use crate::client::auth::AuthLayer;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
-use eyre::Context;
-use flate2::read::GzDecoder;
-use http::response::Parts;
-use http::{Request, Uri};
+use http::Uri;
 use http_body_util::BodyExt;
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::Client;
@@ -13,13 +10,13 @@ use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::http_client::HttpBody;
 use opentelemetry::trace::SpanKind;
-use std::io::Read;
-use tower::{Layer, Service};
+use tower::{Service as _, ServiceBuilder, ServiceExt};
+use tower_http::decompression::{Decompression, DecompressionLayer};
 use tracing::{debug, error, instrument};
 
 use super::auth::Auth;
 
-pub type HttpClientService = Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>;
+pub type HttpClientService = Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>;
 
 #[derive(Clone, Debug)]
 pub(crate) struct HttpClient {
@@ -37,10 +34,14 @@ impl HttpClient {
             .enable_http1()
             .enable_http2()
             .build();
-        let auth = AuthLayer::new(secret);
-        let client: Client<HttpsConnector<HttpConnector>, HttpBody> =
-            Client::builder(TokioExecutor::new()).build(connector);
-        let client = auth.layer(client);
+
+        let client = Client::builder(TokioExecutor::new()).build(connector);
+
+        let client = ServiceBuilder::new()
+            .layer(DecompressionLayer::new())
+            .layer(AuthLayer::new(secret))
+            .service(client);
+
         Self {
             client,
             url,
@@ -48,79 +49,37 @@ impl HttpClient {
         }
     }
 
+    /// Forwards an HTTP request to the `authrpc`, attaching the provided JWT authorization.
     #[instrument(
         skip(self, req),
         fields(otel.kind = ?SpanKind::Client),
-        err
+        err(Debug)
     )]
-    pub(crate) async fn forward(
+    pub async fn forward(
         &mut self,
-        mut req: Request<HttpBody>,
+        mut req: http::Request<HttpBody>,
         method: String,
     ) -> Result<http::Response<HttpBody>, BoxError> {
-        *req.uri_mut() = self.url.clone();
         debug!("forwarding {} to {}", method, self.target);
+        *req.uri_mut() = self.url.clone();
 
-        let res = self.client.call(req).await?;
+        let res = self.client.ready().await?.call(req).await?;
 
         let (parts, body) = res.into_parts();
-        let body_bytes = body
-            .collect()
-            .await
-            .map_err(|e| {
-                error!(
-                    target: "proxy::forward_request",
-                    message = "error collecting body",
-                    error = %e,
-                );
-                e
-            })?
-            .to_bytes()
-            .to_vec();
-        let parts_clone = parts.clone();
-        let body_bytes_clone = body_bytes.clone();
+        let body_bytes = body.collect().await?.to_bytes().to_vec();
 
-        self.handle_response(parts_clone, body_bytes_clone)
-            .context("error fowarding request")?;
+        if let Some(code) = parse_response_code(&body_bytes)? {
+            error!(%code, "error in forwarded response");
+        }
 
         Ok(http::Response::from_parts(
             parts,
             HttpBody::from(body_bytes),
         ))
     }
-
-    fn handle_response(&self, parts: Parts, body_bytes: Vec<u8>) -> eyre::Result<()> {
-        // Check for GZIP compression
-        let is_gzipped = parts
-            .headers
-            .get(http::header::CONTENT_ENCODING)
-            .is_some_and(|val| val.as_bytes() == b"gzip");
-
-        let decoded_body = if is_gzipped {
-            // Decompress GZIP content
-            let mut decoder = GzDecoder::new(&body_bytes[..]);
-            let mut decoded = Vec::new();
-            decoder
-                .read_to_end(&mut decoded)
-                .context("error decompressing body")?;
-            decoded
-        } else {
-            body_bytes
-        };
-
-        debug!(
-            target: "proxy::forward_request",
-            message = "raw response body",
-            body = %String::from_utf8_lossy(&decoded_body),
-        );
-
-        handle_response_code(&decoded_body)?;
-
-        Ok(())
-    }
 }
 
-fn handle_response_code(body_bytes: &[u8]) -> eyre::Result<()> {
+fn parse_response_code(body_bytes: &[u8]) -> eyre::Result<Option<i32>> {
     #[derive(serde::Deserialize, Debug)]
     struct RpcResponse {
         error: Option<JsonRpcError>,
@@ -131,12 +90,7 @@ fn handle_response_code(body_bytes: &[u8]) -> eyre::Result<()> {
         code: i32,
     }
 
-    let res =
-        serde_json::from_slice::<RpcResponse>(body_bytes).context("error deserializing body")?;
+    let res = serde_json::from_slice::<RpcResponse>(body_bytes)?;
 
-    if let Some(e) = res.error {
-        eyre::bail!("code: {}", e.code)
-    }
-
-    Ok(())
+    Ok(res.error.map(|e| e.code))
 }
