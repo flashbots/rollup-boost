@@ -309,7 +309,8 @@ impl EngineApiServer for RollupBoostServer {
         err,
         fields(
             otel.kind = ?SpanKind::Server,
-            %payload_id
+            %payload_id,
+            payload_source
         )
     )]
     async fn get_payload_v3(
@@ -368,7 +369,7 @@ impl EngineApiServer for RollupBoostServer {
                 self.probes.set_health(true);
                 self.probes.set_ready(true);
                 self.reset_builder_failures();
-                Ok((builder, "builder"))
+                Ok((builder, PayloadSource::Builder))
             }
             (_, Ok(l2)) => {
                 // builder failed to return a payload
@@ -376,7 +377,7 @@ impl EngineApiServer for RollupBoostServer {
                 if self.increment_builder_failures() > BUILDER_MISSED_PAYLOAD_THRESHOLD {
                     self.probes.set_health(false);
                 }
-                Ok((l2, "l2"))
+                Ok((l2, PayloadSource::L2))
             }
             (_, Err(e)) => {
                 // builder and l2 failed to return a payload
@@ -386,6 +387,8 @@ impl EngineApiServer for RollupBoostServer {
                 Err(e)
             }
         }?;
+
+        tracing::Span::current().record("payload_source", context.to_string());
 
         let inner_payload = ExecutionPayload::from(payload.clone().execution_payload);
         let block_hash = inner_payload.block_hash();

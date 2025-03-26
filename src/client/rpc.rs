@@ -25,6 +25,72 @@ use super::auth::Auth;
 
 pub type RpcClientService = HttpClient<Auth<HttpBackend>>;
 
+const INTERNAL_ERROR: i32 = 13;
+
+pub(crate) type ClientResult<T> = Result<T, RpcClientError>;
+
+#[derive(Error, Debug)]
+pub(crate) enum RpcClientError {
+    #[error(transparent)]
+    Jsonrpsee(#[from] jsonrpsee::core::client::Error),
+    #[error("Invalid payload: {0}")]
+    InvalidPayload(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Jwt(#[from] JwtError),
+}
+
+trait Code: Sized {
+    fn code(&self) -> i32;
+
+    fn set_code(self) -> Self {
+        tracing::Span::current().record("code", self.code());
+        self
+    }
+}
+
+impl<T, E: Code> Code for Result<T, E> {
+    fn code(&self) -> i32 {
+        match self {
+            Ok(_) => 0,
+            Err(e) => e.code(),
+        }
+    }
+}
+
+/// TODO: Add more robust error code system
+impl Code for RpcClientError {
+    fn code(&self) -> i32 {
+        match self {
+            RpcClientError::Jsonrpsee(e) => e.code(),
+            // Status code 13 == internal error
+            _ => INTERNAL_ERROR,
+        }
+    }
+}
+
+impl Code for jsonrpsee::core::client::Error {
+    fn code(&self) -> i32 {
+        match self {
+            jsonrpsee::core::client::Error::Call(call) => call.code(),
+            _ => INTERNAL_ERROR,
+        }
+    }
+}
+
+impl From<RpcClientError> for ErrorObjectOwned {
+    fn from(err: RpcClientError) -> Self {
+        match err {
+            RpcClientError::Jsonrpsee(jsonrpsee::core::ClientError::Call(error_object)) => {
+                error_object
+            }
+            // Status code 13 == internal error
+            e => ErrorObjectOwned::owned(INTERNAL_ERROR, e.to_string(), Option::<()>::None),
+        }
+    }
+}
+
 /// Client interface for interacting with execution layer node's Engine API.
 ///
 /// - **Engine API** calls are faciliated via the `auth_client` (requires JWT authentication).
@@ -68,6 +134,7 @@ impl RpcClient {
             target = self.payload_source.to_string(),
             head_block_hash = %fork_choice_state.head_block_hash,
             url = %self.auth_rpc,
+            code,
             payload_id
         )
     )]
@@ -80,7 +147,8 @@ impl RpcClient {
         let res = self
             .auth_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-            .await?;
+            .await
+            .set_code()?;
 
         if let Some(payload_id) = res.payload_id {
             tracing::Span::current().record("payload_id", payload_id.to_string());
@@ -89,7 +157,8 @@ impl RpcClient {
         if res.is_invalid() {
             return Err(RpcClientError::InvalidPayload(
                 res.payload_status.status.to_string(),
-            ));
+            ))
+            .set_code();
         }
 
         Ok(res)
@@ -110,7 +179,11 @@ impl RpcClient {
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV3> {
         info!("Sending get_payload_v3 to {}", self.payload_source);
-        Ok(self.auth_client.get_payload_v3(payload_id).await?)
+        Ok(self
+            .auth_client
+            .get_payload_v3(payload_id)
+            .await
+            .set_code()?)
     }
 
     #[instrument(
@@ -121,6 +194,7 @@ impl RpcClient {
             target = self.payload_source.to_string(),
             url = %self.auth_rpc,
             block_hash,
+            code,
         )
     )]
     pub async fn new_payload_v3(
@@ -137,10 +211,11 @@ impl RpcClient {
         let res = self
             .auth_client
             .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
-            .await?;
+            .await
+            .set_code()?;
 
         if res.is_invalid() {
-            return Err(RpcClientError::InvalidPayload(res.status.to_string()));
+            return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
         Ok(res)
@@ -280,31 +355,5 @@ mod tests {
             .unwrap();
 
         server.start(module)
-    }
-}
-
-pub(crate) type ClientResult<T> = Result<T, RpcClientError>;
-
-#[derive(Error, Debug)]
-pub(crate) enum RpcClientError {
-    #[error(transparent)]
-    Jsonrpsee(#[from] jsonrpsee::core::client::Error),
-    #[error("Invalid payload: {0}")]
-    InvalidPayload(String),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Jwt(#[from] JwtError),
-}
-
-impl From<RpcClientError> for ErrorObjectOwned {
-    fn from(err: RpcClientError) -> Self {
-        match err {
-            RpcClientError::Jsonrpsee(jsonrpsee::core::ClientError::Call(error_object)) => {
-                error_object
-            }
-            // Status code 13 == internal error
-            e => ErrorObjectOwned::owned(13, e.to_string(), Option::<()>::None),
-        }
     }
 }
