@@ -193,6 +193,14 @@ To run rollup-boost in debug mode with a specific execution mode, you can use th
 rollup-boost debug set-execution-mode [enabled|dry-run|disabled]
 ```
 
+## Maintainers
+
+- [@avalonche](https://github.com/avalonche)
+- [@ferranbt](https://github.com/ferranbt)
+- [@0xOsiris](https://github.com/0xOsiris)
+- [@0xKitsune](https://github.com/0xKitsune)
+- [Eric Woolsey](https://github.com/0xForerunner)
+
 ## License
 
 The code in this project is free software under the [MIT License](/LICENSE).
