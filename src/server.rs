@@ -494,16 +494,21 @@ impl RollupBoostServer {
 
             let builder = self.builder_client.clone();
 
-            // Fallback to the get_payload_v3 from the builder if no flashblocks payload is available
-            let (payload, source) = if let Some(payload) = payload {
-                info!(message = "using flashblocks payload");
-                (payload, PayloadSource::Builder)
+            if let Some(payload) = payload {
+                info!(message = "flashblocks payload exists, but not using it");
             } else {
-                builder.get_payload_v3(external_payload_id).await.map_err(|e| {
-                    error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
-                    e
-                })?
-            };
+                info!(message = "no flashblocks payload");
+            }
+
+            // Fallback to the get_payload_v3 from the builder if no flashblocks payload is available
+            // let (payload, source) = if let Some(payload) = payload {
+            //     info!(message = "using flashblocks payload");
+            //     (payload, PayloadSource::Builder)
+            // } else {
+            let (payload, source) = builder.get_payload_v3(external_payload_id).await.map_err(|e| {
+                error!(message = "error calling get_payload_v3 from builder", "url" = ?builder.auth_rpc, "error" = %e, "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id);
+                e
+            })?;
 
             let block_hash = ExecutionPayload::from(payload.clone().execution_payload).block_hash();
             info!(message = "received payload from builder", "local_payload_id" = %payload_id, "external_payload_id" = %external_payload_id, "block_hash" = %block_hash);
