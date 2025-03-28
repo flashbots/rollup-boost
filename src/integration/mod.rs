@@ -1,4 +1,5 @@
-use crate::client::auth::{AuthClientLayer, AuthClientService};
+use crate::client::auth::AuthLayer;
+use crate::client::rpc::RpcClientService;
 use crate::debug_api::DebugClient;
 use crate::server::EngineApiClient;
 use crate::server::PayloadSource;
@@ -9,7 +10,6 @@ use alloy_rpc_types_engine::{
     ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadId,
     PayloadStatus, PayloadStatusEnum,
 };
-use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
 use jsonrpsee::proc_macros::rpc;
 use lazy_static::lazy_static;
 use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
@@ -466,13 +466,13 @@ impl Drop for IntegrationFramework {
 }
 
 pub struct EngineApi {
-    pub engine_api_client: HttpClient<AuthClientService<HttpBackend>>,
+    pub engine_api_client: RpcClientService,
 }
 
 impl EngineApi {
     pub fn new(url: &str, secret: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let secret_layer = AuthClientLayer::new(JwtSecret::from_str(secret)?);
-        let middleware = tower::ServiceBuilder::default().layer(secret_layer);
+        let auth_layer = AuthLayer::new(JwtSecret::from_str(secret)?);
+        let middleware = tower::ServiceBuilder::default().layer(auth_layer);
         let client = jsonrpsee::http_client::HttpClientBuilder::default()
             .set_http_middleware(middleware)
             .build(url)
