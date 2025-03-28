@@ -28,6 +28,16 @@ While this does not ensure high availability for the builder, the chain will hav
 
 ![rollup-boost-op-conductor](../assets/rollup-boost-op-conductor.png)
 
+### Health Checks
+
+`rollup-boost` supports the standard array of kubernetes probes:
+
+- `/healthz` determines wether everything is 100% up and running. If the builder fails to produce paylaods the healthz endpoint will return an error. `op-conductor` should eventually be able to use this signal to switch to a different sequencer in an HA sequencer setup. In a future upgrade to `op-conductor`, A sequencer leader with a healthy EL (`rollup-boost` in our case) could be selected preferentially over one with an unhealthy EL.
+
+- `/readyz` returns true as long as we're effectively building payloads from the l2 client. This means that we still produce blocks with this instance of rollup-boost. In an HA sequencer setup, if no ELs are healthy, then the ready probe can instead be used to select the sequencer leader.
+
+- `/livez` determines wether or not `rollup-boost` is live (running and not deadlocked) and responding to requests. If `rollup-boost` fails to respond, kubernetes can use this as a signal to restart the pod.
+
 ## Observability
 
 To check if the rollup-boost server is running, you can check the health endpoint:
