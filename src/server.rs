@@ -1,12 +1,11 @@
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
-use crate::probe::Probes;
+use crate::probe::{Health, Probes};
 use alloy_primitives::B256;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU32;
 
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
@@ -24,7 +23,6 @@ use tracing::{debug, info, instrument};
 use jsonrpsee::proc_macros::rpc;
 
 const CACHE_SIZE: u64 = 100;
-const BUILDER_MISSED_PAYLOAD_THRESHOLD: u32 = 3;
 
 pub struct PayloadTraceContext {
     block_hash_to_payload_ids: Cache<B256, Vec<PayloadId>>,
@@ -123,8 +121,6 @@ pub struct RollupBoostServer {
     pub payload_trace_context: Arc<PayloadTraceContext>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
-    /// Number of consecutive builder failures
-    builder_failures: Arc<AtomicU32>,
 }
 
 impl RollupBoostServer {
@@ -142,19 +138,7 @@ impl RollupBoostServer {
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
             probes,
-            builder_failures: Default::default(),
         }
-    }
-
-    pub fn increment_builder_failures(&self) -> u32 {
-        self.builder_failures
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            + 1
-    }
-
-    pub fn reset_builder_failures(&self) {
-        self.builder_failures
-            .store(0, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
@@ -366,24 +350,18 @@ impl EngineApiServer for RollupBoostServer {
             (Ok(Some(builder)), _) => {
                 // builder successfully returned a payload
                 // set health and reset any past failures
-                self.probes.set_health(true);
-                self.probes.set_ready(true);
-                self.reset_builder_failures();
+                self.probes.set_health(Health::Healthy);
                 Ok((builder, PayloadSource::Builder))
             }
             (_, Ok(l2)) => {
                 // builder failed to return a payload
-                self.probes.set_ready(true);
-                if self.increment_builder_failures() > BUILDER_MISSED_PAYLOAD_THRESHOLD {
-                    self.probes.set_health(false);
-                }
+                self.probes.set_health(Health::PartialContent);
                 Ok((l2, PayloadSource::L2))
             }
             (_, Err(e)) => {
                 // builder and l2 failed to return a payload
                 // set both health and ready to false
-                self.probes.set_health(false);
-                self.probes.set_ready(false);
+                self.probes.set_health(Health::ServiceUnavailable);
                 Err(e)
             }
         }?;

@@ -469,9 +469,7 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let (probe_layer, probes) = ProbeLayer::new();
-        probes.set_health(true);
-        probes.set_ready(true);
+        let (probe_layer, _probes) = ProbeLayer::new();
 
         let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
 

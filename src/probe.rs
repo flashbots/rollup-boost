@@ -1,6 +1,6 @@
 use std::{
     pin::Pin,
-    sync::{Arc, atomic::AtomicBool},
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -9,46 +9,44 @@ use jsonrpsee::{
     core::BoxError,
     http_client::{HttpBody, HttpRequest, HttpResponse},
 };
+use parking_lot::Mutex;
 use tower::{Layer, Service};
 
-#[derive(Debug)]
-pub struct Probes {
-    pub health: AtomicBool,
-    pub ready: AtomicBool,
-    pub live: AtomicBool,
+#[derive(Copy, Clone, Debug, Default)]
+pub enum Health {
+    /// Indicates that the builder is building blocks
+    Healthy,
+    /// Indicates that the l2 is building blocks, but the builder is not
+    PartialContent,
+    /// Indicates that blocks are not being built by either the l2 or the builder
+    ///
+    /// Service starts out unavailable until the first blocks are built
+    #[default]
+    ServiceUnavailable,
 }
 
-impl Default for Probes {
-    fn default() -> Self {
-        Self {
-            health: AtomicBool::new(false),
-            ready: AtomicBool::new(false),
-            live: AtomicBool::new(true),
+impl From<Health> for HttpResponse<HttpBody> {
+    fn from(health: Health) -> Self {
+        match health {
+            Health::Healthy => ok(),
+            Health::PartialContent => partial_content(),
+            Health::ServiceUnavailable => service_unavailable(),
         }
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Probes {
+    health: Mutex<Health>,
+}
+
 impl Probes {
-    pub fn set_health(&self, value: bool) {
-        self.health
-            .store(value, std::sync::atomic::Ordering::Relaxed);
+    pub fn set_health(&self, value: Health) {
+        *self.health.lock() = value;
     }
 
-    pub fn set_ready(&self, value: bool) {
-        self.ready
-            .store(value, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn health(&self) -> bool {
-        self.health.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    pub fn ready(&self) -> bool {
-        self.ready.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    pub fn live(&self) -> bool {
-        self.live.load(std::sync::atomic::Ordering::Relaxed)
+    pub fn health(&self) -> Health {
+        *self.health.lock()
     }
 }
 
@@ -111,27 +109,13 @@ where
 
         async move {
             match request.uri().path() {
-                "/healthz" => {
-                    if service.probes.health() {
-                        ok()
-                    } else {
-                        internal_server_error()
-                    }
-                }
-                "/readyz" => {
-                    if service.probes.ready() {
-                        ok()
-                    } else {
-                        service_unavailable()
-                    }
-                }
-                "/livez" => {
-                    if service.probes.live() {
-                        ok()
-                    } else {
-                        service_unavailable()
-                    }
-                }
+                // Return health status
+                "/healthz" => Ok(service.probes.health().into()),
+                // Service is responding, and therefor ready
+                "/readyz" => Ok(ok()),
+                // Service is responding, and therefor live
+                "/livez" => Ok(ok()),
+                // Forward the request to the inner service
                 _ => service.inner.call(request).await.map_err(|e| e.into()),
             }
         }
@@ -139,23 +123,23 @@ where
     }
 }
 
-fn ok() -> Result<HttpResponse<HttpBody>, BoxError> {
-    Ok(HttpResponse::builder()
+fn ok() -> HttpResponse<HttpBody> {
+    HttpResponse::builder()
         .status(200)
         .body(HttpBody::from("OK"))
-        .unwrap())
+        .unwrap()
 }
 
-fn internal_server_error() -> Result<HttpResponse<HttpBody>, BoxError> {
-    Ok(HttpResponse::builder()
-        .status(500)
-        .body(HttpBody::from("Internal Server Error"))
-        .unwrap())
+fn partial_content() -> HttpResponse<HttpBody> {
+    HttpResponse::builder()
+        .status(206)
+        .body(HttpBody::from("Partial Content"))
+        .unwrap()
 }
 
-fn service_unavailable() -> Result<HttpResponse<HttpBody>, BoxError> {
-    Ok(HttpResponse::builder()
+fn service_unavailable() -> HttpResponse<HttpBody> {
+    HttpResponse::builder()
         .status(503)
         .body(HttpBody::from("Service Unavailable"))
-        .unwrap())
+        .unwrap()
 }

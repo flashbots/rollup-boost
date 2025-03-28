@@ -242,9 +242,6 @@ async fn main() -> eyre::Result<()> {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
-    probes.set_ready(true);
-    probes.set_health(true);
-
     let stop_handle = handle.clone();
 
     // Capture SIGINT and SIGTERM
