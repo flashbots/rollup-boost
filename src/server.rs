@@ -349,7 +349,6 @@ impl EngineApiServer for RollupBoostServer {
         let (payload, context) = match (builder_payload, l2_payload) {
             (Ok(Some(builder)), _) => {
                 // builder successfully returned a payload
-                // set health and reset any past failures
                 self.probes.set_health(Health::Healthy);
                 Ok((builder, PayloadSource::Builder))
             }
@@ -360,7 +359,6 @@ impl EngineApiServer for RollupBoostServer {
             }
             (_, Err(e)) => {
                 // builder and l2 failed to return a payload
-                // set both health and ready to false
                 self.probes.set_health(Health::ServiceUnavailable);
                 Err(e)
             }
