@@ -586,11 +586,6 @@ mod tests {
                 .unwrap()
                 .start(module);
 
-            // let proxy_server = ServerBuilder::default()
-            //     .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
-            //     .await
-            //     .unwrap()
-            //     .start(module);
             let l2_mock = l2_mock.unwrap_or(MockEngineServer::new());
             let builder_mock = builder_mock.unwrap_or(MockEngineServer::new());
             let l2_server = spawn_server(l2_mock.clone(), L2_ADDR).await;
