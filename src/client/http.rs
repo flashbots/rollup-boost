@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
@@ -32,7 +34,10 @@ impl HttpClient {
             .enable_http2()
             .build();
 
-        let client = Client::builder(TokioExecutor::new()).build(connector);
+        let client = Client::builder(TokioExecutor::new())
+            .pool_timer(hyper_util::rt::TokioTimer::new())
+            .pool_idle_timeout(Duration::from_millis(2_500))
+            .build(connector);
 
         let client = ServiceBuilder::new()
             .layer(DecompressionLayer::new())

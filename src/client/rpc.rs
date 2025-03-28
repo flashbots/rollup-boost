@@ -110,6 +110,7 @@ impl RpcClient {
         let auth_client = HttpClientBuilder::new()
             .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
             .request_timeout(Duration::from_millis(timeout))
+            .set_tcp_no_delay(true)
             .build(auth_rpc.to_string())?;
 
         Ok(Self {
