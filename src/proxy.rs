@@ -1,13 +1,13 @@
 use crate::client::http::HttpClient;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
-use futures::FutureExt as _;
 use http::Uri;
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
+use tracing::debug;
 
 const MULTIPLEX_METHODS: [&str; 4] = [
     "engine_",
@@ -109,50 +109,38 @@ where
         let mut service = self.clone();
         service.inner = std::mem::replace(&mut self.inner, service.inner);
 
-        async move {
-            let res = async move {
-                let (parts, body) = req.into_parts();
-                let (body_bytes, _) =
-                    http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+        let fut = async move {
+            let (parts, body) = req.into_parts();
+            let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
 
-                // Deserialize the bytes to find the method
-                let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
-                    .method
-                    .to_string();
+            // Deserialize the bytes to find the method
+            let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
+                .method
+                .to_string();
 
-                if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
-                    if FORWARD_REQUESTS.contains(&method.as_str()) {
-                        let builder_req = HttpRequest::from_parts(
-                            parts.clone(),
-                            HttpBody::from(body_bytes.clone()),
-                        );
-                        let builder_method = method.clone();
-                        let mut builder_client = service.builder_client.clone();
-                        tokio::spawn(async move {
-                            let _ = builder_client.forward(builder_req, builder_method).await;
-                        });
+            if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
+                if FORWARD_REQUESTS.contains(&method.as_str()) {
+                    let builder_req =
+                        HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
+                    let builder_method = method.clone();
+                    let mut builder_client = service.builder_client.clone();
+                    tokio::spawn(async move {
+                        let _ = builder_client.forward(builder_req, builder_method).await;
+                    });
 
-                        let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                        service.l2_client.forward(l2_req, method).await
-                    } else {
-                        let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                        service.inner.call(req).await.map_err(|e| e.into())
-                    }
+                    let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                    service.l2_client.forward(l2_req, method).await
                 } else {
                     let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    service.l2_client.forward(req, method).await
+                    debug!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+                    service.inner.call(req).await.map_err(|e| e.into())
                 }
+            } else {
+                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                service.l2_client.forward(req, method).await
             }
-            .await;
-
-            Ok(res.unwrap_or_else(|e| {
-                HttpResponse::builder()
-                    .status(500)
-                    .body(HttpBody::from(e.to_string()))
-                    .unwrap()
-            }))
-        }
-        .boxed()
+        };
+        Box::pin(fut)
     }
 }
 
@@ -164,12 +152,14 @@ mod tests {
     use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
+    use http::StatusCode;
     use http_body_util::BodyExt;
     use hyper::service::service_fn;
     use hyper_util::client::legacy::Client;
     use hyper_util::client::legacy::connect::HttpConnector;
     use hyper_util::rt::{TokioExecutor, TokioIo};
     use jsonrpsee::server::Server;
+    use jsonrpsee::types::{ErrorCode, ErrorObject};
     use jsonrpsee::{
         RpcModule,
         core::{ClientError, client::ClientT},
@@ -386,6 +376,11 @@ mod tests {
     async fn proxy_failure() {
         let response = send_request("non_existent_method").await;
         assert!(response.is_err());
+        let expected_error = ErrorObject::from(ErrorCode::MethodNotFound).into_owned();
+        assert!(matches!(
+            response.unwrap_err(),
+            ClientError::Call(e) if e == expected_error
+        ));
     }
 
     async fn does_not_proxy_engine_method() {
@@ -404,16 +399,8 @@ mod tests {
         let health_check_url = format!("http://{ADDR}:{PORT}/healthz");
         let health_response = client.get(health_check_url.parse::<Uri>().unwrap()).await;
         assert!(health_response.is_ok());
-        let b = health_response
-            .unwrap()
-            .into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes();
-        // Convert the collected bytes to a string
-        let body_string = String::from_utf8(b.to_vec()).unwrap();
-        assert_eq!(body_string, "OK");
+        let status = health_response.unwrap().status();
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 
         proxy_server.stop().unwrap();
         proxy_server.stopped().await;

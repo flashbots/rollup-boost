@@ -7,15 +7,12 @@ use alloy_rpc_types_engine::{
 };
 use clap::{Parser, arg};
 use http::Uri;
-use jsonrpsee::core::client::ClientT;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
-use jsonrpsee::rpc_params;
 use jsonrpsee::types::ErrorObjectOwned;
 use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
 use opentelemetry::trace::SpanKind;
 use paste::paste;
-use serde_json::Value;
 use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
@@ -219,12 +216,6 @@ impl RpcClient {
         }
 
         Ok(res)
-    }
-
-    pub async fn health(&self) -> ClientResult<()> {
-        let method = "web3_clientVersion";
-        let _res: Value = self.auth_client.request(method, rpc_params![]).await?;
-        Ok(())
     }
 }
 

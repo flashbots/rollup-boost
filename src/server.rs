@@ -440,6 +440,7 @@ impl EngineApiServer for RollupBoostServer {
 #[allow(clippy::complexity)]
 mod tests {
     use crate::probe::ProbeLayer;
+    use crate::proxy::ProxyLayer;
 
     use super::*;
     use alloy_primitives::hex;
@@ -449,10 +450,10 @@ mod tests {
     };
 
     use alloy_rpc_types_engine::JwtSecret;
-    use http::Uri;
+    use http::{StatusCode, Uri};
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
-    use jsonrpsee::server::{ServerBuilder, ServerHandle};
+    use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
     use parking_lot::Mutex;
     use std::net::SocketAddr;
     use std::str::FromStr;
@@ -529,8 +530,9 @@ mod tests {
         l2_mock: MockEngineServer,
         builder_server: ServerHandle,
         builder_mock: MockEngineServer,
-        proxy_server: ServerHandle,
-        client: HttpClient,
+        server: ServerHandle,
+        rpc_client: HttpClient,
+        http_client: reqwest::Client,
     }
 
     impl TestHarness {
@@ -543,16 +545,21 @@ mod tests {
 
             let l2_auth_rpc = Uri::from_str(&format!("http://{}:{}", HOST, L2_PORT)).unwrap();
             let l2_client =
-                RpcClient::new(l2_auth_rpc, jwt_secret, 2000, PayloadSource::L2).unwrap();
+                RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
 
             let builder_auth_rpc =
                 Uri::from_str(&format!("http://{}:{}", HOST, BUILDER_PORT)).unwrap();
-            let builder_client =
-                RpcClient::new(builder_auth_rpc, jwt_secret, 2000, PayloadSource::Builder).unwrap();
+            let builder_client = RpcClient::new(
+                builder_auth_rpc.clone(),
+                jwt_secret,
+                2000,
+                PayloadSource::Builder,
+            )
+            .unwrap();
 
-            let (_probe_layer, probes) = ProbeLayer::new();
+            let (probe_layer, probes) = ProbeLayer::new();
 
-            let rollup_boost_client = RollupBoostServer::new(
+            let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
                 boost_sync,
@@ -560,27 +567,56 @@ mod tests {
                 probes,
             );
 
-            let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
+            let module: RpcModule<()> = rollup_boost.try_into().unwrap();
 
-            let proxy_server = ServerBuilder::default()
+            let http_middleware =
+                tower::ServiceBuilder::new()
+                    .layer(probe_layer)
+                    .layer(ProxyLayer::new(
+                        l2_auth_rpc,
+                        jwt_secret,
+                        builder_auth_rpc,
+                        jwt_secret,
+                    ));
+
+            let server = Server::builder()
+                .set_http_middleware(http_middleware)
                 .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
                 .await
                 .unwrap()
                 .start(module);
+
+            // let proxy_server = ServerBuilder::default()
+            //     .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
+            //     .await
+            //     .unwrap()
+            //     .start(module);
             let l2_mock = l2_mock.unwrap_or(MockEngineServer::new());
             let builder_mock = builder_mock.unwrap_or(MockEngineServer::new());
             let l2_server = spawn_server(l2_mock.clone(), L2_ADDR).await;
             let builder_server = spawn_server(builder_mock.clone(), BUILDER_ADDR).await;
+            let rpc_client = HttpClient::builder()
+                .build(format!("http://{SERVER_ADDR}"))
+                .unwrap();
+            let http_client = reqwest::Client::new();
+
             TestHarness {
                 l2_server,
                 l2_mock,
                 builder_server,
                 builder_mock,
-                proxy_server,
-                client: HttpClient::builder()
-                    .build(format!("http://{SERVER_ADDR}"))
-                    .unwrap(),
+                server,
+                rpc_client,
+                http_client,
             }
+        }
+
+        async fn get(&self, path: &str) -> reqwest::Response {
+            self.http_client
+                .get(format!("http://{}/{}", SERVER_ADDR, path))
+                .send()
+                .await
+                .unwrap()
         }
 
         async fn cleanup(self) {
@@ -588,8 +624,8 @@ mod tests {
             self.l2_server.stopped().await;
             self.builder_server.stop().unwrap();
             self.builder_server.stopped().await;
-            self.proxy_server.stop().unwrap();
-            self.proxy_server.stopped().await;
+            self.server.stop().unwrap();
+            self.server.stopped().await;
         }
     }
 
@@ -604,13 +640,20 @@ mod tests {
     async fn engine_success() {
         let test_harness = TestHarness::new(false, None, None).await;
 
+        // Since no blocks have been created, the service should be unavailable
+        let health = test_harness.get("healthz").await;
+        assert_eq!(health.status(), StatusCode::SERVICE_UNAVAILABLE);
+
         // test fork_choice_updated_v3 success
         let fcu = ForkchoiceState {
             head_block_hash: FixedBytes::random(),
             safe_block_hash: FixedBytes::random(),
             finalized_block_hash: FixedBytes::random(),
         };
-        let fcu_response = test_harness.client.fork_choice_updated_v3(fcu, None).await;
+        let fcu_response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, None)
+            .await;
         assert!(fcu_response.is_ok());
         let fcu_requests = test_harness.l2_mock.fcu_requests.clone();
         {
@@ -627,7 +670,7 @@ mod tests {
 
         // test new_payload_v3 success
         let new_payload_response = test_harness
-            .client
+            .rpc_client
             .new_payload_v3(
                 test_harness
                     .l2_mock
@@ -667,7 +710,7 @@ mod tests {
 
         // test get_payload_v3 success
         let get_payload_response = test_harness
-            .client
+            .rpc_client
             .get_payload_v3(PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]))
             .await;
         assert!(get_payload_response.is_ok());
@@ -686,6 +729,11 @@ mod tests {
             assert_eq!(*req, PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]));
         }
 
+        // Now that a block has been produced by the l2 but not the builder
+        // the health status should be Partial Content
+        let health = test_harness.get("healthz").await;
+        assert_eq!(health.status(), StatusCode::PARTIAL_CONTENT);
+
         test_harness.cleanup().await;
     }
 
@@ -697,7 +745,10 @@ mod tests {
             safe_block_hash: FixedBytes::random(),
             finalized_block_hash: FixedBytes::random(),
         };
-        let fcu_response = test_harness.client.fork_choice_updated_v3(fcu, None).await;
+        let fcu_response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, None)
+            .await;
         assert!(fcu_response.is_ok());
 
         sleep(std::time::Duration::from_millis(100)).await;
@@ -713,7 +764,7 @@ mod tests {
 
         // test new_payload_v3 success
         let new_payload_response = test_harness
-            .client
+            .rpc_client
             .new_payload_v3(
                 test_harness
                     .l2_mock
@@ -756,7 +807,7 @@ mod tests {
 
         // test get_payload_v3 return l2 payload if builder payload is invalid
         let get_payload_response = test_harness
-            .client
+            .rpc_client
             .get_payload_v3(PayloadId::new([0, 0, 0, 0, 0, 0, 0, 0]))
             .await;
         assert!(get_payload_response.is_ok());
@@ -830,7 +881,10 @@ mod tests {
             safe_block_hash: FixedBytes::random(),
             finalized_block_hash: FixedBytes::random(),
         };
-        let fcu_response = test_harness.client.fork_choice_updated_v3(fcu, None).await;
+        let fcu_response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, None)
+            .await;
         assert!(fcu_response.is_ok());
 
         // wait for builder to observe the FCU call
@@ -843,7 +897,7 @@ mod tests {
         }
 
         // Test getPayload call
-        let get_res = test_harness.client.get_payload_v3(same_id).await;
+        let get_res = test_harness.rpc_client.get_payload_v3(same_id).await;
         assert!(get_res.is_ok());
 
         // wait for builder to observe the getPayload call

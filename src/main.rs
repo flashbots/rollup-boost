@@ -237,11 +237,6 @@ async fn main() -> eyre::Result<()> {
         .await?;
     let handle = server.start(module);
 
-    while l2_client.health().await.is_err() {
-        info!("waiting for l2 client to be healthy");
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    }
-
     let stop_handle = handle.clone();
 
     // Capture SIGINT and SIGTERM
