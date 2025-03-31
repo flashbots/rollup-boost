@@ -11,18 +11,22 @@ use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
 use tracing::info;
 
-const MULTIPLEX_METHODS: [&str; 4] = [
+const MULTIPLEX_METHODS: [&str; 6] = [
     "engine_",
-    "eth_sendRawTransactionConditional",
+    "eth_getBlockByHash",
+    "eth_getBlockByNumber",
     "eth_sendRawTransaction",
+    "eth_sendRawTransactionConditional",
     "miner_",
 ];
-const FORWARD_REQUESTS: [&str; 6] = [
+const FORWARD_REQUESTS: [&str; 8] = [
+    "eth_getBlockByHash",
+    "eth_getBlockByNumber",
     "eth_sendRawTransaction",
     "eth_sendRawTransactionConditional",
     "miner_setExtra",
-    "miner_setGasPrice",
     "miner_setGasLimit",
+    "miner_setGasPrice",
     "miner_setMaxDASize",
 ];
 
@@ -121,6 +125,7 @@ where
                 .method
                 .to_string();
 
+            info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
             if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
                 if FORWARD_REQUESTS.contains(&method.as_str()) {
                     let builder_req =
@@ -132,11 +137,9 @@ where
                     });
 
                     let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
                     service.l2_client.forward(l2_req, method).await
                 } else {
                     let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
                     service.inner.call(req).await.map_err(|e| e.into())
                 }
             } else {
