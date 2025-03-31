@@ -1,4 +1,4 @@
-use crate::client::auth::{AuthClientLayer, AuthClientService};
+use crate::client::auth::AuthLayer;
 use crate::server::{EngineApiClient, PayloadSource};
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{
@@ -17,6 +17,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
 use tracing::{error, info, instrument};
+
+use super::auth::Auth;
+
+pub type RpcClientService = HttpClient<Auth<HttpBackend>>;
 
 const INTERNAL_ERROR: i32 = 13;
 
@@ -91,7 +95,7 @@ impl From<RpcClientError> for ErrorObjectOwned {
 #[derive(Clone)]
 pub(crate) struct RpcClient {
     /// Handles requests to the authenticated Engine API (requires JWT authentication)
-    auth_client: HttpClient<AuthClientService<HttpBackend>>,
+    auth_client: RpcClientService,
     /// Uri of the RPC server for authenticated Engine API calls
     auth_rpc: Uri,
     /// The source of the payload
@@ -106,7 +110,7 @@ impl RpcClient {
         timeout: u64,
         payload_source: PayloadSource,
     ) -> Result<Self, RpcClientError> {
-        let auth_layer = AuthClientLayer::new(auth_rpc_jwt_secret);
+        let auth_layer = AuthLayer::new(auth_rpc_jwt_secret);
         let auth_client = HttpClientBuilder::new()
             .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
             .request_timeout(Duration::from_millis(timeout))
@@ -251,13 +255,10 @@ mod tests {
     use http::Uri;
     use jsonrpsee::core::client::ClientT;
 
-    use crate::client::auth::AuthClientService;
     use crate::server::PayloadSource;
     use alloy_rpc_types_engine::JwtSecret;
     use jsonrpsee::RpcModule;
-    use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::http_client::transport::Error as TransportError;
-    use jsonrpsee::http_client::transport::HttpBackend;
     use jsonrpsee::{
         core::ClientError,
         rpc_params,
@@ -310,9 +311,7 @@ mod tests {
         ));
     }
 
-    async fn send_request(
-        client: HttpClient<AuthClientService<HttpBackend>>,
-    ) -> Result<String, ClientError> {
+    async fn send_request(client: RpcClientService) -> Result<String, ClientError> {
         let server = spawn_server().await;
 
         let response = client
