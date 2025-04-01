@@ -1,5 +1,5 @@
-use crate::HealthLayer;
 use crate::client::http::HttpClient;
+use crate::health::HealthLayer;
 use crate::health::HealthService;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
