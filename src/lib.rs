@@ -1,4 +1,7 @@
-#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![cfg_attr(
+    not(any(test, feature = "integration")),
+    warn(unused_crate_dependencies)
+)]
 
 use dotenv as _;
 use rustls as _;

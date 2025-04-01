@@ -3466,6 +3466,7 @@ dependencies = [
 name = "rollup-boost"
 version = "0.1.0"
 dependencies = [
+ "alloy-eips",
  "alloy-primitives",
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
@@ -3483,6 +3484,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "jsonrpsee",
+ "lazy_static",
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-util",
@@ -3500,6 +3502,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.12",
+ "time",
  "tokio",
  "tokio-util",
  "tower 0.4.13",
