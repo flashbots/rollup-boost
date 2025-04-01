@@ -467,7 +467,7 @@ impl From<OpExecutionPayloadEnvelope> for NewPayload {
             }),
             OpExecutionPayloadEnvelope::V4(v4) => {
                 let withdrawals_root = alloy_consensus::proofs::calculate_withdrawals_root(
-                    &v4.execution_payload.withdrawals(),
+                    v4.execution_payload.withdrawals(),
                 );
 
                 NewPayload::V4(NewPayloadV4 {
