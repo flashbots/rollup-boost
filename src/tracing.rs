@@ -51,13 +51,10 @@ impl SpanProcessor for MetricsSpanProcessor {
                     attr.value.as_str().to_string(),
                 )
             })
-            .chain(
-                [
-                    ("span_kind".to_string(), format!("{:?}", span.span_kind)),
-                    ("status".to_string(), status.into()),
-                ]
-                .into_iter(),
-            )
+            .chain([
+                ("span_kind".to_string(), format!("{:?}", span.span_kind)),
+                ("status".to_string(), status.into()),
+            ])
             .collect::<Vec<_>>();
 
         histogram!(format!("{}_duration", span.name), &labels).record(duration);
