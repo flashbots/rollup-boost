@@ -7,7 +7,9 @@ edition = "2024"
 op-alloy-rpc-types-engine = "0.11.1"
 op-alloy-rpc-types = "0.11.1"
 op-alloy-rpc-jsonrpsee = { version = "0.11.1", features = ["client"] }
+op-alloy-consensus = "0.11.1"
 alloy-rpc-types-engine = "0.12.5"
+alloy-consensus = "0.12.5"
 alloy-rpc-types-eth = "0.12.5"
 alloy-primitives = { version = "0.8.10", features = ["rand"] }
 alloy-eips = { version = "0.12.5", features = ["serde"] }

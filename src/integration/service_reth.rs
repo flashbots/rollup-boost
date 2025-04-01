@@ -68,7 +68,8 @@ impl Service for RethConfig {
             })
             .arg("--color")
             .arg("never")
-            .arg("--ipcdisable");
+            .arg("--ipcdisable")
+            .arg("-vvvvv");
 
         if let Some(p2p_secret_key) = &self.p2p_secret_key {
             cmd = cmd.arg("--p2p-secret-key").arg(Arg::FilePath {

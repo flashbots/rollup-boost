@@ -3806,6 +3806,7 @@ dependencies = [
 name = "rollup-boost"
 version = "0.1.0"
 dependencies = [
+ "alloy-consensus",
  "alloy-eips",
  "alloy-primitives",
  "alloy-rpc-types-engine",
@@ -3835,6 +3836,7 @@ dependencies = [
  "metrics-util",
  "moka",
  "nix",
+ "op-alloy-consensus",
  "op-alloy-rpc-jsonrpsee",
  "op-alloy-rpc-types",
  "op-alloy-rpc-types-engine",
