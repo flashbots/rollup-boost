@@ -420,7 +420,9 @@ impl From<OpExecutionPayloadEnvelope> for ExecutionPayload {
     fn from(envelope: OpExecutionPayloadEnvelope) -> Self {
         match envelope {
             OpExecutionPayloadEnvelope::V3(v3) => ExecutionPayload::from(v3.execution_payload),
-            OpExecutionPayloadEnvelope::V4(v4) => ExecutionPayload::from(v4.execution_payload),
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                ExecutionPayload::from(v4.execution_payload.payload_inner)
+            }
         }
     }
 }
@@ -463,21 +465,12 @@ impl From<OpExecutionPayloadEnvelope> for NewPayload {
                 versioned_hashes: vec![],
                 parent_beacon_block_root: v3.parent_beacon_block_root,
             }),
-            OpExecutionPayloadEnvelope::V4(v4) => {
-                let withdrawals_root = alloy_consensus::proofs::calculate_withdrawals_root(
-                    v4.execution_payload.withdrawals(),
-                );
-
-                NewPayload::V4(NewPayloadV4 {
-                    payload: OpExecutionPayloadV4 {
-                        payload_inner: v4.execution_payload,
-                        withdrawals_root,
-                    },
-                    versioned_hashes: vec![],
-                    parent_beacon_block_root: v4.parent_beacon_block_root,
-                    execution_requests: v4.execution_requests,
-                })
-            }
+            OpExecutionPayloadEnvelope::V4(v4) => NewPayload::V4(NewPayloadV4 {
+                payload: v4.execution_payload,
+                versioned_hashes: vec![],
+                parent_beacon_block_root: v4.parent_beacon_block_root,
+                execution_requests: v4.execution_requests,
+            }),
         }
     }
 }
