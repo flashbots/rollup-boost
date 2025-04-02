@@ -290,8 +290,6 @@ impl EngineApiServer for RollupBoostServer {
             debug!(message = "execution mode is disabled, skipping FCU call to builder", "head_block_hash" = %fork_choice_state.head_block_hash);
         } else if should_send_to_builder {
             let builder_client = self.builder_client.clone();
-            println!("print payload attributes: {:?}", payload_attributes);
-
             tokio::spawn(async move {
                 let _ = builder_client
                     .fork_choice_updated_v3(fork_choice_state.clone(), payload_attributes.clone())
@@ -544,12 +542,8 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: Version,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        println!("get_payload version: {:?}", version);
-
         let l2_client_future = self.l2_client.get_payload(payload_id, version);
         let builder_client_future = Box::pin(async move {
-            println!("get_payload builder_client_future");
-
             let execution_mode = self.execution_mode();
             if !execution_mode.is_get_payload_enabled() {
                 info!(message = "dry run mode is enabled, skipping get payload builder call");
@@ -574,8 +568,6 @@ impl RollupBoostServer {
 
             let builder = self.builder_client.clone();
             let payload = builder.get_payload(payload_id, version).await?;
-
-            println!("print payload: {:?}", payload);
 
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
