@@ -6,7 +6,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::integration::RollupBoostTestHarnessBuilder;
-    use crate::server::{ExecutionMode, Version};
+    use crate::server::ExecutionMode;
     use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 
     #[tokio::test]
