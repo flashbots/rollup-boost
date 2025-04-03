@@ -2,7 +2,6 @@
 mod tests {
     use alloy_primitives::B256;
     use serde_json::Value;
-    use std::io::Read;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -164,7 +163,7 @@ mod tests {
         }
 
         // stop the builder
-        harness.builder.stop().await;
+        harness.builder.stop().await?;
 
         // create 3 new blocks that are processed by the l2 builder
         for _ in 0..3 {
@@ -173,7 +172,7 @@ mod tests {
         }
 
         // start the builder again
-        harness.builder.start().await;
+        harness.builder.start().await?;
 
         // the next block is computed by the l2 builder because the builder is not synced with the previous 3 blocks
         // But, once the builder receives the FCU request from rollup-boost, it will sync up the blocks with the
@@ -274,15 +273,9 @@ mod tests {
         // check that at some point we had the log "builder payload was not valid" which signals
         // that the builder returned a payload that was not valid and rollup-boost did not process it.
         // read lines
-        let mut buf = String::new();
-        harness
-            .rollup_boost
-            .log_file
-            .lock()
-            .unwrap()
-            .read_to_string(&mut buf)?;
+        let logs = std::fs::read_to_string(harness.rollup_boost.args.log_file.unwrap())?;
         assert!(
-            buf.contains("Invalid payload"),
+            logs.contains("Invalid payload"),
             "Logs should contain the message 'builder payload was not valid'"
         );
 

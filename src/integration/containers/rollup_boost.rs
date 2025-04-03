@@ -5,9 +5,7 @@ use std::{
 };
 
 use clap::Parser;
-use http::Uri;
 use tokio::task::JoinHandle;
-use tracing::{Level, instrument::WithSubscriber as _};
 use tracing_subscriber::fmt::MakeWriter;
 
 #[derive(Clone)]
@@ -16,26 +14,22 @@ struct SharedFileWriter {
 }
 
 impl<'a> MakeWriter<'a> for SharedFileWriter {
-    type Writer = SharedFileGuard<'a>;
+    type Writer = Self;
 
     fn make_writer(&'a self) -> Self::Writer {
-        SharedFileGuard {
-            guard: self.file.lock().unwrap(), // you can handle poisoning if needed
-        }
+        self.clone()
     }
 }
 
-pub struct SharedFileGuard<'a> {
-    guard: std::sync::MutexGuard<'a, File>,
-}
-
-impl Write for SharedFileGuard<'_> {
+impl Write for SharedFileWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.guard.write(buf)
+        println!("Writing to file...");
+        self.file.lock().unwrap().write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.guard.flush()
+        println!("Flushing file...");
+        self.file.lock().unwrap().flush()
     }
 }
 
@@ -44,7 +38,6 @@ use crate::Args;
 #[derive(Debug)]
 pub struct RollupBoost {
     pub args: Args,
-    pub log_file: Arc<Mutex<File>>,
     pub handle: JoinHandle<eyre::Result<()>>,
 }
 
@@ -78,21 +71,11 @@ impl Default for RollupBoostConfig {
 }
 
 impl RollupBoostConfig {
-    pub fn start(self, log_file: File) -> RollupBoost {
-        let log_file = Arc::new(Mutex::new(log_file));
-        let writer = SharedFileWriter {
-            file: log_file.clone(),
-        };
-        let subscriber = tracing_subscriber::fmt()
-            .with_writer(writer)
-            .with_env_filter(format!("rollup_boost={}", Level::TRACE))
-            .finish();
-
-        let handle = tokio::spawn(self.args.clone().run().with_subscriber(subscriber));
+    pub fn start(self) -> RollupBoost {
+        let handle = tokio::spawn(self.args.clone().run());
 
         RollupBoost {
             args: self.args,
-            log_file,
             handle,
         }
     }

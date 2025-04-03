@@ -10,20 +10,19 @@ use alloy_rpc_types_engine::{
     ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadId, PayloadStatus,
     PayloadStatusEnum,
 };
-use containers::op_reth::OpRethConfig;
+use containers::op_reth::{OpRethConfig, OpRethImage, OpRethMehods};
 use containers::rollup_boost::{RollupBoost, RollupBoostConfig};
 use eyre::bail;
 use futures::FutureExt;
 use futures::future::BoxFuture;
+use http::Uri;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
 use jsonrpsee::proc_macros::rpc;
 use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
 use proxy::{DynHandlerFn, start_proxy_server};
-use std::io::Read;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use testcontainers::core::logs::LogFrame;
 use testcontainers::core::logs::consumer::LogConsumer;
@@ -37,14 +36,13 @@ use time::{OffsetDateTime, format_description};
 /// Default JWT token for testing purposes
 pub const JWT_SECRET: &str = "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a";
 
-pub const L2_P2P_SECRET: &str = "a11ac89899cd86e36b6fb881ec1255b8a92a688790b7d950f8b7d8dd626671fb";
 pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f";
 
 mod containers;
 mod integration_test;
 mod proxy;
 
-struct LoggingConsumer {
+pub struct LoggingConsumer {
     target: String,
     log_file: tokio::sync::Mutex<tokio::fs::File>,
 }
@@ -65,12 +63,6 @@ impl LogConsumer for LoggingConsumer {
         }
         .boxed()
     }
-}
-
-pub struct TestEnv {
-    pub l2: ContainerAsync<OpRethConfig>,
-    pub builder: ContainerAsync<OpRethConfig>,
-    pub rollup_boost: RollupBoost,
 }
 
 pub async fn wait_for_log<I: Image>(
@@ -203,8 +195,8 @@ pub trait BlockApi {
 
 /// Test flavor that sets up one Rollup-boost instance connected to two Reth nodes
 pub struct RollupBoostTestHarness {
-    pub l2: ContainerAsync<OpRethConfig>,
-    pub builder: ContainerAsync<OpRethConfig>,
+    pub l2: ContainerAsync<OpRethImage>,
+    pub builder: ContainerAsync<OpRethImage>,
     pub rollup_boost: RollupBoost,
 }
 
@@ -273,29 +265,27 @@ impl RollupBoostTestHarnessBuilder {
     async fn build(self) -> eyre::Result<RollupBoostTestHarness> {
         let l2_log_consumer = self.log_consumer("l2").await?;
         let builder_log_consumer = self.log_consumer("builder").await?;
-        let rollup_boost_log_file = self.log_file("rollup_boost")?;
+        let rollup_boost_log_file_path = self.file_path("rollup_boost")?;
 
         let l2 = OpRethConfig::default()
-            // .set_p2p_secret(Some(PathBuf::from("../testdata/p2p_secret.hex")))
+            .set_p2p_secret(Some(PathBuf::from(format!(
+                "{}/src/integration/testdata/p2p_secret.hex",
+                env!("CARGO_MANIFEST_DIR")
+            ))))
+            .build()
             .with_log_consumer(l2_log_consumer)
             .start()
             .await?;
 
-        let l2_url = format!("http://127.0.0.1:{}", l2.get_host_port_ipv4(8545).await?);
-        let l2_enode = format!(
-            "enode://{}@127.0.0.1:{}",
-            L2_P2P_ENODE,
-            l2.get_host_port_ipv4(30303).await?
-        );
-
         let builder = OpRethConfig::default()
-            .set_trusted_peers(vec![l2_enode.clone()])
+            .set_trusted_peers(vec![l2.enode().await?.to_string()])
+            .build()
             .with_log_consumer(builder_log_consumer)
             .start()
             .await?;
-        let mut builder_authrpc_port = builder.get_host_port_ipv4(8551).await?;
 
         // run a proxy in between the builder and the rollup-boost if the proxy_handler is set
+        let mut builder_authrpc_port = builder.image().config().authrpc_port;
         if let Some(proxy_handler) = self.proxy_handler {
             let proxy_port = get_available_port().expect("no available port");
             let _ = start_proxy_server(proxy_handler, proxy_port, builder_authrpc_port).await;
@@ -305,9 +295,10 @@ impl RollupBoostTestHarnessBuilder {
 
         // Start Rollup-boost instance
         let mut rollup_boost = RollupBoostConfig::default();
-        rollup_boost.args.l2_client.l2_url = l2_url.try_into().unwrap();
+        rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?.try_into().unwrap();
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
-        let rollup_boost = rollup_boost.start(rollup_boost_log_file);
+        rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
+        let rollup_boost = rollup_boost.start();
 
         Ok(RollupBoostTestHarness {
             l2,
@@ -319,7 +310,8 @@ impl RollupBoostTestHarnessBuilder {
 
 impl RollupBoostTestHarness {
     pub async fn get_block_generator(&self) -> eyre::Result<SimpleBlockGenerator> {
-        let validator = BlockBuilderCreatorValidator::new(self.rollup_boost.log_file.clone());
+        let validator =
+            BlockBuilderCreatorValidator::new(self.rollup_boost.args.log_file.clone().unwrap());
 
         let engine_api = EngineApi::new(&self.rollup_boost.rpc_endpoint(), JWT_SECRET)?;
 
@@ -441,19 +433,18 @@ impl SimpleBlockGenerator {
 }
 
 pub struct BlockBuilderCreatorValidator {
-    file: Arc<std::sync::Mutex<std::fs::File>>,
+    file: PathBuf,
 }
 
 impl<'a> BlockBuilderCreatorValidator {
-    pub fn new(file: Arc<std::sync::Mutex<std::fs::File>>) -> Self {
+    pub fn new(file: PathBuf) -> Self {
         Self { file }
     }
 }
 
 impl<'a> BlockBuilderCreatorValidator {
     pub async fn get_block_creator(&self, block_hash: B256) -> eyre::Result<Option<PayloadSource>> {
-        let mut contents = String::new();
-        self.file.lock().unwrap().read_to_string(&mut contents)?;
+        let contents = std::fs::read_to_string(&self.file)?;
 
         let search_query = format!("returning block hash={:#x}", block_hash);
 
@@ -507,13 +498,14 @@ fn create_deposit_tx() -> Bytes {
     buffer_without_header.to_vec().into()
 }
 
+fn local_host(port: u16) -> Uri {
+    format!("http://localhost:{port}").parse::<Uri>().unwrap()
+}
+
 fn get_available_port() -> Option<u16> {
     (8000..9000).find(|port| port_is_available(*port))
 }
 
 fn port_is_available(port: u16) -> bool {
-    match TcpListener::bind(("127.0.0.1", port)) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
