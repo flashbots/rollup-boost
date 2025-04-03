@@ -1665,16 +1665,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f90f7dce0722e95104fcb095585910c0977252f286e354b5e3bd38902cd99988"
 
 [[package]]
-name = "futures-timer"
-version = "3.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f288b0a4f20f9a56b5d1da57e2227c661b7b16168e2f72365f57b63326e29b24"
-dependencies = [
- "gloo-timers",
- "send_wrapper",
-]
-
-[[package]]
 name = "futures-util"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1752,52 +1742,6 @@ name = "glob"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
-
-[[package]]
-name = "gloo-net"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c06f627b1a58ca3d42b45d6104bf1e1a03799df472df00988b6ba21accc10580"
-dependencies = [
- "futures-channel",
- "futures-core",
- "futures-sink",
- "gloo-utils",
- "http",
- "js-sys",
- "pin-project",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "gloo-timers"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b995a66bb87bebce9a0f4a95aed01daca4872c050bfcb21653361c03bc35e5c"
-dependencies = [
- "futures-channel",
- "futures-core",
- "js-sys",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "gloo-utils"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b5555354113b18c547c1d3a98fbf7fb32a9ff4f6fa112ce823a21641a0ba3aa"
-dependencies = [
- "js-sys",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "web-sys",
-]
 
 [[package]]
 name = "group"
@@ -2338,41 +2282,13 @@ version = "0.24.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b26c20e2178756451cfeb0661fb74c47dd5988cb7e3939de7e9241fd604d42"
 dependencies = [
- "jsonrpsee-client-transport",
  "jsonrpsee-core",
  "jsonrpsee-http-client",
  "jsonrpsee-proc-macros",
  "jsonrpsee-server",
  "jsonrpsee-types",
- "jsonrpsee-wasm-client",
- "jsonrpsee-ws-client",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "jsonrpsee-client-transport"
-version = "0.24.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bacb85abf4117092455e1573625e21b8f8ef4dec8aff13361140b2dc266cdff2"
-dependencies = [
- "base64",
- "futures-channel",
- "futures-util",
- "gloo-net",
- "http",
- "jsonrpsee-core",
- "pin-project",
- "rustls",
- "rustls-pki-types",
- "rustls-platform-verifier",
- "soketto",
- "thiserror 1.0.69",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tracing",
- "url",
 ]
 
 [[package]]
@@ -2383,23 +2299,19 @@ checksum = "456196007ca3a14db478346f58c7238028d55ee15c1df15115596e411ff27925"
 dependencies = [
  "async-trait",
  "bytes",
- "futures-timer",
  "futures-util",
  "http",
  "http-body",
  "http-body-util",
  "jsonrpsee-types",
  "parking_lot",
- "pin-project",
  "rand 0.8.5",
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
- "tokio-stream",
  "tracing",
- "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -2477,30 +2389,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "jsonrpsee-wasm-client"
-version = "0.24.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6558a9586cad43019dafd0b6311d0938f46efc116b34b28c74778bc11a2edf6"
-dependencies = [
- "jsonrpsee-client-transport",
- "jsonrpsee-core",
- "jsonrpsee-types",
-]
-
-[[package]]
-name = "jsonrpsee-ws-client"
-version = "0.24.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01b3323d890aa384f12148e8d2a1fd18eb66e9e7e825f9de4fa53bcc19b93eef"
-dependencies = [
- "http",
- "jsonrpsee-client-transport",
- "jsonrpsee-core",
- "jsonrpsee-types",
- "url",
 ]
 
 [[package]]
@@ -2911,34 +2799,6 @@ dependencies = [
  "derive_more 2.0.1",
  "serde",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "op-alloy-rpc-jsonrpsee"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3bf4be90d70d847c0d41c39364dec96bd1e6bb9212826bfba0cf0aab85a81da"
-dependencies = [
- "alloy-primitives",
- "jsonrpsee",
-]
-
-[[package]]
-name = "op-alloy-rpc-types"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eba7bfcc5d0b08c7a8bbdfaffa81e47edbb00185f0bf08e9f008216057700e50"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-network-primitives",
- "alloy-primitives",
- "alloy-rpc-types-eth",
- "alloy-serde",
- "derive_more 2.0.1",
- "op-alloy-consensus",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -3636,7 +3496,6 @@ dependencies = [
 name = "rollup-boost"
 version = "0.1.0"
 dependencies = [
- "alloy-consensus",
  "alloy-eips",
  "alloy-primitives",
  "alloy-rpc-types-engine",
@@ -3662,8 +3521,6 @@ dependencies = [
  "moka",
  "nix",
  "op-alloy-consensus",
- "op-alloy-rpc-jsonrpsee",
- "op-alloy-rpc-types",
  "op-alloy-rpc-types-engine",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -3984,12 +3841,6 @@ checksum = "9900206b54a3527fdc7b8a938bffd94a568bac4f4aa8113b209df75a09c0dec2"
 dependencies = [
  "pest",
 ]
-
-[[package]]
-name = "send_wrapper"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f638d531eccd6e23b980caf34876660d38e265409d8e99b397ab71eb3612fad0"
 
 [[package]]
 name = "serde"

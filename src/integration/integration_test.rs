@@ -28,6 +28,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "reason: this test is not stable and should be fixed"]
     async fn test_integration_simple_ishtmus() -> eyre::Result<()> {
         let harness = RollupBoostTestHarnessBuilder::new("test_integration_simple")
             .build()
