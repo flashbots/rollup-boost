@@ -2,6 +2,7 @@
 mod tests {
     use alloy_primitives::B256;
     use serde_json::Value;
+    use std::io::Read;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -149,10 +150,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_integration_remote_builder_down() -> eyre::Result<()> {
-        let mut harness =
-            RollupBoostTestHarnessBuilder::new("test_integration_remote_builder_down")
-                .build()
-                .await?;
+        let harness = RollupBoostTestHarnessBuilder::new("test_integration_remote_builder_down")
+            .build()
+            .await?;
         let mut block_generator = harness.get_block_generator().await?;
 
         for _ in 0..3 {
@@ -164,8 +164,7 @@ mod tests {
         }
 
         // stop the builder
-        let builder_service = harness._framework.get_mut_service("builder")?;
-        builder_service.stop()?;
+        harness.builder.stop().await;
 
         // create 3 new blocks that are processed by the l2 builder
         for _ in 0..3 {
@@ -174,7 +173,7 @@ mod tests {
         }
 
         // start the builder again
-        builder_service.start_and_ready()?;
+        harness.builder.start().await;
 
         // the next block is computed by the l2 builder because the builder is not synced with the previous 3 blocks
         // But, once the builder receives the FCU request from rollup-boost, it will sync up the blocks with the
@@ -259,7 +258,7 @@ mod tests {
             Some(result)
         });
 
-        let mut harness =
+        let harness =
             RollupBoostTestHarnessBuilder::new("test_integration_builder_returns_incorrect_block")
                 .proxy_handler(handler)
                 .build()
@@ -274,11 +273,16 @@ mod tests {
         }
         // check that at some point we had the log "builder payload was not valid" which signals
         // that the builder returned a payload that was not valid and rollup-boost did not process it.
-        let rb_service = harness._framework.get_mut_service("rollup-boost")?;
-
-        let logs = rb_service.get_logs()?;
+        // read lines
+        let mut buf = String::new();
+        harness
+            .rollup_boost
+            .log_file
+            .lock()
+            .unwrap()
+            .read_to_string(&mut buf)?;
         assert!(
-            logs.contains("Invalid payload"),
+            buf.contains("Invalid payload"),
             "Logs should contain the message 'builder payload was not valid'"
         );
 

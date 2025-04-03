@@ -10,460 +10,101 @@ use alloy_rpc_types_engine::{
     ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadId, PayloadStatus,
     PayloadStatusEnum,
 };
-use bytes::BytesMut;
+use containers::op_reth::OpRethConfig;
+use containers::rollup_boost::{RollupBoost, RollupBoostConfig};
+use eyre::bail;
+use futures::FutureExt;
+use futures::future::BoxFuture;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
 use jsonrpsee::proc_macros::rpc;
-use lazy_static::lazy_static;
-use op_alloy_consensus::TxDeposit;
-use op_alloy_rpc_types_engine::OpPayloadAttributes;
+use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
 use proxy::{DynHandlerFn, start_proxy_server};
-use serde_json::Value;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::io::Read;
+use std::net::TcpListener;
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Mutex;
-use std::time::UNIX_EPOCH;
-use std::{
-    fs::{File, OpenOptions},
-    io,
-    io::prelude::*,
-    process::{Child, Command},
-    time::{Duration, SystemTime},
-};
-use thiserror::Error;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+use testcontainers::core::logs::LogFrame;
+use testcontainers::core::logs::consumer::LogConsumer;
+use testcontainers::runners::AsyncRunner;
+use testcontainers::{ContainerAsync, Image, ImageExt};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt as _};
+use tracing::info;
+
 use time::{OffsetDateTime, format_description};
 
 /// Default JWT token for testing purposes
-pub const DEFAULT_JWT_TOKEN: &str =
-    "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a";
+pub const JWT_SECRET: &str = "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a";
 
+pub const L2_P2P_SECRET: &str = "a11ac89899cd86e36b6fb881ec1255b8a92a688790b7d950f8b7d8dd626671fb";
+pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f";
+
+mod containers;
 mod integration_test;
 mod proxy;
-mod service_rb;
-mod service_reth;
 
-#[derive(Debug, Error)]
-pub enum IntegrationError {
-    #[error("Failed to spawn process")]
-    SpawnError,
-    #[error("Binary not found")]
-    BinaryNotFound,
-    #[error("Failed to setup integration framework")]
-    SetupError,
-    #[error("Log error")]
-    LogError,
-    #[error("Service already running")]
-    ServiceAlreadyRunning,
-    #[error("Service stopped")]
-    ServiceStopped,
-    #[error(transparent)]
-    AddrParseError(#[from] std::net::AddrParseError),
+struct LoggingConsumer {
+    target: String,
+    log_file: tokio::sync::Mutex<tokio::fs::File>,
 }
 
-#[derive(Debug, Clone)]
-pub enum Arg {
-    Port { name: String, preferred: u16 },
-    Dir { name: String },
-    Value(String),
-    // FilePath is an argument that writes the given content to a file in the test directory
-    // and returns the path to the file as an argument
-    FilePath { name: String, content: String },
-}
-
-impl From<String> for Arg {
-    fn from(s: String) -> Self {
-        Arg::Value(s)
-    }
-}
-
-impl From<&str> for Arg {
-    fn from(s: &str) -> Self {
-        Arg::Value(s.to_string())
-    }
-}
-
-impl From<PathBuf> for Arg {
-    fn from(path: PathBuf) -> Self {
-        Arg::Value(
-            path.to_str()
-                .expect("Failed to convert path to string")
-                .to_string(),
-        )
-    }
-}
-
-impl From<&Path> for Arg {
-    fn from(path: &Path) -> Self {
-        Arg::Value(
-            path.to_str()
-                .expect("Failed to convert path to string")
-                .to_string(),
-        )
-    }
-}
-
-impl From<&String> for Arg {
-    fn from(s: &String) -> Self {
-        Arg::Value(s.clone())
-    }
-}
-
-impl From<&PathBuf> for Arg {
-    fn from(path: &PathBuf) -> Self {
-        Arg::Value(
-            path.to_str()
-                .expect("Failed to convert path to string")
-                .to_string(),
-        )
-    }
-}
-
-pub struct ServiceCommand {
-    program: String,
-    args: Vec<Arg>,
-}
-
-impl ServiceCommand {
-    pub fn new(program: impl Into<String>) -> Self {
-        Self {
-            program: program.into(),
-            args: Vec::new(),
+impl LogConsumer for LoggingConsumer {
+    fn accept<'a>(&'a self, record: &'a LogFrame) -> BoxFuture<'a, ()> {
+        async move {
+            match record {
+                testcontainers::core::logs::LogFrame::StdOut(bytes) => {
+                    info!(target = self.target, "{}", String::from_utf8_lossy(bytes));
+                    self.log_file.lock().await.write_all(bytes).await.unwrap();
+                }
+                testcontainers::core::logs::LogFrame::StdErr(bytes) => {
+                    info!(target = self.target, "{}", String::from_utf8_lossy(bytes));
+                    self.log_file.lock().await.write_all(bytes).await.unwrap();
+                }
+            }
         }
-    }
-
-    pub fn arg(mut self, arg: impl Into<Arg>) -> Self {
-        self.args.push(arg.into());
-        self
+        .boxed()
     }
 }
 
-pub struct ReadyParams {
-    pub log_pattern: String,
-    pub duration: Duration,
+pub struct TestEnv {
+    pub l2: ContainerAsync<OpRethConfig>,
+    pub builder: ContainerAsync<OpRethConfig>,
+    pub rollup_boost: RollupBoost,
 }
 
-pub trait Service {
-    fn command(&self) -> ServiceCommand;
-    fn ready(&self) -> ReadyParams;
-}
+pub async fn wait_for_log<I: Image>(
+    container: ContainerAsync<I>,
+    pattern: &str,
+    timeout: Duration,
+) -> eyre::Result<()> {
+    let timeout = tokio::time::sleep(timeout);
+    let mut stderr = container.stderr(true).lines();
+    let mut stdout = container.stdout(true).lines();
 
-pub struct ServiceInstance {
-    command_config: (String, Vec<String>),
-    process: Option<Child>,
-    log_path: PathBuf,
-    service: Box<dyn Service>,
-    allocated_ports: HashMap<String, u16>,
-}
-
-lazy_static! {
-    static ref GLOBAL_ALLOCATED_PORTS: Mutex<HashSet<u16>> = Mutex::new(HashSet::new());
-}
-
-pub struct IntegrationFramework {
-    test_dir: PathBuf,
-    logs_dir: PathBuf,
-    services: HashMap<String, ServiceInstance>,
-}
-
-impl ServiceInstance {
-    pub fn new(
-        name: String,
-        command_config: (String, Vec<String>),
-        logs_dir: PathBuf,
-        allocated_ports: HashMap<String, u16>,
-        service: Box<dyn Service>,
-    ) -> Self {
-        let log_path = logs_dir.join(format!("{}.log", name));
-        Self {
-            process: None,
-            command_config,
-            log_path,
-            allocated_ports,
-            service,
-        }
-    }
-
-    pub fn start(&mut self) -> Result<(), IntegrationError> {
-        if self.process.is_some() {
-            return Err(IntegrationError::ServiceAlreadyRunning);
-        }
-
-        let mut log = open_log_file(&self.log_path)?;
-        let stdout = log.try_clone().map_err(|_| IntegrationError::LogError)?;
-        let stderr = log.try_clone().map_err(|_| IntegrationError::LogError)?;
-
-        // print the command config on the log file
-        log.write_all(format!("Command config: {:?}\n", self.command_config).as_bytes())
-            .map_err(|_| IntegrationError::LogError)?;
-
-        // build the command from the command config
-        let mut cmd = {
-            let command_config = self.command_config.clone();
-            let mut cmd = Command::new(command_config.0.clone());
-            cmd.args(&command_config.1);
-            cmd
-        };
-        cmd.stdout(stdout).stderr(stderr);
-
-        let child = match cmd.spawn() {
-            Ok(child) => Ok(child),
-            Err(e) => match e.kind() {
-                io::ErrorKind::NotFound => Err(IntegrationError::BinaryNotFound),
-                _ => Err(IntegrationError::SpawnError),
-            },
-        }?;
-
-        self.process = Some(child);
-        Ok(())
-    }
-
-    pub fn stop(&mut self) -> Result<(), IntegrationError> {
-        if let Some(mut process) = self.process.take() {
-            nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(process.id() as i32),
-                nix::sys::signal::SIGINT,
-            )
-            .map_err(|_| IntegrationError::SpawnError)?;
-
-            // wait for the process to exit
-            process.wait().unwrap();
-        }
-        Ok(())
-    }
-
-    /// Start a service using its configuration and wait for it to be ready
-    pub fn start_and_ready(&mut self) -> Result<(), IntegrationError> {
-        self.start()?;
-
-        let params = self.service.ready();
-        self.wait_for_log(&params.log_pattern, params.duration)?;
-
-        Ok(())
-    }
-
-    pub fn get_port(&self, name: &str) -> u16 {
-        *self.allocated_ports.get(name).unwrap_or_else(|| {
-            panic!("Port for {} not found", name);
-        })
-    }
-
-    pub fn get_endpoint(&self, name: &str) -> String {
-        format!("http://localhost:{}", self.get_port(name))
-    }
-
-    pub fn get_logs(&self) -> Result<String, IntegrationError> {
-        let mut file = File::open(&self.log_path).map_err(|_| IntegrationError::LogError)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|_| IntegrationError::LogError)?;
-        Ok(contents)
-    }
-
-    pub fn wait_for_log(
-        &mut self,
-        pattern: &str,
-        timeout: Duration,
-    ) -> Result<(), IntegrationError> {
-        let start = std::time::Instant::now();
-
-        loop {
-            // Check if process has stopped
-            if let Some(ref mut process) = self.process {
-                match process.try_wait() {
-                    Ok(None) => {}
-                    Ok(Some(_status)) => {
-                        // Process has exited
-                        return Err(IntegrationError::ServiceStopped);
+    tokio::select! {
+        result = async {
+            loop {
+                tokio::select! {
+                    line = stderr.next_line() => {
+                        if let Ok(Some(line)) = line {
+                            if line.contains(pattern) {
+                                return Ok::<_, eyre::Report>(());
+                            }
+                        }
                     }
-                    Err(_) => {
-                        return Err(IntegrationError::ServiceStopped);
+                    line = stdout.next_line() => {
+                        if let Ok(Some(line)) = line {
+                            if line.contains(pattern) {
+                                return Ok::<_, eyre::Report>(());
+                            }
+                        }
                     }
                 }
             }
-
-            if start.elapsed() > timeout {
-                return Err(IntegrationError::SpawnError);
-            }
-
-            let mut contents = self.get_logs()?;
-
-            // Since we share the same log file for different executions of the same service during the lifespan
-            // of the test, we need to filter the logs and only consider the logs of the current execution.
-            // We can do this because we print at each service start the log "Command config: <commadn config>"
-            // So, we are going to search for the command config in the log and only consider the logs after that
-            if let Some(index) = contents.rfind("Command config:") {
-                contents = contents[index..].to_string();
-            }
-
-            if contents.contains(pattern) {
-                return Ok(());
-            }
-
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    }
-}
-
-impl IntegrationFramework {
-    pub fn new(test_name: &str) -> Result<Self, IntegrationError> {
-        let dt: OffsetDateTime = SystemTime::now().into();
-        let format = format_description::parse("[year]_[month]_[day]_[hour]_[minute]_[second]")
-            .map_err(|_| IntegrationError::SetupError)?;
-
-        let timestamp = dt
-            .format(&format)
-            .map_err(|_| IntegrationError::SetupError)?;
-
-        let test_name = format!("{}_{}", timestamp, test_name);
-
-        let mut test_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        test_dir.push("./integration_logs");
-        test_dir.push(test_name);
-
-        // Create logs subdirectory
-        let logs_dir = test_dir.join("logs");
-        std::fs::create_dir_all(&logs_dir).map_err(|_| IntegrationError::SetupError)?;
-
-        Ok(Self {
-            test_dir,
-            logs_dir,
-            services: HashMap::new(),
-        })
-    }
-
-    fn get_mut_service(&mut self, name: &str) -> eyre::Result<&mut ServiceInstance> {
-        self.services
-            .get_mut(name)
-            .ok_or(eyre::eyre!("Service not found"))
-    }
-
-    fn build_command(
-        &mut self,
-        service_name: &str,
-        cmd: ServiceCommand,
-    ) -> Result<(HashMap<String, u16>, (String, Vec<String>)), IntegrationError> {
-        let mut allocated_ports = HashMap::new();
-        let mut command_args = Vec::new();
-
-        for arg in cmd.args {
-            match arg {
-                Arg::Port { name, preferred } => {
-                    let port = self.find_available_port(preferred)?;
-                    allocated_ports.insert(name, port);
-                    command_args.push(port.to_string());
-                }
-                Arg::Dir { name } => {
-                    let dir_path = self.test_dir.join(service_name).join(name);
-                    std::fs::create_dir_all(&dir_path).map_err(|_| IntegrationError::SetupError)?;
-                    command_args.push(
-                        dir_path
-                            .to_str()
-                            .expect("Failed to convert path to string")
-                            .to_string(),
-                    );
-                }
-                Arg::FilePath { name, content } => {
-                    let file_path = self.test_dir.join(service_name).join(name);
-                    std::fs::write(&file_path, content)
-                        .map_err(|_| IntegrationError::SetupError)?;
-                    command_args.push(
-                        file_path
-                            .to_str()
-                            .expect("Failed to convert path to string")
-                            .to_string(),
-                    );
-                }
-                Arg::Value(value) => {
-                    command_args.push(value);
-                }
-            }
-        }
-
-        Ok((allocated_ports, (cmd.program, command_args)))
-    }
-
-    fn find_available_port(&self, start: u16) -> Result<u16, IntegrationError> {
-        let mut global_ports = GLOBAL_ALLOCATED_PORTS
-            .lock()
-            .expect("Failed to acquire lock");
-
-        (start..start + 100)
-            .find(|&port| {
-                if global_ports.contains(&port) {
-                    return false;
-                }
-                if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
-                    global_ports.insert(port);
-                    return true;
-                }
-                false
-            })
-            .ok_or(IntegrationError::SetupError)
-    }
-
-    pub async fn start(
-        &mut self,
-        name: &str,
-        config: Box<dyn Service>,
-    ) -> Result<&mut ServiceInstance, IntegrationError> {
-        let (allocated_ports, command_config) = self.build_command(name, config.command())?;
-
-        // Store the service instance in the framework
-        let service = ServiceInstance::new(
-            name.to_string(),
-            command_config,
-            self.logs_dir.clone(),
-            allocated_ports,
-            config,
-        );
-        self.services.insert(name.to_string(), service);
-        let service = self.services.get_mut(name).unwrap();
-
-        service.start_and_ready()?;
-        Ok(service)
-    }
-
-    /// Writes content to a file in the test directory and returns its absolute path
-    pub fn write_file(
-        &self,
-        name: &str,
-        content: impl AsRef<[u8]>,
-    ) -> Result<PathBuf, IntegrationError> {
-        let file_path = self.test_dir.join(name);
-        if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|_| IntegrationError::SetupError)?;
-        }
-        std::fs::write(&file_path, content).map_err(|_| IntegrationError::SetupError)?;
-        Ok(file_path)
-    }
-}
-
-fn open_log_file(path: &PathBuf) -> Result<File, IntegrationError> {
-    let prefix = path.parent().unwrap();
-    std::fs::create_dir_all(prefix).map_err(|_| IntegrationError::LogError)?;
-
-    OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(path)
-        .map_err(|_| IntegrationError::LogError)
-}
-
-impl Drop for IntegrationFramework {
-    fn drop(&mut self) {
-        // Stop all services first
-        for service in &mut self.services {
-            let _ = service.1.stop();
-        }
-
-        // Release allocated ports from global registry
-        let mut global_ports = GLOBAL_ALLOCATED_PORTS
-            .lock()
-            .expect("Failed to acquire lock");
-        for service in &self.services {
-            for port in service.1.allocated_ports.values() {
-                global_ports.remove(port);
-            }
+        } => result,
+        _ = timeout => {
+            bail!("Timeout waiting for log message: {}", pattern);
         }
     }
 }
@@ -474,7 +115,7 @@ pub struct EngineApi {
 
 // TODO: Use client/rpc.rs instead
 impl EngineApi {
-    pub fn new(url: &str, secret: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(url: &str, secret: &str) -> eyre::Result<Self> {
         let secret_layer = AuthClientLayer::new(JwtSecret::from_str(secret)?);
         let middleware = tower::ServiceBuilder::default().layer(secret_layer);
         let client = jsonrpsee::http_client::HttpClientBuilder::default()
@@ -562,14 +203,10 @@ pub trait BlockApi {
 
 /// Test flavor that sets up one Rollup-boost instance connected to two Reth nodes
 pub struct RollupBoostTestHarness {
-    _framework: IntegrationFramework, // Keep framework alive to maintain service ownership
+    pub l2: ContainerAsync<OpRethConfig>,
+    pub builder: ContainerAsync<OpRethConfig>,
+    pub rollup_boost: RollupBoost,
 }
-
-/// Test node P2P configuration (private_key, enode_address)
-pub const TEST_NODE_P2P_ADDR: (&str, &str) = (
-    "a11ac89899cd86e36b6fb881ec1255b8a92a688790b7d950f8b7d8dd626671fb",
-    "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f",
-);
 
 const PROXY_START_PORT: u16 = 4444;
 
@@ -586,103 +223,105 @@ impl RollupBoostTestHarnessBuilder {
         }
     }
 
+    pub fn file_path(&self, service_name: &str) -> eyre::Result<PathBuf> {
+        let dt: OffsetDateTime = SystemTime::now().into();
+        let format = format_description::parse("[year]_[month]_[day]_[hour]_[minute]_[second]")?;
+        let timestamp = dt.format(&format)?;
+
+        // let test_name = format!("{}_{}", timestamp, test_name);
+
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("test_logs")
+            .join(timestamp)
+            .join(self.test_name.clone());
+        std::fs::create_dir_all(&dir)?;
+
+        let file_name = format!("{service_name}.log");
+        Ok(dir.join(file_name))
+    }
+
+    pub async fn async_log_file(&self, service_name: &str) -> eyre::Result<tokio::fs::File> {
+        let file_path = self.file_path(service_name)?;
+        Ok(tokio::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(file_path)
+            .await?)
+    }
+
+    pub fn log_file(&self, service_name: &str) -> eyre::Result<std::fs::File> {
+        let file_path = self.file_path(service_name)?;
+        Ok(std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(file_path)?)
+    }
+
+    pub async fn log_consumer(&self, service_name: &str) -> eyre::Result<LoggingConsumer> {
+        let file = self.async_log_file(service_name).await?;
+        Ok(LoggingConsumer {
+            target: service_name.to_string(),
+            log_file: tokio::sync::Mutex::new(file),
+        })
+    }
+
     pub fn proxy_handler(mut self, proxy_handler: DynHandlerFn) -> Self {
         self.proxy_handler = Some(proxy_handler);
         self
     }
 
-    async fn build(self) -> Result<RollupBoostTestHarness, IntegrationError> {
-        let mut framework = IntegrationFramework::new(self.test_name.as_str())?;
+    async fn build(self) -> eyre::Result<RollupBoostTestHarness> {
+        let l2_log_consumer = self.log_consumer("l2").await?;
+        let builder_log_consumer = self.log_consumer("builder").await?;
+        let rollup_boost_log_file = self.log_file("rollup_boost")?;
 
-        let jwt_path = framework.write_file("jwt.hex", DEFAULT_JWT_TOKEN)?;
+        let l2 = OpRethConfig::default()
+            // .set_p2p_secret(Some(PathBuf::from("../testdata/p2p_secret.hex")))
+            .with_log_consumer(l2_log_consumer)
+            .start()
+            .await?;
 
-        // Write the genesis file to the test directory and update the timestamp to the current time
-        let genesis_path = {
-            // Read the template file
-            let template = include_str!("testdata/genesis.json");
-
-            // Parse the JSON
-            let mut genesis: Value = serde_json::from_str(template).unwrap();
-
-            // Update the timestamp field
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-            if let Some(config) = genesis.as_object_mut() {
-                // Assuming timestamp is at the root level - adjust path as needed
-                config["timestamp"] = Value::String(format!("0x{:x}", timestamp));
-            }
-
-            framework.write_file(
-                "genesis.json",
-                serde_json::to_string_pretty(&genesis).unwrap(),
-            )?
-        };
-
-        // Start L2 Reth instance
-        let l2_reth_config = service_reth::RethConfig::new()
-            .jwt_secret_path(jwt_path.clone())
-            .chain_config_path(genesis_path.clone())
-            .p2p_secret_key(TEST_NODE_P2P_ADDR.0.to_string());
-
-        let l2_service = {
-            let service = framework.start("l2-reth", Box::new(l2_reth_config)).await?;
-            (service.get_endpoint("authrpc"), service.get_port("p2p"))
-        };
-
-        // Start Builder Reth instance
-
-        // The enode address depends on the p2p port of the L2 Reth instance
-        // TODO: We could also query the logs of the L2 Reth instance for the enode address and avoid this
-        let enode_address = format!(
+        let l2_url = format!("http://127.0.0.1:{}", l2.get_host_port_ipv4(8545).await?);
+        let l2_enode = format!(
             "enode://{}@127.0.0.1:{}",
-            TEST_NODE_P2P_ADDR.1, l2_service.1
+            L2_P2P_ENODE,
+            l2.get_host_port_ipv4(30303).await?
         );
 
-        let builder_reth_config = service_reth::RethConfig::new()
-            .jwt_secret_path(jwt_path.clone())
-            .chain_config_path(genesis_path)
-            .trusted_peer(enode_address);
-
-        let builder_authrpc_port = {
-            let service = framework
-                .start("builder", Box::new(builder_reth_config))
-                .await?;
-            service.get_port("authrpc")
-        };
+        let builder = OpRethConfig::default()
+            .set_trusted_peers(vec![l2_enode.clone()])
+            .with_log_consumer(builder_log_consumer)
+            .start()
+            .await?;
+        let mut builder_authrpc_port = builder.get_host_port_ipv4(8551).await?;
 
         // run a proxy in between the builder and the rollup-boost if the proxy_handler is set
-        let builder_authrpc_port = if let Some(proxy_handler) = self.proxy_handler {
-            let proxy_port = framework.find_available_port(PROXY_START_PORT)?;
+        if let Some(proxy_handler) = self.proxy_handler {
+            let proxy_port = get_available_port().expect("no available port");
             let _ = start_proxy_server(proxy_handler, proxy_port, builder_authrpc_port).await;
-            proxy_port
-        } else {
-            builder_authrpc_port
+            builder_authrpc_port = proxy_port
         };
-        let builder_service = format!("http://127.0.0.1:{}", builder_authrpc_port);
+        let builder_url = format!("http://127.0.0.1:{}", builder_authrpc_port);
 
         // Start Rollup-boost instance
-        let rb_config = service_rb::RollupBoostConfig::new()
-            .jwt_path(jwt_path)
-            .l2_url(l2_service.0)
-            .builder_url(builder_service);
-
-        let _ = framework.start("rollup-boost", Box::new(rb_config)).await?;
+        let mut rollup_boost = RollupBoostConfig::default();
+        rollup_boost.args.l2_client.l2_url = l2_url.try_into().unwrap();
+        rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
+        let rollup_boost = rollup_boost.start(rollup_boost_log_file);
 
         Ok(RollupBoostTestHarness {
-            _framework: framework,
+            l2,
+            builder,
+            rollup_boost,
         })
     }
 }
 
 impl RollupBoostTestHarness {
     pub async fn get_block_generator(&self) -> eyre::Result<SimpleBlockGenerator> {
-        let rb_service = self._framework.services.get("rollup-boost").unwrap();
-        let validator = BlockBuilderCreatorValidator::new(rb_service.log_path.clone());
+        let validator = BlockBuilderCreatorValidator::new(self.rollup_boost.log_file.clone());
 
-        let engine_api = EngineApi::new(&rb_service.get_endpoint("rpc"), DEFAULT_JWT_TOKEN)
-            .map_err(|_| IntegrationError::SetupError)?;
+        let engine_api = EngineApi::new(&self.rollup_boost.rpc_endpoint(), JWT_SECRET)?;
 
         let mut block_creator = SimpleBlockGenerator::new(validator, engine_api);
         block_creator.init().await?;
@@ -690,10 +329,7 @@ impl RollupBoostTestHarness {
     }
 
     pub async fn get_client(&self) -> DebugClient {
-        let rb_service = self._framework.services.get("rollup-boost").unwrap();
-        let endpoint = rb_service.get_endpoint("debug");
-
-        DebugClient::new(&endpoint).unwrap()
+        DebugClient::new(&self.rollup_boost.debug_endpoint()).unwrap()
     }
 }
 
@@ -796,7 +432,8 @@ impl SimpleBlockGenerator {
         // Check who built the block in the rollup-boost logs
         let block_creator = self
             .validator
-            .get_block_creator(new_block_hash)?
+            .get_block_creator(new_block_hash)
+            .await?
             .expect("block creator not found");
 
         Ok((new_block_hash, block_creator))
@@ -804,21 +441,19 @@ impl SimpleBlockGenerator {
 }
 
 pub struct BlockBuilderCreatorValidator {
-    log_path: PathBuf,
+    file: Arc<std::sync::Mutex<std::fs::File>>,
 }
 
-impl BlockBuilderCreatorValidator {
-    pub fn new(log_path: PathBuf) -> Self {
-        Self { log_path }
+impl<'a> BlockBuilderCreatorValidator {
+    pub fn new(file: Arc<std::sync::Mutex<std::fs::File>>) -> Self {
+        Self { file }
     }
 }
 
-impl BlockBuilderCreatorValidator {
-    pub fn get_block_creator(&self, block_hash: B256) -> eyre::Result<Option<PayloadSource>> {
-        let mut file = File::open(&self.log_path).map_err(|_| IntegrationError::LogError)?;
+impl<'a> BlockBuilderCreatorValidator {
+    pub async fn get_block_creator(&self, block_hash: B256) -> eyre::Result<Option<PayloadSource>> {
         let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|_| IntegrationError::LogError)?;
+        self.file.lock().unwrap().read_to_string(&mut contents)?;
 
         let search_query = format!("returning block hash={:#x}", block_hash);
 
@@ -870,4 +505,15 @@ fn create_deposit_tx() -> Bytes {
     deposit_tx.encode_2718(&mut buffer_without_header);
 
     buffer_without_header.to_vec().into()
+}
+
+fn get_available_port() -> Option<u16> {
+    (8000..9000).find(|port| port_is_available(*port))
+}
+
+fn port_is_available(port: u16) -> bool {
+    match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
 }
