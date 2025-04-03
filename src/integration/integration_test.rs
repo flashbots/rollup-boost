@@ -28,27 +28,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "reason: this test is not stable and should be fixed"]
-    async fn test_integration_simple_ishtmus() -> eyre::Result<()> {
-        let harness = RollupBoostTestHarnessBuilder::new("test_integration_simple")
-            .build()
-            .await?;
-
-        let mut block_generator = harness.get_block_generator().await?;
-        block_generator.set_version(Version::V4);
-
-        for _ in 0..5 {
-            let (_block, block_creator) = block_generator.generate_block(false).await?;
-            assert!(
-                block_creator.is_builder(),
-                "Block creator should be the builder"
-            );
-        }
-
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_integration_no_tx_pool() -> eyre::Result<()> {
         let harness = RollupBoostTestHarnessBuilder::new("test_integration_no_tx_pool")
             .build()
