@@ -717,10 +717,6 @@ impl SimpleBlockGenerator {
         }
     }
 
-    pub fn set_version(&mut self, version: Version) {
-        self.version = version;
-    }
-
     /// Initialize the block generator by fetching the latest block
     pub async fn init(&mut self) -> eyre::Result<()> {
         let latest_block = self.engine_api.latest().await?.expect("block not found");
