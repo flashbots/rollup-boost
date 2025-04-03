@@ -12,7 +12,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
-use tracing::error;
+use tracing::{debug, error};
 #[derive(Debug, Error)]
 pub enum FlashblocksError {
     #[error("Missing base payload for initial flashblock")]
@@ -162,9 +162,16 @@ impl FlashblocksService {
     ) -> Result<Option<OpExecutionPayloadEnvelopeV3>, FlashblocksError> {
         // consume the best payload and reset the builder
         let payload = {
+            debug!(
+                message =
+                    "Acquiring best payload write lock: get_best_payload() to use best_payload"
+            );
             let mut builder = self.best_payload.write().await;
             std::mem::take(&mut *builder).into_envelope()?
         };
+        debug!(
+            message = "Acquiring best payload write lock: get_best_payload() to reset best_payload"
+        );
         *self.best_payload.write().await = FlashblockBuilder::new();
 
         Ok(Some(payload))
@@ -172,6 +179,9 @@ impl FlashblocksService {
 
     pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
         tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
+        debug!(
+            message = "Acquiring current payload id write lock: set_current_payload_id() to use current_payload_id"
+        );
         *self.current_payload_id.write().await = payload_id;
     }
 
@@ -185,12 +195,19 @@ impl FlashblocksService {
                 );
 
                 // make sure the payload id matches the current payload id
+                debug!(
+                    message = "Acquiring current payload id read lock: on_event() to use current_payload_id"
+                );
                 let current_payload_id = *self.current_payload_id.read().await;
                 if current_payload_id != payload.payload_id {
                     error!(message = "Payload ID mismatch", current_payload_id = %current_payload_id, payload_id = %payload.payload_id);
                     return;
                 }
 
+                debug!(
+                    message =
+                        "Acquiring best payload write lock: on_event() to extend best_payload"
+                );
                 if let Err(e) = self.best_payload.write().await.extend(payload.clone()) {
                     error!(message = "Failed to extend payload", error = %e);
                 } else {
