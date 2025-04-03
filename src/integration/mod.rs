@@ -24,6 +24,7 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
+use testcontainers::core::ContainerPort;
 use testcontainers::core::logs::LogFrame;
 use testcontainers::core::logs::consumer::LogConsumer;
 use testcontainers::runners::AsyncRunner;
@@ -41,6 +42,7 @@ pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795
 mod containers;
 mod integration_test;
 mod proxy;
+mod tests;
 
 pub struct LoggingConsumer {
     target: String,
@@ -200,8 +202,6 @@ pub struct RollupBoostTestHarness {
     pub rollup_boost: RollupBoost,
 }
 
-const PROXY_START_PORT: u16 = 4444;
-
 pub struct RollupBoostTestHarnessBuilder {
     test_name: String,
     proxy_handler: Option<DynHandlerFn>,
@@ -284,8 +284,11 @@ impl RollupBoostTestHarnessBuilder {
             .start()
             .await?;
 
+        println!("l2 authrpc: {}", l2.auth_rpc().await?);
+        println!("builder authrpc: {}", builder.auth_rpc().await?);
+
         // run a proxy in between the builder and the rollup-boost if the proxy_handler is set
-        let mut builder_authrpc_port = builder.image().config().authrpc_port;
+        let mut builder_authrpc_port = builder.auth_rpc_port().await?;
         if let Some(proxy_handler) = self.proxy_handler {
             let proxy_port = get_available_port().expect("no available port");
             let _ = start_proxy_server(proxy_handler, proxy_port, builder_authrpc_port).await;
@@ -311,7 +314,7 @@ impl RollupBoostTestHarnessBuilder {
 impl RollupBoostTestHarness {
     pub async fn get_block_generator(&self) -> eyre::Result<SimpleBlockGenerator> {
         let validator =
-            BlockBuilderCreatorValidator::new(self.rollup_boost.args.log_file.clone().unwrap());
+            BlockBuilderCreatorValidator::new(self.rollup_boost.args().log_file.clone().unwrap());
 
         let engine_api = EngineApi::new(&self.rollup_boost.rpc_endpoint(), JWT_SECRET)?;
 

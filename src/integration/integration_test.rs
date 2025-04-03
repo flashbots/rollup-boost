@@ -273,7 +273,7 @@ mod tests {
         // check that at some point we had the log "builder payload was not valid" which signals
         // that the builder returned a payload that was not valid and rollup-boost did not process it.
         // read lines
-        let logs = std::fs::read_to_string(harness.rollup_boost.args.log_file.unwrap())?;
+        let logs = std::fs::read_to_string(harness.rollup_boost.args().log_file.clone().unwrap())?;
         assert!(
             logs.contains("Invalid payload"),
             "Logs should contain the message 'builder payload was not valid'"

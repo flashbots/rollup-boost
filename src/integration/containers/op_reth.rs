@@ -19,16 +19,17 @@ use crate::integration::L2_P2P_ENODE;
 const NAME: &str = "ghcr.io/paradigmxyz/op-reth";
 const TAG: &str = "v1.3.4";
 
+const AUTH_RPC_PORT: u16 = 8551;
+const P2P_PORT: u16 = 30303;
+
 #[derive(Debug, Clone)]
 pub struct OpRethConfig {
     chain: PathBuf,
     jwt_secret: PathBuf,
     p2p_secret: Option<PathBuf>,
     pub trusted_peers: Vec<String>,
-    pub authrpc_port: u16,
     pub datadir: String,
     pub disable_discovery: bool,
-    pub p2p_port: u16,
     pub color: String,
     pub ipcdisable: bool,
     pub env_vars: HashMap<String, String>,
@@ -47,10 +48,8 @@ impl Default for OpRethConfig {
             )),
             p2p_secret: None,
             trusted_peers: vec![],
-            authrpc_port: 8551,
             datadir: "data".to_string(),
             disable_discovery: true,
-            p2p_port: 30303,
             color: "never".to_string(),
             ipcdisable: true,
             env_vars: Default::default(),
@@ -95,23 +94,20 @@ impl OpRethConfig {
             serde_json::to_string_pretty(&genesis).unwrap()
         };
 
-        println!("jwt_path: {:?}", self.jwt_secret);
-        println!(
-            "jwt: {:?}",
-            std::fs::read_to_string(&self.jwt_secret).unwrap()
-        );
         let mut copy_to_sources = vec![
             CopyToContainer::new(
-                std::fs::read(&self.jwt_secret).unwrap(),
+                // std::fs::read(&self.jwt_secret).unwrap(),
+                "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a"
+                    .to_string()
+                    .into_bytes(),
                 "/jwt_secret.hex".to_string(),
             ),
             CopyToContainer::new(genesis.into_bytes(), "/genesis.json".to_string()),
         ];
 
         if let Some(p2p_secret) = &self.p2p_secret {
-            println!("p2p_path: {:?}", p2p_secret);
-            println!("p2p: {:?}", std::fs::read_to_string(p2p_secret).unwrap());
             copy_to_sources.push(CopyToContainer::new(
+                // std::fs::read(p2p_secret).unwrap(),
                 "a11ac89899cd86e36b6fb881ec1255b8a92a688790b7d950f8b7d8dd626671fb"
                     .to_string()
                     .into_bytes(),
@@ -119,10 +115,7 @@ impl OpRethConfig {
             ));
         }
 
-        let expose_ports = vec![
-            ContainerPort::Tcp(self.authrpc_port),
-            ContainerPort::Tcp(self.p2p_port),
-        ];
+        let expose_ports = vec![ContainerPort::Tcp(8551), ContainerPort::Tcp(30303)];
 
         OpRethImage {
             config: self,
@@ -171,14 +164,15 @@ impl Image for OpRethImage {
     fn cmd(&self) -> impl IntoIterator<Item = impl Into<std::borrow::Cow<'_, str>>> {
         let mut cmd = vec![
             "node".to_string(),
-            "--authrpc.port".to_string(),
-            self.config.authrpc_port.to_string(),
+            "--http".to_string(),
+            "--http.addr=0.0.0.0".to_string(),
+            "--authrpc.port=8551".to_string(),
+            "--authrpc.addr=0.0.0.0".to_string(),
             "--authrpc.jwtsecret=/jwt_secret.hex".to_string(),
             "--chain=/genesis.json".to_string(),
             "--datadir".to_string(),
             self.config.datadir.clone(),
-            "--port".to_string(),
-            self.config.p2p_port.to_string(),
+            "--port=30303".to_string(),
             "--color".to_string(),
             self.config.color.clone(),
         ];
@@ -207,16 +201,20 @@ impl Image for OpRethImage {
 
 pub trait OpRethMehods {
     async fn auth_rpc(&self) -> eyre::Result<Uri>;
+    async fn auth_rpc_port(&self) -> eyre::Result<u16>;
     async fn enode(&self) -> eyre::Result<Uri>;
 }
 
 impl OpRethMehods for ContainerAsync<OpRethImage> {
+    async fn auth_rpc_port(&self) -> eyre::Result<u16> {
+        Ok(self.get_host_port_ipv4(AUTH_RPC_PORT).await?)
+    }
+
     async fn auth_rpc(&self) -> eyre::Result<Uri> {
         Ok(format!(
             "http://{}:{}",
             self.get_host().await?,
-            self.get_host_port_ipv4(self.image().config.authrpc_port)
-                .await?
+            self.get_host_port_ipv4(AUTH_RPC_PORT).await?
         )
         .parse()?)
     }
@@ -226,8 +224,7 @@ impl OpRethMehods for ContainerAsync<OpRethImage> {
             "enode://{}@{}:{}",
             L2_P2P_ENODE,
             self.get_host().await?,
-            self.get_host_port_ipv4(self.image().config.p2p_port)
-                .await?
+            self.get_host_port_ipv4(P2P_PORT).await?
         )
         .parse()?)
     }

@@ -1,47 +1,19 @@
-use std::{
-    fs::File,
-    io::Write,
-    sync::{Arc, Mutex},
-};
-
 use clap::Parser;
 use tokio::task::JoinHandle;
-use tracing_subscriber::fmt::MakeWriter;
-
-#[derive(Clone)]
-struct SharedFileWriter {
-    file: Arc<Mutex<File>>,
-}
-
-impl<'a> MakeWriter<'a> for SharedFileWriter {
-    type Writer = Self;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
-
-impl Write for SharedFileWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        println!("Writing to file...");
-        self.file.lock().unwrap().write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        println!("Flushing file...");
-        self.file.lock().unwrap().flush()
-    }
-}
 
 use crate::Args;
 
 #[derive(Debug)]
 pub struct RollupBoost {
-    pub args: Args,
+    args: Args,
     pub handle: JoinHandle<eyre::Result<()>>,
 }
 
 impl RollupBoost {
+    pub fn args(&self) -> &Args {
+        &self.args
+    }
+
     pub fn rpc_endpoint(&self) -> String {
         format!("http://localhost:{}", self.args.rpc_port)
     }
@@ -61,8 +33,15 @@ impl Default for RollupBoostConfig {
         Self {
             args: Args::parse_from([
                 "rollup-boost",
-                "--l2-jwt-path=../testdata/jwt_secret.hex",
-                "--builder-jwt-path=../testdata/jwt_secret.hex",
+                &format!(
+                    "--l2-jwt-path={}/src/integration/testdata/jwt_secret.hex",
+                    env!("CARGO_MANIFEST_DIR")
+                ),
+                &format!(
+                    "--builder-jwt-path={}/src/integration/testdata/jwt_secret.hex",
+                    env!("CARGO_MANIFEST_DIR")
+                ),
+                "--log-level=trace",
                 "--tracing",
                 "--metrics",
             ]),
@@ -72,7 +51,14 @@ impl Default for RollupBoostConfig {
 
 impl RollupBoostConfig {
     pub fn start(self) -> RollupBoost {
-        let handle = tokio::spawn(self.args.clone().run());
+        let args = self.args.clone();
+        let handle = tokio::spawn(async move {
+            let res = args.clone().run().await;
+            if let Err(e) = &res {
+                eprintln!("Error: {:?}", e);
+            }
+            res
+        });
 
         RollupBoost {
             args: self.args,
