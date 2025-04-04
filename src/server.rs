@@ -584,13 +584,19 @@ impl RollupBoostServer {
 
             let builder = self.builder_client.clone();
 
-            // Fallback to the get_payload_v3 from the builder if no flashblocks payload is available
-            let payload = if let Some(payload) = payload {
-                info!(message = "using flashblocks payload");
-                OpExecutionPayloadEnvelope::V3(payload)
-            } else {
-                builder.get_payload(payload_id, version).await?
-            };
+            // // Fallback to the get_payload_v3 from the builder if no flashblocks payload is available
+            // let payload = if let Some(payload) = payload {
+            //     info!(message = "using flashblocks payload");
+            //     OpExecutionPayloadEnvelope::V3(payload)
+            // } else {
+            //     builder.get_payload(payload_id, version).await?
+            // };
+
+            if let Some(payload) = payload {
+                info!(message = "flashblocks paylod found, but not using it");
+            }
+
+            let payload = builder.get_payload(payload_id, version).await?;
 
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
