@@ -54,7 +54,7 @@ async fn builder_returns_incorrect_block() -> eyre::Result<()> {
     // create 3 blocks that are processed by the builder
     for _ in 0..3 {
         let (_block, block_creator) = block_generator.generate_block(false).await?;
-        assert!(block_creator.is_l2(), "Block creator should be the builder");
+        assert!(block_creator.is_l2(), "Block creator should be the l2");
     }
     // check that at some point we had the log "builder payload was not valid" which signals
     // that the builder returned a payload that was not valid and rollup-boost did not process it.
