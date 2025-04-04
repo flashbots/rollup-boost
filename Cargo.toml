@@ -41,7 +41,6 @@ tracing-opentelemetry = "0.29.0"
 futures = "0.3.31"
 metrics = "0.24.0"
 metrics-exporter-prometheus = "0.16.0"
-metrics-process = "2.3.1"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 url = "2.5"
 metrics-util = "0.19.0"
