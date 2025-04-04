@@ -14,7 +14,7 @@ use crate::{
     server::ExecutionMode,
 };
 
-#[derive(Parser, Debug)]
+#[derive(Clone, Parser, Debug)]
 #[clap(author, version, about)]
 pub struct Args {
     #[command(subcommand)]
@@ -222,7 +222,7 @@ impl std::str::FromStr for LogFormat {
     }
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Clone, Subcommand, Debug)]
 pub enum Commands {
     /// Debug commands
     Debug {
@@ -231,7 +231,7 @@ pub enum Commands {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Clone, Subcommand, Debug)]
 pub enum DebugCommands {
     /// Set the execution mode
     SetExecutionMode { execution_mode: ExecutionMode },
