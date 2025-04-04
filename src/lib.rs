@@ -1,25 +1,17 @@
-// #![cfg_attr(
-//     not(any(test, feature = "integration")),
-//     warn(unused_crate_dependencies)
-// )]
-
 use dotenv as _;
 use rustls as _;
 
-pub mod client;
+mod client;
 pub use client::{auth::*, http::*, rpc::*};
 
 mod cli;
 pub use cli::*;
 
-pub mod debug_api;
+mod debug_api;
 pub use debug_api::*;
 
 mod health;
 pub use health::{HealthLayer, HealthService};
-
-// #[cfg(all(feature = "integration", test))]
-// mod integration;
 
 mod metrics;
 pub use metrics::*;

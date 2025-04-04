@@ -8,8 +8,6 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use bytes::BytesMut;
-use containers::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
-use containers::rollup_boost::{RollupBoost, RollupBoostConfig};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
@@ -17,10 +15,12 @@ use jsonrpsee::proc_macros::rpc;
 use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use proxy::{ProxyHandler, start_proxy_server};
-use rollup_boost::client::auth::{AuthClientLayer, AuthClientService};
-use rollup_boost::debug_api::DebugClient;
+use rollup_boost::DebugClient;
+use rollup_boost::{AuthClientLayer, AuthClientService};
 use rollup_boost::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
 use rollup_boost::{NewPayload, PayloadSource};
+use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
+use services::rollup_boost::{RollupBoost, RollupBoostConfig};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -40,11 +40,11 @@ use tracing::info;
 pub const JWT_SECRET: &str = "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a";
 pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f";
 pub static TEST_DATA: LazyLock<String> =
-    LazyLock::new(|| format!("{}/tests/integration/test_data", env!("CARGO_MANIFEST_DIR")));
+    LazyLock::new(|| format!("{}/tests/common/test_data", env!("CARGO_MANIFEST_DIR")));
 pub const NETWORK: &str = "devnet";
 
-pub mod containers;
 pub mod proxy;
+pub mod services;
 
 pub struct LoggingConsumer {
     target: String,
@@ -240,8 +240,7 @@ impl RollupBoostTestHarnessBuilder {
 
         let client = docker_client_instance().await?;
         let res = client.inspect_container(l2.id(), None).await?;
-        let name = res.name.unwrap();
-        let name = name[1..].to_string(); // remove the leading '/'
+        let name = res.name.unwrap()[1..].to_string(); // remove the leading '/'
 
         let l2_enode = format!("enode://{}@{}:{}", L2_P2P_ENODE, name, P2P_PORT);
 

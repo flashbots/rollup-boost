@@ -1,6 +1,6 @@
-mod integration;
+mod common;
 
-use crate::integration::RollupBoostTestHarnessBuilder;
+use crate::common::RollupBoostTestHarnessBuilder;
 // use crate::server::ExecutionMode;
 
 #[tokio::test]

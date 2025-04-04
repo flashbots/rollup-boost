@@ -15,7 +15,7 @@ use testcontainers::{
     core::{ContainerPort, WaitFor},
 };
 
-use crate::integration::TEST_DATA;
+use crate::common::TEST_DATA;
 
 const NAME: &str = "ghcr.io/paradigmxyz/op-reth";
 const TAG: &str = "v1.3.4";

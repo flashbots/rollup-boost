@@ -4,7 +4,7 @@ use clap::Parser;
 use rollup_boost::Args;
 use tokio::task::JoinHandle;
 
-use crate::integration::{TEST_DATA, get_available_port};
+use crate::common::{TEST_DATA, get_available_port};
 
 #[derive(Debug)]
 pub struct RollupBoost {

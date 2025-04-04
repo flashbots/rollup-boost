@@ -1,6 +1,6 @@
-use integration::RollupBoostTestHarnessBuilder;
+use common::RollupBoostTestHarnessBuilder;
 
-mod integration;
+mod common;
 
 #[tokio::test]
 async fn test_integration_simple() -> eyre::Result<()> {
