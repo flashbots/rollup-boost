@@ -14,6 +14,7 @@ use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
 use jsonrpsee::proc_macros::rpc;
 use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
+use parking_lot::Mutex;
 use proxy::{ProxyHandler, start_proxy_server};
 use rollup_boost::DebugClient;
 use rollup_boost::{AuthClientLayer, AuthClientService};
@@ -21,6 +22,7 @@ use rollup_boost::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
 use rollup_boost::{NewPayload, PayloadSource};
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
+use std::collections::HashSet;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -477,15 +479,17 @@ fn create_deposit_tx() -> Bytes {
     buffer_without_header.to_vec().into()
 }
 
-fn get_available_port() -> u16 {
+pub fn get_available_port() -> u16 {
+    static CLAIMED_PORTS: LazyLock<Mutex<HashSet<u16>>> =
+        LazyLock::new(|| Mutex::new(HashSet::new()));
     loop {
         let port: u16 = rand::random_range(1000..20000);
-        if port_is_available(port) {
-            return port;
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => {
+                CLAIMED_PORTS.lock().insert(port);
+                return port;
+            }
+            Err(_) => continue,
         }
     }
-}
-
-fn port_is_available(port: u16) -> bool {
-    TcpListener::bind(("127.0.0.1", port)).is_ok()
 }

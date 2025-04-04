@@ -351,10 +351,11 @@ macro_rules! define_rpc_args {
 define_rpc_args!((BuilderArgs, builder), (L2ClientArgs, l2));
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use assert_cmd::Command;
     use http::Uri;
     use jsonrpsee::core::client::ClientT;
+    use parking_lot::Mutex;
 
     use crate::client::auth::AuthClientService;
     use crate::server::PayloadSource;
@@ -370,27 +371,31 @@ mod tests {
     };
     use predicates::prelude::*;
     use reth_rpc_layer::{AuthLayer, JwtAuthValidator};
+    use std::collections::HashSet;
     use std::net::SocketAddr;
     use std::net::TcpListener;
     use std::result::Result;
     use std::str::FromStr;
+    use std::sync::LazyLock;
 
     use super::*;
 
     const AUTH_ADDR: &str = "0.0.0.0";
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
 
-    fn get_available_port() -> u16 {
+    pub fn get_available_port() -> u16 {
+        static CLAIMED_PORTS: LazyLock<Mutex<HashSet<u16>>> =
+            LazyLock::new(|| Mutex::new(HashSet::new()));
         loop {
             let port: u16 = rand::random_range(1000..20000);
-            if port_is_available(port) {
-                return port;
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(_) => {
+                    CLAIMED_PORTS.lock().insert(port);
+                    return port;
+                }
+                Err(_) => continue,
             }
         }
-    }
-
-    fn port_is_available(port: u16) -> bool {
-        TcpListener::bind(("127.0.0.1", port)).is_ok()
     }
 
     #[test]
