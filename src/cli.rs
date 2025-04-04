@@ -69,6 +69,25 @@ pub struct Args {
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     pub execution_mode: ExecutionMode,
+
+    /// Enable Flashblocks client
+    #[clap(flatten)]
+    pub flashblocks: FlashblocksArgs,
+}
+
+#[derive(Parser, Debug)]
+pub struct FlashblocksArgs {
+    /// Enable Flashblocks client
+    #[arg(long, env, default_value = "false")]
+    pub flashblocks: bool,
+
+    /// Flashblocks WebSocket URL
+    #[arg(long, env, default_value = "ws://localhost:1111")]
+    pub flashblocks_url: String,
+
+    /// Flashblocks outbound WebSocket URL
+    #[arg(long, env, default_value = "127.0.0.1:1112")]
+    pub flashblocks_outbound_url: String,
 }
 
 #[derive(Clone, Debug)]

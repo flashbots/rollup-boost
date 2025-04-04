@@ -2,8 +2,8 @@
 use ::tracing::info;
 use clap::Parser;
 use rollup_boost::{
-    Args, Commands, DebugClient, DebugCommands, PayloadSource, ProxyLayer, RollupBoostServer,
-    RpcClient, init_metrics, init_tracing,
+    Args, Commands, DebugClient, DebugCommands, Flashblocks, PayloadSource, ProxyLayer,
+    RollupBoostServer, RpcClient, init_metrics, init_tracing,
 };
 use std::net::SocketAddr;
 
@@ -90,11 +90,21 @@ async fn main() -> eyre::Result<()> {
         info!("Boost sync enabled");
     }
 
+    let flashblocks_client = if args.flashblocks.flashblocks {
+        let inbound_url = args.flashblocks.flashblocks_url;
+        let outbound_url = args.flashblocks.flashblocks_outbound_url;
+
+        Some(Flashblocks::run(inbound_url, outbound_url).unwrap())
+    } else {
+        None
+    };
+
     let rollup_boost = RollupBoostServer::new(
         l2_client,
         builder_client,
         boost_sync_enabled,
         args.execution_mode,
+        flashblocks_client,
     );
 
     // Spawn the debug server

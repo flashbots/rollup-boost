@@ -1,5 +1,6 @@
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
+use crate::flashblocks::FlashblocksService;
 use alloy_primitives::{B256, Bytes};
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
@@ -20,7 +21,7 @@ use op_alloy_rpc_types_engine::{
 };
 use serde::{Deserialize, Serialize};
 
-use tracing::{debug, info, instrument};
+use tracing::{debug, error, info, instrument};
 
 use jsonrpsee::proc_macros::rpc;
 
@@ -121,7 +122,8 @@ pub struct RollupBoostServer {
     pub builder_client: Arc<RpcClient>,
     pub boost_sync: bool,
     pub payload_trace_context: Arc<PayloadTraceContext>,
-    execution_mode: Arc<Mutex<ExecutionMode>>,
+    pub flashblocks_client: Option<Arc<FlashblocksService>>,
+    pub execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 impl RollupBoostServer {
@@ -130,12 +132,14 @@ impl RollupBoostServer {
         builder_client: RpcClient,
         boost_sync: bool,
         initial_execution_mode: ExecutionMode,
+        flashblocks_client: Option<FlashblocksService>,
     ) -> Self {
         Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
             boost_sync,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
+            flashblocks_client: flashblocks_client.map(Arc::new),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
         }
     }
@@ -289,6 +293,12 @@ impl EngineApiServer for RollupBoostServer {
         if execution_mode.is_disabled() {
             debug!(message = "execution mode is disabled, skipping FCU call to builder", "head_block_hash" = %fork_choice_state.head_block_hash);
         } else if should_send_to_builder {
+            if let Some(flashblocks_client) = &self.flashblocks_client {
+                if let Some(payload_id) = l2_response.payload_id {
+                    flashblocks_client.set_current_payload_id(payload_id).await;
+                }
+            }
+
             let builder_client = self.builder_client.clone();
             tokio::spawn(async move {
                 let _ = builder_client
@@ -559,8 +569,28 @@ impl RollupBoostServer {
                 return Ok(None);
             }
 
+            // Use the flashblocks payload if available
+            let payload = if let Some(flashblocks_client) = &self.flashblocks_client {
+                match flashblocks_client.get_best_payload().await {
+                    Ok(payload) => payload,
+                    Err(e) => {
+                        error!(message = "error getting flashblocks payload", "error" = %e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             let builder = self.builder_client.clone();
-            let payload = builder.get_payload(payload_id, version).await?;
+
+            // Fallback to the get_payload_v3 from the builder if no flashblocks payload is available
+            let payload = if let Some(payload) = payload {
+                info!(message = "using flashblocks payload");
+                OpExecutionPayloadEnvelope::V3(payload)
+            } else {
+                builder.get_payload(payload_id, version).await?
+            };
 
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
@@ -717,6 +747,7 @@ mod tests {
                 builder_client,
                 boost_sync,
                 ExecutionMode::Enabled,
+                None,
             );
 
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
