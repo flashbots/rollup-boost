@@ -15,13 +15,13 @@ use testcontainers::{
     core::{ContainerPort, WaitFor},
 };
 
-use crate::integration::{L2_P2P_ENODE, TEST_DATA};
+use crate::integration::TEST_DATA;
 
 const NAME: &str = "ghcr.io/paradigmxyz/op-reth";
 const TAG: &str = "v1.3.4";
 
-const AUTH_RPC_PORT: u16 = 8551;
-const P2P_PORT: u16 = 30303;
+pub const AUTH_RPC_PORT: u16 = 8551;
+pub const P2P_PORT: u16 = 30303;
 
 // Genesis should only be created once and reused for
 // each instance
@@ -49,7 +49,6 @@ pub struct OpRethConfig {
     jwt_secret: PathBuf,
     p2p_secret: Option<PathBuf>,
     pub trusted_peers: Vec<String>,
-    pub datadir: String,
     pub color: String,
     pub ipcdisable: bool,
     pub env_vars: HashMap<String, String>,
@@ -61,7 +60,6 @@ impl Default for OpRethConfig {
             jwt_secret: PathBuf::from(format!("{}/jwt_secret.hex", *TEST_DATA)),
             p2p_secret: None,
             trusted_peers: vec![],
-            datadir: "data".to_string(),
             color: "never".to_string(),
             ipcdisable: true,
             env_vars: Default::default(),
@@ -85,41 +83,32 @@ impl OpRethConfig {
         self
     }
 
-    pub fn build(self) -> OpRethImage {
-        // Write the genesis file to the test directory and update the timestamp to the current time
-
+    pub fn build(self) -> eyre::Result<OpRethImage> {
         let mut copy_to_sources = vec![
             CopyToContainer::new(
-                // std::fs::read(&self.jwt_secret).unwrap(),
-                "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a"
-                    .to_string()
-                    .into_bytes(),
+                std::fs::read_to_string(&self.jwt_secret)?.into_bytes(),
                 "/jwt_secret.hex".to_string(),
             ),
             CopyToContainer::new(GENESIS.clone().into_bytes(), "/genesis.json".to_string()),
         ];
 
         if let Some(p2p_secret) = &self.p2p_secret {
+            let p2p_string = std::fs::read_to_string(p2p_secret)
+                .unwrap()
+                .replace("\n", "");
             copy_to_sources.push(CopyToContainer::new(
-                // std::fs::read(p2p_secret).unwrap(),
-                "a11ac89899cd86e36b6fb881ec1255b8a92a688790b7d950f8b7d8dd626671fb"
-                    .to_string()
-                    .into_bytes(),
+                p2p_string.into_bytes(),
                 "/p2p_secret.hex".to_string(),
             ));
         }
 
-        let expose_ports = vec![
-            ContainerPort::Tcp(8551),
-            // ContainerPort::Tcp(30303),
-            // ContainerPort::Udp(30303),
-        ];
+        let expose_ports = vec![];
 
-        OpRethImage {
+        Ok(OpRethImage {
             config: self,
             copy_to_sources,
             expose_ports,
-        }
+        })
     }
 }
 
@@ -172,8 +161,6 @@ impl Image for OpRethImage {
             "--chain=/genesis.json".to_string(),
             "--log.stdout.filter=trace".to_string(),
             "-vvvvv".to_string(),
-            "--datadir".to_string(),
-            self.config.datadir.clone(),
             "--disable-discovery".to_string(),
             "--color".to_string(),
             self.config.color.clone(),
@@ -185,12 +172,6 @@ impl Image for OpRethImage {
             println!("Trusted peers: {:?}", self.config.trusted_peers);
             cmd.extend([
                 "--trusted-peers".to_string(),
-                self.config.trusted_peers.join(","),
-            ]);
-        }
-        if !self.config.trusted_peers.is_empty() {
-            cmd.extend([
-                "--bootnodes".to_string(),
                 self.config.trusted_peers.join(","),
             ]);
         }
@@ -208,7 +189,6 @@ impl Image for OpRethImage {
 pub trait OpRethMehods {
     async fn auth_rpc(&self) -> eyre::Result<Uri>;
     async fn auth_rpc_port(&self) -> eyre::Result<u16>;
-    async fn enode(&self, port: u16) -> eyre::Result<String>;
 }
 
 impl OpRethMehods for ContainerAsync<OpRethImage> {
@@ -223,14 +203,5 @@ impl OpRethMehods for ContainerAsync<OpRethImage> {
             self.get_host_port_ipv4(AUTH_RPC_PORT).await?
         )
         .parse()?)
-    }
-
-    async fn enode(&self, port: u16) -> eyre::Result<String> {
-        Ok(format!(
-            "enode://{}@l2:{}",
-            L2_P2P_ENODE,
-            // self.get_host().await?,
-            port // self.get_host_port_ipv4(P2P_PORT).await?
-        ))
     }
 }

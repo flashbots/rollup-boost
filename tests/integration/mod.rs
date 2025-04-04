@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
 use alloy_rpc_types_engine::{ExecutionPayload, JwtSecret};
@@ -7,9 +8,8 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use bytes::BytesMut;
-use containers::op_reth::{OpRethConfig, OpRethImage, OpRethMehods};
+use containers::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use containers::rollup_boost::{RollupBoost, RollupBoostConfig};
-use eyre::bail;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
@@ -25,24 +25,23 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use testcontainers::core::ContainerPort;
 use testcontainers::core::client::docker_client_instance;
 use testcontainers::core::logs::LogFrame;
 use testcontainers::core::logs::consumer::LogConsumer;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, Image, ImageExt};
+use testcontainers::{ContainerAsync, ImageExt};
 use time::{OffsetDateTime, format_description};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt as _};
+use tokio::io::AsyncWriteExt as _;
 use tracing::info;
-
-// use time::{OffsetDateTime, format_description};
 
 /// Default JWT token for testing purposes
 pub const JWT_SECRET: &str = "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a";
 pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f";
 pub static TEST_DATA: LazyLock<String> =
     LazyLock::new(|| format!("{}/tests/integration/test_data", env!("CARGO_MANIFEST_DIR")));
+pub const NETWORK: &str = "devnet";
 
 pub mod containers;
 pub mod proxy;
@@ -67,42 +66,6 @@ impl LogConsumer for LoggingConsumer {
             }
         }
         .boxed()
-    }
-}
-
-pub async fn _wait_for_log<I: Image>(
-    container: ContainerAsync<I>,
-    pattern: &str,
-    timeout: Duration,
-) -> eyre::Result<()> {
-    let timeout = tokio::time::sleep(timeout);
-    let mut stderr = container.stderr(true).lines();
-    let mut stdout = container.stdout(true).lines();
-
-    tokio::select! {
-        result = async {
-            loop {
-                tokio::select! {
-                    line = stderr.next_line() => {
-                        if let Ok(Some(line)) = line {
-                            if line.contains(pattern) {
-                                return Ok::<_, eyre::Report>(());
-                            }
-                        }
-                    }
-                    line = stdout.next_line() => {
-                        if let Ok(Some(line)) = line {
-                            if line.contains(pattern) {
-                                return Ok::<_, eyre::Report>(());
-                            }
-                        }
-                    }
-                }
-            }
-        } => result,
-        _ = timeout => {
-            bail!("Timeout waiting for log message: {}", pattern);
-        }
     }
 }
 
@@ -199,7 +162,6 @@ pub trait BlockApi {
 }
 
 /// Test flavor that sets up one Rollup-boost instance connected to two Reth nodes
-#[allow(dead_code)]
 pub struct RollupBoostTestHarness {
     pub l2: ContainerAsync<OpRethImage>,
     pub builder: ContainerAsync<OpRethImage>,
@@ -225,9 +187,9 @@ impl RollupBoostTestHarnessBuilder {
         let timestamp = dt.format(&format)?;
 
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("test_logs")
-            .join(timestamp)
-            .join(self.test_name.clone());
+            .join("integration_logs")
+            .join(self.test_name.clone())
+            .join(timestamp);
         std::fs::create_dir_all(&dir)?;
 
         let file_name = format!("{service_name}.log");
@@ -241,14 +203,6 @@ impl RollupBoostTestHarnessBuilder {
             .create(true)
             .open(file_path)
             .await?)
-    }
-
-    pub fn log_file(&self, service_name: &str) -> eyre::Result<std::fs::File> {
-        let file_path = self.file_path(service_name)?;
-        Ok(std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(file_path)?)
     }
 
     pub async fn log_consumer(&self, service_name: &str) -> eyre::Result<LoggingConsumer> {
@@ -269,17 +223,17 @@ impl RollupBoostTestHarnessBuilder {
         let builder_log_consumer = self.log_consumer("builder").await?;
         let rollup_boost_log_file_path = self.file_path("rollup_boost")?;
 
-        let l2_p2p_port = get_available_port().expect("no available port");
+        let l2_p2p_port = get_available_port();
         let l2 = OpRethConfig::default()
             .set_p2p_secret(Some(PathBuf::from(format!(
                 "{}/p2p_secret.hex",
                 *TEST_DATA
             ))))
-            .build()
-            .with_mapped_port(l2_p2p_port, ContainerPort::Tcp(30303))
-            .with_mapped_port(l2_p2p_port, ContainerPort::Udp(30303))
-            .with_mapped_port(get_available_port().unwrap(), ContainerPort::Tcp(8551))
-            .with_network("devnet")
+            .build()?
+            .with_mapped_port(l2_p2p_port, ContainerPort::Tcp(P2P_PORT))
+            .with_mapped_port(l2_p2p_port, ContainerPort::Udp(P2P_PORT))
+            .with_mapped_port(get_available_port(), ContainerPort::Tcp(AUTH_RPC_PORT))
+            .with_network(NETWORK)
             .with_log_consumer(l2_log_consumer)
             .start()
             .await?;
@@ -289,22 +243,16 @@ impl RollupBoostTestHarnessBuilder {
         let name = res.name.unwrap();
         let name = name[1..].to_string(); // remove the leading '/'
 
-        let l2_enode = format!(
-            "enode://{}@{}:{}",
-            L2_P2P_ENODE,
-            name,
-            30303 // l2_p2p_port // self.get_host_port_ipv4(P2P_PORT).await?
-        );
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        let l2_enode = format!("enode://{}@{}:{}", L2_P2P_ENODE, name, P2P_PORT);
 
-        let builder_p2p_port = get_available_port().expect("no available port");
+        let builder_p2p_port = get_available_port();
         let builder = OpRethConfig::default()
             .set_trusted_peers(vec![l2_enode])
-            .build()
-            .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(30303))
-            .with_mapped_port(builder_p2p_port, ContainerPort::Udp(30303))
-            .with_mapped_port(get_available_port().unwrap(), ContainerPort::Tcp(8551))
-            .with_network("devnet")
+            .build()?
+            .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(P2P_PORT))
+            .with_mapped_port(builder_p2p_port, ContainerPort::Udp(P2P_PORT))
+            .with_mapped_port(get_available_port(), ContainerPort::Tcp(AUTH_RPC_PORT))
+            .with_network(NETWORK)
             .with_log_consumer(builder_log_consumer)
             .start()
             .await?;
@@ -316,7 +264,7 @@ impl RollupBoostTestHarnessBuilder {
         let mut builder_authrpc_port = builder.auth_rpc_port().await?;
         if let Some(proxy_handler) = self.proxy_handler {
             println!("starting proxy server");
-            let proxy_port = get_available_port().expect("no available port");
+            let proxy_port = get_available_port();
             let _ = start_proxy_server(proxy_handler, proxy_port, builder_authrpc_port).await;
             builder_authrpc_port = proxy_port
         };
@@ -530,11 +478,11 @@ fn create_deposit_tx() -> Bytes {
     buffer_without_header.to_vec().into()
 }
 
-fn get_available_port() -> Option<u16> {
+fn get_available_port() -> u16 {
     loop {
-        let port = rand::random::<u16>() % 20000 + 1000;
+        let port: u16 = rand::random_range(1000..20000);
         if port_is_available(port) {
-            return Some(port);
+            return port;
         }
     }
 }

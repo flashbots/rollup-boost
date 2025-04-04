@@ -46,9 +46,9 @@ impl Default for RollupBoostConfig {
             "--metrics",
         ]);
 
-        args.rpc_port = get_available_port().unwrap();
-        args.metrics_port = get_available_port().unwrap();
-        args.debug_server_port = get_available_port().unwrap();
+        args.rpc_port = get_available_port();
+        args.metrics_port = get_available_port();
+        args.debug_server_port = get_available_port();
 
         Self { args }
     }
@@ -66,7 +66,7 @@ impl RollupBoostConfig {
         });
 
         // Allow some time for the app to startup
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(4)).await;
 
         RollupBoost {
             args: self.args,

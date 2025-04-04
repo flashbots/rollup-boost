@@ -383,7 +383,7 @@ mod tests {
 
     fn get_available_port() -> u16 {
         loop {
-            let port = rand::random::<u16>() % 20000 + 1000;
+            let port: u16 = rand::random_range(1000..20000);
             if port_is_available(port) {
                 return port;
             }

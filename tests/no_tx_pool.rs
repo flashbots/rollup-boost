@@ -4,8 +4,8 @@ use crate::integration::RollupBoostTestHarnessBuilder;
 // use crate::server::ExecutionMode;
 
 #[tokio::test]
-async fn simple() -> eyre::Result<()> {
-    let harness = RollupBoostTestHarnessBuilder::new("test_integration_no_tx_pool")
+async fn no_tx_pool() -> eyre::Result<()> {
+    let harness = RollupBoostTestHarnessBuilder::new("no_tx_pool")
         .build()
         .await?;
     let mut block_generator = harness.block_generator().await?;
