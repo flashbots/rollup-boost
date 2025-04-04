@@ -43,7 +43,6 @@ pub const JWT_SECRET: &str = "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de
 pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f";
 pub static TEST_DATA: LazyLock<String> =
     LazyLock::new(|| format!("{}/tests/common/test_data", env!("CARGO_MANIFEST_DIR")));
-pub const NETWORK: &str = "devnet";
 
 pub mod proxy;
 pub mod services;
@@ -221,6 +220,7 @@ impl RollupBoostTestHarnessBuilder {
     }
 
     pub async fn build(self) -> eyre::Result<RollupBoostTestHarness> {
+        let network = rand::random::<u16>().to_string();
         let l2_log_consumer = self.log_consumer("l2").await?;
         let builder_log_consumer = self.log_consumer("builder").await?;
         let rollup_boost_log_file_path = self.file_path("rollup_boost")?;
@@ -235,7 +235,7 @@ impl RollupBoostTestHarnessBuilder {
             .with_mapped_port(l2_p2p_port, ContainerPort::Tcp(P2P_PORT))
             .with_mapped_port(l2_p2p_port, ContainerPort::Udp(P2P_PORT))
             .with_mapped_port(get_available_port(), ContainerPort::Tcp(AUTH_RPC_PORT))
-            .with_network(NETWORK)
+            .with_network(&network)
             .with_log_consumer(l2_log_consumer)
             .start()
             .await?;
@@ -253,7 +253,7 @@ impl RollupBoostTestHarnessBuilder {
             .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(P2P_PORT))
             .with_mapped_port(builder_p2p_port, ContainerPort::Udp(P2P_PORT))
             .with_mapped_port(get_available_port(), ContainerPort::Tcp(AUTH_RPC_PORT))
-            .with_network(NETWORK)
+            .with_network(&network)
             .with_log_consumer(builder_log_consumer)
             .start()
             .await?;
