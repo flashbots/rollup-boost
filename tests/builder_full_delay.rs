@@ -1,16 +1,12 @@
-use alloy_primitives::B256;
 use integration::RollupBoostTestHarnessBuilder;
-use rollup_boost::ExecutionMode;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
-
 mod integration;
 
 #[tokio::test]
-async fn test_integration_builder_full_delay() -> eyre::Result<()> {
+async fn builder_full_delay() -> eyre::Result<()> {
     // Create a dynamic handler that delays all the calls by 2 seconds
     let delay = Arc::new(Mutex::new(Duration::from_secs(0)));
 
@@ -24,7 +20,7 @@ async fn test_integration_builder_full_delay() -> eyre::Result<()> {
 
     // This integration test checks that if the builder has a general delay in processing ANY of the requests,
     // rollup-boost does not stop building blocks.
-    let harness = RollupBoostTestHarnessBuilder::new("test_integration_builder_full_delay")
+    let harness = RollupBoostTestHarnessBuilder::new("builder_full_delay")
         .proxy_handler(handler)
         .build()
         .await?;

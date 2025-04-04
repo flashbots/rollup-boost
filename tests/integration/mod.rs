@@ -16,7 +16,7 @@ use http::Uri;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
 use jsonrpsee::proc_macros::rpc;
 use op_alloy_consensus::TxDeposit;
-use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpPayloadAttributes};
+use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use proxy::{DynHandlerFn, start_proxy_server};
 use rollup_boost::client::auth::{AuthClientLayer, AuthClientService};
 use rollup_boost::debug_api::DebugClient;
@@ -25,7 +25,10 @@ use rollup_boost::{NewPayload, PayloadSource};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::LazyLock;
 use std::time::{Duration, SystemTime};
+use testcontainers::core::ContainerPort;
+use testcontainers::core::client::docker_client_instance;
 use testcontainers::core::logs::LogFrame;
 use testcontainers::core::logs::consumer::LogConsumer;
 use testcontainers::runners::AsyncRunner;
@@ -38,8 +41,9 @@ use tracing::info;
 
 /// Default JWT token for testing purposes
 pub const JWT_SECRET: &str = "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a";
-
 pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f";
+pub static TEST_DATA: LazyLock<String> =
+    LazyLock::new(|| format!("{}/tests/integration/test_data", env!("CARGO_MANIFEST_DIR")));
 
 mod containers;
 mod proxy;
@@ -267,19 +271,42 @@ impl RollupBoostTestHarnessBuilder {
         let builder_log_consumer = self.log_consumer("builder").await?;
         let rollup_boost_log_file_path = self.file_path("rollup_boost")?;
 
+        let l2_p2p_port = get_available_port().expect("no available port");
         let l2 = OpRethConfig::default()
             .set_p2p_secret(Some(PathBuf::from(format!(
-                "{}/src/integration/testdata/p2p_secret.hex",
-                env!("CARGO_MANIFEST_DIR")
+                "{}/p2p_secret.hex",
+                *TEST_DATA
             ))))
             .build()
+            .with_mapped_port(l2_p2p_port, ContainerPort::Tcp(30303))
+            .with_mapped_port(l2_p2p_port, ContainerPort::Udp(30303))
+            .with_mapped_port(get_available_port().unwrap(), ContainerPort::Tcp(8551))
+            .with_network("devnet")
             .with_log_consumer(l2_log_consumer)
             .start()
             .await?;
 
+        let client = docker_client_instance().await?;
+        let res = client.inspect_container(l2.id(), None).await?;
+        let name = res.name.unwrap();
+        let name = name[1..].to_string(); // remove the leading '/'
+
+        let l2_enode = format!(
+            "enode://{}@{}:{}",
+            L2_P2P_ENODE,
+            name,
+            30303 // l2_p2p_port // self.get_host_port_ipv4(P2P_PORT).await?
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let builder_p2p_port = get_available_port().expect("no available port");
         let builder = OpRethConfig::default()
-            .set_trusted_peers(vec![l2.enode().await?.to_string()])
+            .set_trusted_peers(vec![l2_enode])
             .build()
+            .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(30303))
+            .with_mapped_port(builder_p2p_port, ContainerPort::Udp(30303))
+            .with_mapped_port(get_available_port().unwrap(), ContainerPort::Tcp(8551))
+            .with_network("devnet")
             .with_log_consumer(builder_log_consumer)
             .start()
             .await?;
@@ -290,18 +317,24 @@ impl RollupBoostTestHarnessBuilder {
         // run a proxy in between the builder and the rollup-boost if the proxy_handler is set
         let mut builder_authrpc_port = builder.auth_rpc_port().await?;
         if let Some(proxy_handler) = self.proxy_handler {
+            println!("starting proxy server");
             let proxy_port = get_available_port().expect("no available port");
             let _ = start_proxy_server(proxy_handler, proxy_port, builder_authrpc_port).await;
             builder_authrpc_port = proxy_port
         };
-        let builder_url = format!("http://127.0.0.1:{}", builder_authrpc_port);
+        let builder_url = format!("http://localhost:{}/", builder_authrpc_port);
+        println!("proxy authrpc: {}", builder_url);
 
         // Start Rollup-boost instance
         let mut rollup_boost = RollupBoostConfig::default();
-        rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?.try_into().unwrap();
+        rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
         rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
         let rollup_boost = rollup_boost.start();
+        println!("rollup-boost authrpc: {}", rollup_boost.rpc_endpoint());
+        println!("rollup-boost metrics: {}", rollup_boost.metrics_endpoint());
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
         Ok(RollupBoostTestHarness {
             l2,
@@ -506,7 +539,12 @@ fn local_host(port: u16) -> Uri {
 }
 
 fn get_available_port() -> Option<u16> {
-    (8000..9000).find(|port| port_is_available(*port))
+    loop {
+        let port = rand::random::<u16>() % 20000 + 1000;
+        if port_is_available(port) {
+            return Some(port);
+        }
+    }
 }
 
 fn port_is_available(port: u16) -> bool {

@@ -3754,6 +3754,7 @@ dependencies = [
  "parking_lot",
  "paste",
  "predicates",
+ "rand 0.9.0",
  "reth-rpc-layer",
  "rustls",
  "serde",

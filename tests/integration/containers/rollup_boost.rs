@@ -2,10 +2,12 @@ use clap::Parser;
 use rollup_boost::Args;
 use tokio::task::JoinHandle;
 
+use crate::integration::{TEST_DATA, get_available_port};
+
 #[derive(Debug)]
 pub struct RollupBoost {
     args: Args,
-    pub handle: JoinHandle<eyre::Result<()>>,
+    pub _handle: JoinHandle<eyre::Result<()>>,
 }
 
 impl RollupBoost {
@@ -15,6 +17,10 @@ impl RollupBoost {
 
     pub fn rpc_endpoint(&self) -> String {
         format!("http://localhost:{}", self.args.rpc_port)
+    }
+
+    pub fn metrics_endpoint(&self) -> String {
+        format!("http://localhost:{}", self.args.metrics_port)
     }
 
     pub fn debug_endpoint(&self) -> String {
@@ -29,29 +35,27 @@ pub struct RollupBoostConfig {
 
 impl Default for RollupBoostConfig {
     fn default() -> Self {
-        Self {
-            args: Args::parse_from([
-                "rollup-boost",
-                &format!(
-                    "--l2-jwt-path={}/src/integration/testdata/jwt_secret.hex",
-                    env!("CARGO_MANIFEST_DIR")
-                ),
-                &format!(
-                    "--builder-jwt-path={}/src/integration/testdata/jwt_secret.hex",
-                    env!("CARGO_MANIFEST_DIR")
-                ),
-                "--log-level=trace",
-                "--tracing",
-                "--metrics",
-            ]),
-        }
+        let mut args = Args::parse_from([
+            "rollup-boost",
+            &format!("--l2-jwt-path={}/jwt_secret.hex", *TEST_DATA),
+            &format!("--builder-jwt-path={}/jwt_secret.hex", *TEST_DATA),
+            "--log-level=trace",
+            "--tracing",
+            "--metrics",
+        ]);
+
+        args.rpc_port = get_available_port().unwrap();
+        args.metrics_port = get_available_port().unwrap();
+        args.debug_server_port = get_available_port().unwrap();
+
+        Self { args }
     }
 }
 
 impl RollupBoostConfig {
     pub fn start(self) -> RollupBoost {
         let args = self.args.clone();
-        let handle = tokio::spawn(async move {
+        let _handle = tokio::spawn(async move {
             let res = args.clone().run().await;
             if let Err(e) = &res {
                 eprintln!("Error: {:?}", e);
@@ -61,7 +65,7 @@ impl RollupBoostConfig {
 
         RollupBoost {
             args: self.args,
-            handle,
+            _handle,
         }
     }
 }

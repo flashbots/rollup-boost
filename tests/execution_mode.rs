@@ -8,7 +8,7 @@ mod integration;
 use crate::integration::RollupBoostTestHarnessBuilder;
 
 #[tokio::test]
-async fn test_integration_execution_mode() -> eyre::Result<()> {
+async fn execution_mode() -> eyre::Result<()> {
     // Create a counter that increases whenever we receive a new RPC call in the builder
     let counter = Arc::new(Mutex::new(0));
 
@@ -20,7 +20,7 @@ async fn test_integration_execution_mode() -> eyre::Result<()> {
         None
     });
 
-    let harness = RollupBoostTestHarnessBuilder::new("test_integration_dry_run")
+    let harness = RollupBoostTestHarnessBuilder::new("execution_mode")
         .proxy_handler(handler)
         .build()
         .await?;

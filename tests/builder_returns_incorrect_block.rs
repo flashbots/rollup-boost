@@ -1,16 +1,13 @@
 use alloy_primitives::B256;
 use integration::RollupBoostTestHarnessBuilder;
-use rollup_boost::ExecutionMode;
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 
 mod integration;
 
 #[tokio::test]
-async fn test_integration_builder_returns_incorrect_block() -> eyre::Result<()> {
+async fn builder_returns_incorrect_block() -> eyre::Result<()> {
     // Test that the builder returns a block with an incorrect state root and that rollup-boost
     // does not process it.
     let handler = Box::new(move |method: &str, _params: Value, _result: Value| {
@@ -31,11 +28,10 @@ async fn test_integration_builder_returns_incorrect_block() -> eyre::Result<()> 
         Some(result)
     });
 
-    let harness =
-        RollupBoostTestHarnessBuilder::new("test_integration_builder_returns_incorrect_block")
-            .proxy_handler(handler)
-            .build()
-            .await?;
+    let harness = RollupBoostTestHarnessBuilder::new("builder_returns_incorrect_block")
+        .proxy_handler(handler)
+        .build()
+        .await?;
 
     let mut block_generator = harness.get_block_generator().await?;
 

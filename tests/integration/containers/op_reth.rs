@@ -4,6 +4,7 @@ use std::{
     fs::File,
     io::BufReader,
     path::PathBuf,
+    sync::LazyLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -14,7 +15,7 @@ use testcontainers::{
     core::{ContainerPort, WaitFor},
 };
 
-use crate::integration::L2_P2P_ENODE;
+use crate::integration::{L2_P2P_ENODE, TEST_DATA};
 
 const NAME: &str = "ghcr.io/paradigmxyz/op-reth";
 const TAG: &str = "v1.3.4";
@@ -22,14 +23,33 @@ const TAG: &str = "v1.3.4";
 const AUTH_RPC_PORT: u16 = 8551;
 const P2P_PORT: u16 = 30303;
 
+// Genesis should only be created once and reused for
+// each instance
+static GENESIS: LazyLock<String> = LazyLock::new(|| {
+    let file = File::open(PathBuf::from(format!("{}/genesis.json", *TEST_DATA))).unwrap();
+    let reader = BufReader::new(file);
+    let mut genesis: Value = serde_json::from_reader(reader).unwrap();
+
+    // Update the timestamp field
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    if let Some(config) = genesis.as_object_mut() {
+        // Assuming timestamp is at the root level - adjust path as needed
+        config["timestamp"] = Value::String(format!("0x{:x}", timestamp));
+    }
+
+    serde_json::to_string_pretty(&genesis).unwrap()
+});
+
 #[derive(Debug, Clone)]
 pub struct OpRethConfig {
-    chain: PathBuf,
     jwt_secret: PathBuf,
     p2p_secret: Option<PathBuf>,
     pub trusted_peers: Vec<String>,
     pub datadir: String,
-    pub disable_discovery: bool,
     pub color: String,
     pub ipcdisable: bool,
     pub env_vars: HashMap<String, String>,
@@ -38,18 +58,10 @@ pub struct OpRethConfig {
 impl Default for OpRethConfig {
     fn default() -> Self {
         Self {
-            chain: PathBuf::from(format!(
-                "{}/src/integration/testdata/genesis.json",
-                env!("CARGO_MANIFEST_DIR")
-            )),
-            jwt_secret: PathBuf::from(format!(
-                "{}/src/integration/testdata/jwt_secret.hex",
-                env!("CARGO_MANIFEST_DIR")
-            )),
+            jwt_secret: PathBuf::from(format!("{}/jwt_secret.hex", *TEST_DATA)),
             p2p_secret: None,
             trusted_peers: vec![],
             datadir: "data".to_string(),
-            disable_discovery: true,
             color: "never".to_string(),
             ipcdisable: true,
             env_vars: Default::default(),
@@ -75,24 +87,6 @@ impl OpRethConfig {
 
     pub fn build(self) -> OpRethImage {
         // Write the genesis file to the test directory and update the timestamp to the current time
-        let genesis = {
-            let file = File::open(&self.chain).unwrap();
-            let reader = BufReader::new(file);
-            let mut genesis: Value = serde_json::from_reader(reader).unwrap();
-
-            // Update the timestamp field
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-
-            if let Some(config) = genesis.as_object_mut() {
-                // Assuming timestamp is at the root level - adjust path as needed
-                config["timestamp"] = Value::String(format!("0x{:x}", timestamp));
-            }
-
-            serde_json::to_string_pretty(&genesis).unwrap()
-        };
 
         let mut copy_to_sources = vec![
             CopyToContainer::new(
@@ -102,7 +96,7 @@ impl OpRethConfig {
                     .into_bytes(),
                 "/jwt_secret.hex".to_string(),
             ),
-            CopyToContainer::new(genesis.into_bytes(), "/genesis.json".to_string()),
+            CopyToContainer::new(GENESIS.clone().into_bytes(), "/genesis.json".to_string()),
         ];
 
         if let Some(p2p_secret) = &self.p2p_secret {
@@ -115,7 +109,11 @@ impl OpRethConfig {
             ));
         }
 
-        let expose_ports = vec![ContainerPort::Tcp(8551), ContainerPort::Tcp(30303)];
+        let expose_ports = vec![
+            ContainerPort::Tcp(8551),
+            // ContainerPort::Tcp(30303),
+            // ContainerPort::Udp(30303),
+        ];
 
         OpRethImage {
             config: self,
@@ -164,15 +162,19 @@ impl Image for OpRethImage {
     fn cmd(&self) -> impl IntoIterator<Item = impl Into<std::borrow::Cow<'_, str>>> {
         let mut cmd = vec![
             "node".to_string(),
+            "--port=30303".to_string(),
+            "--addr=0.0.0.0".to_string(),
             "--http".to_string(),
             "--http.addr=0.0.0.0".to_string(),
             "--authrpc.port=8551".to_string(),
             "--authrpc.addr=0.0.0.0".to_string(),
             "--authrpc.jwtsecret=/jwt_secret.hex".to_string(),
             "--chain=/genesis.json".to_string(),
+            "--log.stdout.filter=trace".to_string(),
+            "-vvvvv".to_string(),
             "--datadir".to_string(),
             self.config.datadir.clone(),
-            "--port=30303".to_string(),
+            "--disable-discovery".to_string(),
             "--color".to_string(),
             self.config.color.clone(),
         ];
@@ -180,13 +182,17 @@ impl Image for OpRethImage {
             cmd.push("--p2p-secret-key=/p2p_secret.hex".to_string());
         }
         if !self.config.trusted_peers.is_empty() {
+            println!("Trusted peers: {:?}", self.config.trusted_peers);
             cmd.extend([
                 "--trusted-peers".to_string(),
                 self.config.trusted_peers.join(","),
             ]);
         }
-        if self.config.disable_discovery {
-            cmd.push("--disable-discovery".to_string());
+        if !self.config.trusted_peers.is_empty() {
+            cmd.extend([
+                "--bootnodes".to_string(),
+                self.config.trusted_peers.join(","),
+            ]);
         }
         if self.config.ipcdisable {
             cmd.push("--ipcdisable".to_string());
@@ -202,7 +208,7 @@ impl Image for OpRethImage {
 pub trait OpRethMehods {
     async fn auth_rpc(&self) -> eyre::Result<Uri>;
     async fn auth_rpc_port(&self) -> eyre::Result<u16>;
-    async fn enode(&self) -> eyre::Result<Uri>;
+    async fn enode(&self, port: u16) -> eyre::Result<String>;
 }
 
 impl OpRethMehods for ContainerAsync<OpRethImage> {
@@ -219,13 +225,12 @@ impl OpRethMehods for ContainerAsync<OpRethImage> {
         .parse()?)
     }
 
-    async fn enode(&self) -> eyre::Result<Uri> {
+    async fn enode(&self, port: u16) -> eyre::Result<String> {
         Ok(format!(
-            "enode://{}@{}:{}",
+            "enode://{}@l2:{}",
             L2_P2P_ENODE,
-            self.get_host().await?,
-            self.get_host_port_ipv4(P2P_PORT).await?
-        )
-        .parse()?)
+            // self.get_host().await?,
+            port // self.get_host_port_ipv4(P2P_PORT).await?
+        ))
     }
 }
