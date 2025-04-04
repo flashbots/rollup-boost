@@ -1,5 +1,5 @@
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
 use dotenv as _;
-use rustls as _;
 
 mod client;
 pub use client::{auth::*, http::*, rpc::*};
