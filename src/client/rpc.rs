@@ -377,7 +377,6 @@ mod tests {
 
     use super::*;
 
-    // const AUTH_PORT: u32 = 8550;
     const AUTH_ADDR: &str = "0.0.0.0";
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
 

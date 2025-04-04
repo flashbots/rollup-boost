@@ -1,7 +1,6 @@
 mod common;
 
 use crate::common::RollupBoostTestHarnessBuilder;
-// use crate::server::ExecutionMode;
 
 #[tokio::test]
 async fn no_tx_pool() -> eyre::Result<()> {

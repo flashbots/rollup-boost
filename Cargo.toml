@@ -54,7 +54,6 @@ testcontainers = { version = "0.23.3" }
 assert_cmd = "2.0.10"
 predicates = "3.1.2"
 tokio-util = { version = "0.7.13" }
-# nix = "0.15.0"
 bytes = "1.2"
 reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "v1.3.7" }
 ctor = "0.4.1"
