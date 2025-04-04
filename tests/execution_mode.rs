@@ -1,5 +1,8 @@
+use futures::FutureExt as _;
+use integration::proxy::ProxyHandler;
 use rollup_boost::ExecutionMode;
 use serde_json::Value;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -7,24 +10,35 @@ mod integration;
 
 use crate::integration::RollupBoostTestHarnessBuilder;
 
+struct CounterHandler {
+    counter: Arc<Mutex<u32>>,
+}
+
+impl ProxyHandler for CounterHandler {
+    fn handle(
+        &self,
+        _method: String,
+        _params: Value,
+        _result: Value,
+    ) -> Pin<Box<dyn Future<Output = Option<Value>> + Send>> {
+        *self.counter.lock().unwrap() += 1;
+        async move { None }.boxed()
+    }
+}
+
 #[tokio::test]
 async fn execution_mode() -> eyre::Result<()> {
     // Create a counter that increases whenever we receive a new RPC call in the builder
     let counter = Arc::new(Mutex::new(0));
-
-    let counter_for_handler = counter.clone();
-    let handler = Box::new(move |_method: &str, _params: Value, _result: Value| {
-        let mut counter = counter_for_handler.lock().unwrap();
-
-        *counter += 1;
-        None
+    let handler = Arc::new(CounterHandler {
+        counter: counter.clone(),
     });
 
     let harness = RollupBoostTestHarnessBuilder::new("execution_mode")
         .proxy_handler(handler)
         .build()
         .await?;
-    let mut block_generator = harness.get_block_generator().await?;
+    let mut block_generator = harness.block_generator().await?;
 
     // start creating 5 empty blocks which are processed by the builder
     for _ in 0..5 {
@@ -35,7 +49,7 @@ async fn execution_mode() -> eyre::Result<()> {
         );
     }
 
-    let client = harness.get_client().await;
+    let client = harness.debug_client().await;
 
     // enable dry run mode
     {

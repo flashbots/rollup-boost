@@ -8,7 +8,7 @@ async fn simple() -> eyre::Result<()> {
     let harness = RollupBoostTestHarnessBuilder::new("test_integration_no_tx_pool")
         .build()
         .await?;
-    let mut block_generator = harness.get_block_generator().await?;
+    let mut block_generator = harness.block_generator().await?;
 
     // start creating 5 empty blocks which are processed by the L2 builder
     for _ in 0..5 {

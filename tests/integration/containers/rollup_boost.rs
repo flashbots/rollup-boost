@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use clap::Parser;
 use rollup_boost::Args;
 use tokio::task::JoinHandle;
@@ -53,7 +55,7 @@ impl Default for RollupBoostConfig {
 }
 
 impl RollupBoostConfig {
-    pub fn start(self) -> RollupBoost {
+    pub async fn start(self) -> RollupBoost {
         let args = self.args.clone();
         let _handle = tokio::spawn(async move {
             let res = args.clone().run().await;
@@ -62,6 +64,9 @@ impl RollupBoostConfig {
             }
             res
         });
+
+        // Allow some time for the app to startup
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
         RollupBoost {
             args: self.args,

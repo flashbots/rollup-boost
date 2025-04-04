@@ -371,14 +371,28 @@ mod tests {
     use predicates::prelude::*;
     use reth_rpc_layer::{AuthLayer, JwtAuthValidator};
     use std::net::SocketAddr;
+    use std::net::TcpListener;
     use std::result::Result;
     use std::str::FromStr;
 
     use super::*;
 
-    const AUTH_PORT: u32 = 8550;
+    // const AUTH_PORT: u32 = 8550;
     const AUTH_ADDR: &str = "0.0.0.0";
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
+
+    fn get_available_port() -> u16 {
+        loop {
+            let port = rand::random::<u16>() % 20000 + 1000;
+            if port_is_available(port) {
+                return port;
+            }
+        }
+    }
+
+    fn port_is_available(port: u16) -> bool {
+        TcpListener::bind(("127.0.0.1", port)).is_ok()
+    }
 
     #[test]
     fn test_invalid_args() {
@@ -392,21 +406,22 @@ mod tests {
 
     #[tokio::test]
     async fn valid_jwt() {
+        let port = get_available_port();
         let secret = JwtSecret::from_hex(SECRET).unwrap();
-
-        let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
+        let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, port)).unwrap();
         let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
-        let response = send_request(client.auth_client).await;
+        let response = send_request(client.auth_client, port).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");
     }
 
     #[tokio::test]
     async fn invalid_jwt() {
+        let port = get_available_port();
         let secret = JwtSecret::random();
-        let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, AUTH_PORT)).unwrap();
+        let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, port)).unwrap();
         let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
-        let response = send_request(client.auth_client).await;
+        let response = send_request(client.auth_client, port).await;
         assert!(response.is_err());
         assert!(matches!(
             response.unwrap_err(),
@@ -417,8 +432,9 @@ mod tests {
 
     async fn send_request(
         client: HttpClient<AuthClientService<HttpBackend>>,
+        port: u16,
     ) -> Result<String, ClientError> {
-        let server = spawn_server().await;
+        let server = spawn_server(port).await;
 
         let response = client
             .request::<String, _>("greet_melkor", rpc_params![])
@@ -431,9 +447,9 @@ mod tests {
     }
 
     /// Spawn a new RPC server equipped with a `JwtLayer` auth middleware.
-    async fn spawn_server() -> ServerHandle {
+    async fn spawn_server(port: u16) -> ServerHandle {
         let secret = JwtSecret::from_hex(SECRET).unwrap();
-        let addr = format!("{AUTH_ADDR}:{AUTH_PORT}");
+        let addr = format!("{AUTH_ADDR}:{port}");
         let validator = JwtAuthValidator::new(secret);
         let layer = AuthLayer::new(validator);
         let middleware = tower::ServiceBuilder::default().layer(layer);

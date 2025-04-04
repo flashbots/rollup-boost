@@ -1,39 +1,55 @@
+use std::{pin::Pin, sync::Arc};
+
 use alloy_primitives::B256;
-use integration::RollupBoostTestHarnessBuilder;
+use futures::FutureExt as _;
+use integration::{RollupBoostTestHarnessBuilder, proxy::ProxyHandler};
 use serde_json::Value;
 
 use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 
 mod integration;
 
+struct Handler;
+
+impl ProxyHandler for Handler {
+    fn handle(
+        &self,
+        method: String,
+        _params: Value,
+        _result: Value,
+    ) -> Pin<Box<dyn Future<Output = Option<Value>> + Send>> {
+        async move {
+            if method != "engine_getPayloadV3" {
+                return None;
+            }
+
+            let mut payload =
+                serde_json::from_value::<OpExecutionPayloadEnvelopeV3>(_result).unwrap();
+
+            // modify the state root field
+            payload
+                .execution_payload
+                .payload_inner
+                .payload_inner
+                .state_root = B256::ZERO;
+
+            let result = serde_json::to_value(&payload).unwrap();
+            Some(result)
+        }
+        .boxed()
+    }
+}
+
 #[tokio::test]
 async fn builder_returns_incorrect_block() -> eyre::Result<()> {
     // Test that the builder returns a block with an incorrect state root and that rollup-boost
     // does not process it.
-    let handler = Box::new(move |method: &str, _params: Value, _result: Value| {
-        if method != "engine_getPayloadV3" {
-            return None;
-        }
-
-        let mut payload = serde_json::from_value::<OpExecutionPayloadEnvelopeV3>(_result).unwrap();
-
-        // modify the state root field
-        payload
-            .execution_payload
-            .payload_inner
-            .payload_inner
-            .state_root = B256::ZERO;
-
-        let result = serde_json::to_value(&payload).unwrap();
-        Some(result)
-    });
-
     let harness = RollupBoostTestHarnessBuilder::new("builder_returns_incorrect_block")
-        .proxy_handler(handler)
+        .proxy_handler(Arc::new(Handler))
         .build()
         .await?;
 
-    let mut block_generator = harness.get_block_generator().await?;
+    let mut block_generator = harness.block_generator().await?;
 
     // create 3 blocks that are processed by the builder
     for _ in 0..3 {

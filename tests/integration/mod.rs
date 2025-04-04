@@ -12,12 +12,11 @@ use containers::rollup_boost::{RollupBoost, RollupBoostConfig};
 use eyre::bail;
 use futures::FutureExt;
 use futures::future::BoxFuture;
-use http::Uri;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
 use jsonrpsee::proc_macros::rpc;
 use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
-use proxy::{DynHandlerFn, start_proxy_server};
+use proxy::{ProxyHandler, start_proxy_server};
 use rollup_boost::client::auth::{AuthClientLayer, AuthClientService};
 use rollup_boost::debug_api::DebugClient;
 use rollup_boost::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
@@ -25,7 +24,7 @@ use rollup_boost::{NewPayload, PayloadSource};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, SystemTime};
 use testcontainers::core::ContainerPort;
 use testcontainers::core::client::docker_client_instance;
@@ -45,8 +44,8 @@ pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795
 pub static TEST_DATA: LazyLock<String> =
     LazyLock::new(|| format!("{}/tests/integration/test_data", env!("CARGO_MANIFEST_DIR")));
 
-mod containers;
-mod proxy;
+pub mod containers;
+pub mod proxy;
 
 pub struct LoggingConsumer {
     target: String,
@@ -71,7 +70,7 @@ impl LogConsumer for LoggingConsumer {
     }
 }
 
-pub async fn wait_for_log<I: Image>(
+pub async fn _wait_for_log<I: Image>(
     container: ContainerAsync<I>,
     pattern: &str,
     timeout: Duration,
@@ -200,6 +199,7 @@ pub trait BlockApi {
 }
 
 /// Test flavor that sets up one Rollup-boost instance connected to two Reth nodes
+#[allow(dead_code)]
 pub struct RollupBoostTestHarness {
     pub l2: ContainerAsync<OpRethImage>,
     pub builder: ContainerAsync<OpRethImage>,
@@ -208,7 +208,7 @@ pub struct RollupBoostTestHarness {
 
 pub struct RollupBoostTestHarnessBuilder {
     test_name: String,
-    proxy_handler: Option<DynHandlerFn>,
+    proxy_handler: Option<Arc<dyn ProxyHandler>>,
 }
 
 impl RollupBoostTestHarnessBuilder {
@@ -223,8 +223,6 @@ impl RollupBoostTestHarnessBuilder {
         let dt: OffsetDateTime = SystemTime::now().into();
         let format = format_description::parse("[year]_[month]_[day]_[hour]_[minute]_[second]")?;
         let timestamp = dt.format(&format)?;
-
-        // let test_name = format!("{}_{}", timestamp, test_name);
 
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("test_logs")
@@ -261,7 +259,7 @@ impl RollupBoostTestHarnessBuilder {
         })
     }
 
-    pub fn proxy_handler(mut self, proxy_handler: DynHandlerFn) -> Self {
+    pub fn proxy_handler(mut self, proxy_handler: Arc<dyn ProxyHandler>) -> Self {
         self.proxy_handler = Some(proxy_handler);
         self
     }
@@ -330,11 +328,9 @@ impl RollupBoostTestHarnessBuilder {
         rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
         rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
-        let rollup_boost = rollup_boost.start();
+        let rollup_boost = rollup_boost.start().await;
         println!("rollup-boost authrpc: {}", rollup_boost.rpc_endpoint());
         println!("rollup-boost metrics: {}", rollup_boost.metrics_endpoint());
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
 
         Ok(RollupBoostTestHarness {
             l2,
@@ -345,7 +341,7 @@ impl RollupBoostTestHarnessBuilder {
 }
 
 impl RollupBoostTestHarness {
-    pub async fn get_block_generator(&self) -> eyre::Result<SimpleBlockGenerator> {
+    pub async fn block_generator(&self) -> eyre::Result<SimpleBlockGenerator> {
         let validator =
             BlockBuilderCreatorValidator::new(self.rollup_boost.args().log_file.clone().unwrap());
 
@@ -356,7 +352,7 @@ impl RollupBoostTestHarness {
         Ok(block_creator)
     }
 
-    pub async fn get_client(&self) -> DebugClient {
+    pub async fn debug_client(&self) -> DebugClient {
         DebugClient::new(&self.rollup_boost.debug_endpoint()).unwrap()
     }
 }
@@ -472,13 +468,13 @@ pub struct BlockBuilderCreatorValidator {
     file: PathBuf,
 }
 
-impl<'a> BlockBuilderCreatorValidator {
+impl BlockBuilderCreatorValidator {
     pub fn new(file: PathBuf) -> Self {
         Self { file }
     }
 }
 
-impl<'a> BlockBuilderCreatorValidator {
+impl BlockBuilderCreatorValidator {
     pub async fn get_block_creator(&self, block_hash: B256) -> eyre::Result<Option<PayloadSource>> {
         let contents = std::fs::read_to_string(&self.file)?;
 
@@ -532,10 +528,6 @@ fn create_deposit_tx() -> Bytes {
     deposit_tx.encode_2718(&mut buffer_without_header);
 
     buffer_without_header.to_vec().into()
-}
-
-fn local_host(port: u16) -> Uri {
-    format!("http://localhost:{port}").parse::<Uri>().unwrap()
 }
 
 fn get_available_port() -> Option<u16> {
