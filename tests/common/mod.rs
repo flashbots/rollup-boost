@@ -484,12 +484,8 @@ pub fn get_available_port() -> u16 {
         LazyLock::new(|| Mutex::new(HashSet::new()));
     loop {
         let port: u16 = rand::random_range(1000..20000);
-        match TcpListener::bind(("127.0.0.1", port)) {
-            Ok(_) => {
-                CLAIMED_PORTS.lock().insert(port);
-                return port;
-            }
-            Err(_) => continue,
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() && CLAIMED_PORTS.lock().insert(port) {
+            return port;
         }
     }
 }
