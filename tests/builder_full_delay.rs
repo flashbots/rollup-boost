@@ -55,9 +55,6 @@ async fn builder_full_delay() -> eyre::Result<()> {
         );
     }
 
-    // add the delay
-    // *delay.lock().unwrap() = Duration::from_secs(1);
-
     // create 3 blocks that are processed by the builder
     for _ in 0..3 {
         let (_block, block_creator) = block_generator.generate_block(false).await?;

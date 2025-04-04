@@ -265,7 +265,7 @@ impl RollupBoostTestHarnessBuilder {
         if let Some(proxy_handler) = self.proxy_handler {
             println!("starting proxy server");
             let proxy_port = get_available_port();
-            let _ = start_proxy_server(proxy_handler, proxy_port, builder_authrpc_port).await;
+            start_proxy_server(proxy_handler, proxy_port, builder_authrpc_port).await?;
             builder_authrpc_port = proxy_port
         };
         let builder_url = format!("http://localhost:{}/", builder_authrpc_port);

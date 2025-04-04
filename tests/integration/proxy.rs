@@ -119,7 +119,7 @@ pub async fn start_proxy_server(
     handler: Arc<dyn ProxyHandler>,
     listen_port: u16,
     target_port: u16,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> eyre::Result<()> {
     let listen_addr = SocketAddr::from(([127, 0, 0, 1], listen_port));
     let target_addr = SocketAddr::from(([127, 0, 0, 1], target_port));
 
