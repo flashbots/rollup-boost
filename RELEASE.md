@@ -18,7 +18,6 @@ Then run the following commands to check the code is working fine:
 ```bash
 make lint
 make test
-make test-integration
 git status # should show no changes
 
 # Start rollup-boost with the example .env config
@@ -48,7 +47,7 @@ docker pull flashbots/rollup-boost:0.5rc1
 - Test the docker image in internal testnets
   - Check no error logs in rollup-boost
   - Check no error logs in the builder or op-node
-  - Check chain livesness is healthy and blocks are produced
+  - Check chain liveness is healthy and blocks are produced
   - Check the builder is landing blocks onchain by seeing if the builder transaction is included in the chain
   - Check metrics to see if there is any anomaly such as latency or blocks delivered
   - Use [contender](https://github.com/flashbots/contender) or other transaction spammer to check transactions are being included in the block

@@ -9,9 +9,10 @@ use tracing::level_filters::LevelFilter;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::Targets;
+use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 
-use crate::{Args, LogFormat};
+use crate::cli::{Args, LogFormat};
 
 /// Span attribute keys that should be recorded as metric labels.
 ///
@@ -51,13 +52,10 @@ impl SpanProcessor for MetricsSpanProcessor {
                     attr.value.as_str().to_string(),
                 )
             })
-            .chain(
-                [
-                    ("span_kind".to_string(), format!("{:?}", span.span_kind)),
-                    ("status".to_string(), status.into()),
-                ]
-                .into_iter(),
-            )
+            .chain([
+                ("span_kind".to_string(), format!("{:?}", span.span_kind)),
+                ("status".to_string(), status.into()),
+            ])
             .collect::<Vec<_>>();
 
         histogram!(format!("{}_duration", span.name), &labels).record(duration);
@@ -72,7 +70,7 @@ impl SpanProcessor for MetricsSpanProcessor {
     }
 }
 
-pub(crate) fn init_tracing(args: &Args) -> eyre::Result<()> {
+pub fn init_tracing(args: &Args) -> eyre::Result<()> {
     // Be cautious with snake_case and kebab-case here
     let filter_name = "rollup_boost".to_string();
 
@@ -85,6 +83,17 @@ pub(crate) fn init_tracing(args: &Args) -> eyre::Result<()> {
     let log_filter = Targets::new()
         .with_default(LevelFilter::INFO)
         .with_target(&filter_name, args.log_level);
+
+    let writer = if let Some(path) = &args.log_file {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .context("Failed to open log file")?;
+        BoxMakeWriter::new(file)
+    } else {
+        BoxMakeWriter::new(std::io::stdout)
+    };
 
     // Weird control flow here is required because of type system
     if args.tracing {
@@ -123,6 +132,7 @@ pub(crate) fn init_tracing(args: &Args) -> eyre::Result<()> {
                         tracing_subscriber::fmt::layer()
                             .json()
                             .with_ansi(false)
+                            .with_writer(writer)
                             .with_filter(log_filter.clone()),
                     ),
                 )?;
@@ -132,6 +142,7 @@ pub(crate) fn init_tracing(args: &Args) -> eyre::Result<()> {
                     registry.with(
                         tracing_subscriber::fmt::layer()
                             .with_ansi(false)
+                            .with_writer(writer)
                             .with_filter(log_filter.clone()),
                     ),
                 )?;
@@ -145,6 +156,7 @@ pub(crate) fn init_tracing(args: &Args) -> eyre::Result<()> {
                         tracing_subscriber::fmt::layer()
                             .json()
                             .with_ansi(false)
+                            .with_writer(writer)
                             .with_filter(log_filter.clone()),
                     ),
                 )?;
@@ -154,6 +166,7 @@ pub(crate) fn init_tracing(args: &Args) -> eyre::Result<()> {
                     registry.with(
                         tracing_subscriber::fmt::layer()
                             .with_ansi(false)
+                            .with_writer(writer)
                             .with_filter(log_filter.clone()),
                     ),
                 )?;

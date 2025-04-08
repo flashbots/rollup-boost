@@ -19,14 +19,14 @@ use super::auth::Auth;
 pub type HttpClientService = Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>;
 
 #[derive(Clone, Debug)]
-pub(crate) struct HttpClient {
+pub struct HttpClient {
     client: HttpClientService,
     url: Uri,
     target: PayloadSource,
 }
 
 impl HttpClient {
-    pub(crate) fn new(url: Uri, secret: JwtSecret, target: PayloadSource) -> Self {
+    pub fn new(url: Uri, secret: JwtSecret, target: PayloadSource) -> Self {
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
             .expect("no native root CA certificates found")
