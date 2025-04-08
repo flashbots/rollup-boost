@@ -2,6 +2,7 @@ use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::flashblocks::FlashblocksService;
 use alloy_primitives::{B256, Bytes};
+use metrics::{counter, histogram};
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
@@ -424,6 +425,38 @@ impl OpExecutionPayloadEnvelope {
             OpExecutionPayloadEnvelope::V4(_) => Version::V4,
         }
     }
+    pub fn transactions(&self) -> &[Bytes] {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                &v3.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                &v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+        }
+    }
+
+    pub fn gas_used(&self) -> u64 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.gas_used
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .gas_used
+            }
+        }
+    }
 }
 
 impl From<OpExecutionPayloadEnvelope> for ExecutionPayload {
@@ -534,10 +567,18 @@ impl RollupBoostServer {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move {
-                let _ = builder.new_payload(new_payload_clone).await;
+                let result = builder.new_payload(new_payload_clone).await;
+                if let Err(_) = &result {
+                    counter!("block_building_invalid_builder_payload").increment(1);
+                }
             });
         }
-        Ok(self.l2_client.new_payload(new_payload).await?)
+        let result = self.l2_client.new_payload(new_payload).await;
+        if let Err(_) = &result {
+            counter!("block_building_invalid_l2_payload").increment(1);
+        }
+
+        Ok(result?)
     }
 
     async fn get_payload(
@@ -592,7 +633,7 @@ impl RollupBoostServer {
             //     builder.get_payload(payload_id, version).await?
             // };
 
-            if let Some(payload) = payload {
+            if let Some(_) = payload {
                 info!(message = "flashblocks paylod found, but not using it");
             }
 
@@ -601,17 +642,32 @@ impl RollupBoostServer {
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
             // If validation fails, return the local block since that one has already been validated.
-            let _ = self
+
+            let result = self
                 .l2_client
                 .new_payload(NewPayload::from(payload.clone()))
-                .await?;
-
+                .await;
+            if let Err(_) = &result {
+                counter!("block_building_invalid_l2_payload").increment(1);
+            }
             Ok(Some(payload))
         });
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
+
         let (payload, context) = match (builder_payload, l2_payload) {
-            (Ok(Some(builder)), _) => Ok((builder, PayloadSource::Builder)),
+            (Ok(Some(builder)), Ok(l2)) => {
+                histogram!("block_building_gas_difference")
+                    .record((builder.transactions().len() - l2.transactions().len()) as f64);
+                histogram!("block_building_tx_count_difference")
+                    .record((builder.gas_used() - l2.gas_used()) as f64);
+                counter!("block_building_builder_payloads_returned").increment(1);
+                Ok((builder, PayloadSource::Builder))
+            }
+            (Ok(Some(builder)), _) => {
+                counter!("block_building_builder_payloads_returned").increment(1);
+                Ok((builder, PayloadSource::Builder))
+            }
             (_, Ok(l2)) => Ok((l2, PayloadSource::L2)),
             (_, Err(e)) => Err(e),
         }?;
