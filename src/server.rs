@@ -1,4 +1,3 @@
-use crate::RpcClientError;
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::flashblocks::FlashblocksService;
@@ -633,14 +632,16 @@ impl RollupBoostServer {
             // } else {
             //     builder.get_payload(payload_id, version).await?
             // };
-            // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
-            // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
-            // If validation fails, return the local block since that one has already been validated.
 
             if let Some(payload) = payload {
                 info!(message = "flashblocks paylod found, but not using it");
             }
+
             let payload = builder.get_payload(payload_id, version).await?;
+
+            // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
+            // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
+            // If validation fails, return the local block since that one has already been validated.
 
             let _ = self
                 .l2_client
