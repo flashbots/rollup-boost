@@ -11,6 +11,7 @@ use crate::{
     DebugClient, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     init_metrics, init_tracing,
+    probe::ProbeLayer,
     server::ExecutionMode,
 };
 
@@ -155,11 +156,14 @@ impl Args {
             info!("Boost sync enabled");
         }
 
+        let (probe_layer, probes) = ProbeLayer::new();
+
         let rollup_boost = RollupBoostServer::new(
             l2_client,
             builder_client,
             boost_sync_enabled,
             self.execution_mode,
+            probes,
         );
 
         // Spawn the debug server
@@ -170,12 +174,15 @@ impl Args {
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);
 
-        let http_middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-            l2_client_args.l2_url,
-            l2_auth_jwt,
-            builder_args.builder_url,
-            builder_auth_jwt,
-        ));
+        let http_middleware =
+            tower::ServiceBuilder::new()
+                .layer(probe_layer)
+                .layer(ProxyLayer::new(
+                    l2_client_args.l2_url,
+                    l2_auth_jwt,
+                    builder_args.builder_url,
+                    builder_auth_jwt,
+                ));
 
         let server = Server::builder()
             .set_http_middleware(http_middleware)

@@ -18,7 +18,10 @@ moka = { version = "0.12.10", features = ["sync"] }
 http = "1.1.0"
 dotenv = "0.15.0"
 tower = "0.4.13"
-tower-http = { version = "0.5.2", features = ["decompression-full"] }
+tower-http = { version = "0.5.2", features = [
+    "decompression-full",
+    "sensitive-headers",
+] }
 http-body-util = "0.1.2"
 hyper = { version = "1.4.1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
@@ -57,6 +60,7 @@ tokio-util = { version = "0.7.13" }
 bytes = "1.2"
 reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "v1.3.7" }
 ctor = "0.4.1"
+reqwest = "0.12.15"
 
 [[bin]]
 name = "rollup-boost"
