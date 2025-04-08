@@ -6,7 +6,6 @@ use alloy_rpc_types_engine::{
     ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadId, PayloadStatus,
     PayloadStatusEnum,
 };
-use tower_http::sensitive_headers::SetSensitiveRequestHeaders;
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use bytes::BytesMut;
 use futures::FutureExt;
@@ -37,6 +36,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
 use time::{OffsetDateTime, format_description};
 use tokio::io::AsyncWriteExt as _;
+use tower_http::sensitive_headers::SetSensitiveRequestHeaders;
 use tracing::info;
 
 /// Default JWT token for testing purposes

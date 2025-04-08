@@ -625,10 +625,10 @@ mod tests {
     use super::*;
     use alloy_primitives::hex;
     use alloy_primitives::{FixedBytes, U256};
+    use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_engine::{
         BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, PayloadStatusEnum,
     };
-    use alloy_rpc_types_engine::JwtSecret;
     use http::{StatusCode, Uri};
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
