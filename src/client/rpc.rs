@@ -114,6 +114,7 @@ impl RpcClient {
         let auth_layer = AuthClientLayer::new(auth_rpc_jwt_secret);
         let auth_client = HttpClientBuilder::new()
             .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
+            .max_concurrent_requests(1)
             .request_timeout(Duration::from_millis(timeout))
             .build(auth_rpc.to_string())?;
 
