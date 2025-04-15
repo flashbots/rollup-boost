@@ -28,6 +28,7 @@ use jsonrpsee::proc_macros::rpc;
 
 const CACHE_SIZE: u64 = 100;
 
+#[derive(Debug, Clone)]
 pub struct PayloadTraceContext {
     block_hash_to_payload_ids: Cache<B256, Vec<PayloadId>>,
     payload_id: Cache<PayloadId, (bool, Option<tracing::Id>)>,
@@ -569,12 +570,14 @@ impl RollupBoostServer {
             tokio::spawn(async move {
                 let result = builder.new_payload(new_payload_clone).await;
                 if let Err(_) = &result {
+                    error!("Invalid payload (builder): {:?}", result);
                     counter!("block_building_invalid_builder_payload").increment(1);
                 }
             });
         }
         let result = self.l2_client.new_payload(new_payload).await;
         if let Err(_) = &result {
+            error!("Invalid payload (l2): {:?}", result);
             counter!("block_building_invalid_l2_payload").increment(1);
         }
 
@@ -586,6 +589,9 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: Version,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
+        debug!("payload_id: {:?}", payload_id);
+        debug!("payload_trace_context: {:?}", self.payload_trace_context);
+
         let l2_client_future = self.l2_client.get_payload(payload_id, version);
         let builder_client_future = Box::pin(async move {
             let execution_mode = self.execution_mode();
