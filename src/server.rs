@@ -2,6 +2,7 @@ use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::flashblocks::FlashblocksService;
 use alloy_primitives::{B256, Bytes};
+use metrics::{counter, histogram};
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
@@ -424,6 +425,39 @@ impl OpExecutionPayloadEnvelope {
             OpExecutionPayloadEnvelope::V4(_) => Version::V4,
         }
     }
+
+    pub fn transactions(&self) -> &[Bytes] {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                &v3.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                &v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+        }
+    }
+
+    pub fn gas_used(&self) -> u64 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.gas_used
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .gas_used
+            }
+        }
+    }
 }
 
 impl From<OpExecutionPayloadEnvelope> for ExecutionPayload {
@@ -534,10 +568,20 @@ impl RollupBoostServer {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move {
-                let _ = builder.new_payload(new_payload_clone).await;
+                let result = builder.new_payload(new_payload_clone).await;
+                if let Err(_) = &result {
+                    error!("Invalid payload (builder): {:?}", result);
+                    counter!("block_building_invalid_builder_payload").increment(1);
+                }
             });
         }
-        Ok(self.l2_client.new_payload(new_payload).await?)
+        let result = self.l2_client.new_payload(new_payload).await;
+        if let Err(_) = &result {
+            error!("Invalid payload (l2): {:?}", result);
+            counter!("block_building_invalid_l2_payload").increment(1);
+        }
+
+        Ok(result?)
     }
 
     async fn get_payload(
@@ -605,8 +649,18 @@ impl RollupBoostServer {
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let (payload, context) = match (builder_payload, l2_payload) {
-            (Ok(Some(builder)), _) => Ok((builder, PayloadSource::Builder)),
-            (_, Ok(l2)) => Ok((l2, PayloadSource::L2)),
+            (Ok(Some(builder)), Ok(l2)) => {
+                histogram!("block_building_gas_difference")
+                    .record((builder.transactions().len() - l2.transactions().len()) as f64);
+                histogram!("block_building_tx_count_difference")
+                    .record((builder.gas_used() - l2.gas_used()) as f64);
+                counter!("block_building_builder_payloads_returned").increment(1);
+                Ok((builder, PayloadSource::Builder))
+            },
+            (_, Ok(l2)) => {
+                counter!("block_building_l2_payloads_returned").increment(1);
+                Ok((l2, PayloadSource::L2))
+            },
             (_, Err(e)) => Err(e),
         }?;
 
@@ -651,12 +705,12 @@ mod tests {
     use std::sync::Arc;
     use tokio::time::sleep;
 
-    const HOST: &str = "0.0.0.0";
+    const HOST: &str = "127.0.0.1";
     const L2_PORT: u16 = 8545;
     const L2_ADDR: &str = "127.0.0.1:8545";
     const BUILDER_PORT: u16 = 8544;
     const BUILDER_ADDR: &str = "127.0.0.1:8544";
-    const SERVER_ADDR: &str = "0.0.0.0:8556";
+    const SERVER_ADDR: &str = "127.0.0.1:8556";
 
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
@@ -753,7 +807,7 @@ mod tests {
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
 
             let proxy_server = ServerBuilder::default()
-                .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
+                .build(SERVER_ADDR.parse::<SocketAddr>().unwrap())
                 .await
                 .unwrap()
                 .start(module);
