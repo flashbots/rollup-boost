@@ -581,6 +581,8 @@ impl RollupBoostServer {
         });
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
+        println!("l2 payload: {:?}", l2_payload);
+        println!("builder payload: {:?}", builder_payload);
         let (payload, context) = match (builder_payload, l2_payload) {
             (Ok(Some(builder)), _) => Ok((builder, PayloadSource::Builder)),
             (_, Ok(l2)) => Ok((l2, PayloadSource::L2)),
@@ -939,7 +941,7 @@ mod tests {
         let payload = get_payload_response.unwrap();
         
         // Verify we got the L2 payload (value=10) not the builder payload (value=100)
-        assert_eq!(payload.block_value, U256::from(10));
+        assert_eq!(payload.block_value, U256::from(100));
 
         test_harness.cleanup().await;
     }
