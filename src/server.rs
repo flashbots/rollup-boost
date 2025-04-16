@@ -2,7 +2,7 @@ use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::flashblocks::FlashblocksService;
 use alloy_primitives::{B256, Bytes};
-use metrics::{counter, histogram};
+use metrics::counter;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
@@ -571,17 +571,11 @@ impl RollupBoostServer {
                 let result = builder.new_payload(new_payload_clone).await;
                 if let Err(_) = &result {
                     error!("Invalid payload (builder): {:?}", result);
-                    counter!("block_building_invalid_builder_payload").increment(1);
+                    counter!("invalid_payload", "method" => "new_payload", "payload_source" => "builder").increment(1);
                 }
             });
         }
-        let result = self.l2_client.new_payload(new_payload).await;
-        if let Err(_) = &result {
-            error!("Invalid payload (l2): {:?}", result);
-            counter!("block_building_invalid_l2_payload").increment(1);
-        }
-
-        Ok(result?)
+        Ok(self.l2_client.new_payload(new_payload).await?)
     }
 
     async fn get_payload(
@@ -650,17 +644,12 @@ impl RollupBoostServer {
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let (payload, context) = match (builder_payload, l2_payload) {
             (Ok(Some(builder)), Ok(l2)) => {
-                histogram!("block_building_gas_difference")
-                    .record((builder.transactions().len() - l2.transactions().len()) as f64);
-                histogram!("block_building_tx_count_difference")
-                    .record((builder.gas_used() - l2.gas_used()) as f64);
-                counter!("block_building_builder_payloads_returned").increment(1);
+                tracing::Span::current().record("gas_delta", (builder.gas_used() - l2.gas_used()).to_string());
+                tracing::Span::current().record("tx_count_delta", (builder.transactions().len() - l2.transactions().len()).to_string());
                 Ok((builder, PayloadSource::Builder))
             },
-            (_, Ok(l2)) => {
-                counter!("block_building_l2_payloads_returned").increment(1);
-                Ok((l2, PayloadSource::L2))
-            },
+            (Ok(Some(builder)), _) => Ok((builder, PayloadSource::Builder)),
+            (_, Ok(l2)) => Ok((l2, PayloadSource::L2)),
             (_, Err(e)) => Err(e),
         }?;
 

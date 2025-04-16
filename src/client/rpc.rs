@@ -154,7 +154,7 @@ impl RpcClient {
         }
 
         if res.is_invalid() {
-            counter!(format!("rpc_fork_choice_updated_v3_invalid_payload_{}", self.payload_source)).increment(1);
+            counter!("rpc_invalid_payload", "method" => "fork_choice_updated_v3", "payload_source" => self.payload_source.to_string()).increment(1);
             return Err(RpcClientError::InvalidPayload(
                 res.payload_status.status.to_string(),
             ))
@@ -215,7 +215,7 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
-            counter!(format!("rpc_new_payload_v3_invalid_payload_{}", self.payload_source)).increment(1);
+            counter!("rpc_invalid_payload", "method" => "new_payload_v3", "payload_source" => self.payload_source.to_string()).increment(1);
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
@@ -294,7 +294,7 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
-            counter!(format!("rpc_new_payload_v4_invalid_payload_{}", self.payload_source)).increment(1);
+            counter!("rpc_invalid_payload", "method" => "new_payload_v4", "payload_source" => self.payload_source.to_string()).increment(1);
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
