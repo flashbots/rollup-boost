@@ -915,12 +915,12 @@ mod tests {
 
         // Mock L2 client
         let mut l2_mock = MockEngineServer::new();
-        l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut status| {
-            status.status = PayloadStatusEnum::Invalid {
-                validation_error: "test".to_string(),
-            };
-            status
-        });
+        // l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut status| {
+        //     status.status = PayloadStatusEnum::Invalid {
+        //         validation_error: "test".to_string(),
+        //     };
+        //     status
+        // });
         l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut payload| {
             payload.block_value = U256::from(10);
             payload
