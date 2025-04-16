@@ -589,8 +589,8 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: Version,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        debug!("payload_id: {:?}", payload_id);
-        debug!("payload_trace_context: {:?}", self.payload_trace_context);
+        debug!(message = format!("payload_id: {:?}", payload_id));
+        debug!(message = format!("payload_trace_context: {:?}", self.payload_trace_context));
 
         let l2_client_future = self.l2_client.get_payload(payload_id, version);
         let builder_client_future = Box::pin(async move {
