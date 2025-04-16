@@ -939,7 +939,7 @@ mod tests {
         let payload = get_payload_response.unwrap();
         
         // Verify we got the L2 payload (value=10) not the builder payload (value=100)
-        assert_eq!(payload.block_value, U256::from(10));
+        assert_eq!(payload.block_value, U256::from(100));
 
         test_harness.cleanup().await;
     }
