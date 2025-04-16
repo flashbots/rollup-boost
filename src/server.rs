@@ -615,13 +615,7 @@ impl RollupBoostServer {
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
         }
-        let result = self.l2_client.new_payload(new_payload).await;
-        if let Err(_) = &result {
-            error!("Invalid payload (l2): {:?}", result);
-            counter!("block_building_invalid_l2_payload").increment(1);
-        }
-
-        Ok(result?)
+        Ok(self.l2_client.new_payload(new_payload).await?)
     }
 
     async fn get_payload(

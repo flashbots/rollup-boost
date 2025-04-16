@@ -1,5 +1,5 @@
 use eyre::Context as _;
-use metrics::histogram;
+use metrics::{counter, histogram};
 use opentelemetry::trace::{Status, TracerProvider as _};
 use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::WithExportConfig;
@@ -57,6 +57,29 @@ impl SpanProcessor for MetricsSpanProcessor {
                 ("status".to_string(), status.into()),
             ])
             .collect::<Vec<_>>();
+        
+        let payload_source = span.attributes.iter()
+            .find(|attr| attr.key.as_str() == "payload_source")
+            .map(|attr| attr.value.as_str().to_string())
+            .unwrap_or("unknown".to_string());
+
+        counter!("block_building_payload_returned", "payload_source" => payload_source.clone()).increment(1);
+
+        let gas_delta = span.attributes.iter()
+            .find(|attr| attr.key.as_str() == "gas_delta")
+            .map(|attr| attr.value.as_str().to_string());
+
+        if let Some(gas_delta) = gas_delta {
+            counter!("block_building_gas_delta").increment(gas_delta.parse::<u64>().unwrap_or_default());
+        }
+        
+        let tx_count_delta = span.attributes.iter()
+            .find(|attr| attr.key.as_str() == "tx_count_delta")
+            .map(|attr| attr.value.as_str().to_string());
+
+        if let Some(tx_count_delta) = tx_count_delta {
+            counter!("block_building_tx_count_delta").increment(tx_count_delta.parse::<u64>().unwrap_or_default());
+        }
 
         histogram!(format!("{}_duration", span.name), &labels).record(duration);
     }
