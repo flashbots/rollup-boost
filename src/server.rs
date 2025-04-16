@@ -570,6 +570,13 @@ impl RollupBoostServer {
                 .new_payload(NewPayload::from(payload.clone()))
                 .await?;
 
+            // if payload_status.is_invalid() {
+            //     info!(message = "payload is invalid, returning local payload");
+            //     return Ok(None);
+            // } else {
+            //     Ok(Some(payload))
+            // }
+
             Ok(Some(payload))
         });
 
@@ -762,7 +769,6 @@ mod tests {
 
     async fn engine_success() {
         let test_harness = TestHarness::new(false, None, None).await;
-
         // test fork_choice_updated_v3 success
         let fcu = ForkchoiceState {
             head_block_hash: FixedBytes::random(),
@@ -900,6 +906,7 @@ mod tests {
     }
 
     async fn builder_payload_err() {
+        // Mock L2 client
         let mut l2_mock = MockEngineServer::new();
         l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut status| {
             status.status = PayloadStatusEnum::Invalid {
@@ -911,15 +918,28 @@ mod tests {
             payload.block_value = U256::from(10);
             payload
         });
-        let test_harness = TestHarness::new(true, Some(l2_mock), None).await;
+        
+        // Mock Builder client
+        let mut builder_mock = MockEngineServer::new();
+        builder_mock.get_payload_response = builder_mock.get_payload_response.clone().map(|mut payload| {
+            payload.block_value = U256::from(100); // Different value to distinguish from L2 payload
+            payload
+        });
+        
+        // Create test harness with both mocks
+        let test_harness = TestHarness::new(true, Some(l2_mock), Some(builder_mock)).await;
 
-        // test get_payload_v3 return l2 payload if builder payload is invalid
+        // Test get_payload_v3 returns L2 payload if builder payload is invalid
         let get_payload_response = test_harness
             .client
             .get_payload_v3(PayloadId::new([0, 0, 0, 0, 0, 0, 0, 0]))
             .await;
+        
         assert!(get_payload_response.is_ok());
-        assert_eq!(get_payload_response.unwrap().block_value, U256::from(10));
+        let payload = get_payload_response.unwrap();
+        
+        // Verify we got the L2 payload (value=10) not the builder payload (value=100)
+        assert_eq!(payload.block_value, U256::from(10));
 
         test_harness.cleanup().await;
     }
