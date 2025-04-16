@@ -906,6 +906,13 @@ mod tests {
     }
 
     async fn builder_payload_err() {
+        // Mock Builder client
+        let mut builder_mock = MockEngineServer::new();
+        builder_mock.get_payload_response = builder_mock.get_payload_response.clone().map(|mut payload| {
+            payload.block_value = U256::from(100); // Different value to distinguish from L2 payload
+            payload
+        });
+
         // Mock L2 client
         let mut l2_mock = MockEngineServer::new();
         l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut status| {
@@ -916,13 +923,6 @@ mod tests {
         });
         l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut payload| {
             payload.block_value = U256::from(10);
-            payload
-        });
-        
-        // Mock Builder client
-        let mut builder_mock = MockEngineServer::new();
-        builder_mock.get_payload_response = builder_mock.get_payload_response.clone().map(|mut payload| {
-            payload.block_value = U256::from(100); // Different value to distinguish from L2 payload
             payload
         });
         
@@ -939,7 +939,7 @@ mod tests {
         let payload = get_payload_response.unwrap();
         
         // Verify we got the L2 payload (value=10) not the builder payload (value=100)
-        assert_eq!(payload.block_value, U256::from(100));
+        assert_eq!(payload.block_value, U256::from(10));
 
         test_harness.cleanup().await;
     }
