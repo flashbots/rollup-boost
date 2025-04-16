@@ -18,7 +18,7 @@ cargo run -- [OPTIONS]
 - `--builder-url <URL>`: URL of the builder execution engine (required)
 - `--builder-jwt-token <TOKEN>`: JWT token for builder authentication (required)
 - `--builder-jwt-path <PATH>`: Path to the builder JWT secret file (required if `--builder-jwt-token` is not provided)
-- `--rpc-host <HOST>`: Host to run the server on (default: 0.0.0.0)
+- `--rpc-host <HOST>`: Host to run the server on (default: 127.0.0.1)
 - `--rpc-port <PORT>`: Port to run the server on (default: 8081)
 - `--tracing`: Enable tracing (default: false)
 - `--log-level <LEVEL>`: Log level (default: info)

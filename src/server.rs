@@ -621,12 +621,12 @@ mod tests {
     use std::sync::Arc;
     use tokio::time::sleep;
 
-    const HOST: &str = "0.0.0.0";
+    const HOST: &str = "127.0.0.1";
     const L2_PORT: u16 = 8545;
     const L2_ADDR: &str = "127.0.0.1:8545";
     const BUILDER_PORT: u16 = 8544;
     const BUILDER_ADDR: &str = "127.0.0.1:8544";
-    const SERVER_ADDR: &str = "0.0.0.0:8556";
+    const SERVER_ADDR: &str = "127.0.0.1:8556";
 
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
@@ -722,7 +722,7 @@ mod tests {
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
 
             let proxy_server = ServerBuilder::default()
-                .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
+                .build("127.0.0.1:8556".parse::<SocketAddr>().unwrap())
                 .await
                 .unwrap()
                 .start(module);
