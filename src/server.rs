@@ -470,6 +470,39 @@ impl OpExecutionPayloadEnvelope {
             OpExecutionPayloadEnvelope::V4(_) => Version::V4,
         }
     }
+
+    pub fn transactions(&self) -> &[Bytes] {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                &v3.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                &v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+        }
+    }
+
+    pub fn gas_used(&self) -> u64 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.gas_used
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .gas_used
+            }
+        }
+    }
 }
 
 impl From<OpExecutionPayloadEnvelope> for ExecutionPayload {
@@ -582,7 +615,13 @@ impl RollupBoostServer {
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
         }
-        Ok(self.l2_client.new_payload(new_payload).await?)
+        let result = self.l2_client.new_payload(new_payload).await;
+        if let Err(_) = &result {
+            error!("Invalid payload (l2): {:?}", result);
+            counter!("block_building_invalid_l2_payload").increment(1);
+        }
+
+        Ok(result?)
     }
 
     async fn get_payload(
