@@ -582,7 +582,7 @@ impl RollupBoostServer {
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let (payload, context) = match (builder_payload, l2_payload) {
             (Ok(Some(builder)), Ok(l2_payload)) => {
-                if self.execution_mode.lock().is_fallback_enabled() {
+                if self.execution_mode().is_fallback_enabled() {
                     // Default to op-geth's payload
                     Ok((l2_payload, PayloadSource::L2))
                 } else {
