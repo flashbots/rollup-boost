@@ -360,7 +360,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v3(
@@ -408,7 +410,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v4(
