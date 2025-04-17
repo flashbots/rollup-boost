@@ -20,7 +20,7 @@
 The current OP Stack sequencer HA design relies on `op-conductor` to manage a cluster of sequencers. Each node runs a local conductor instance, and the cluster forms a Raft quorum to elect a single leader responsible for block production. The conductor continuously monitors the health of the sequencer, electing a new leader when the current leader is unhealthy. The leader notifies it's local sequencer to run in sequencing mode, allowing `op-node` to send FCUs with payload attributes signaling the execution client to build a new payload. All follower instances are run without sequencer mode enabled, ensuring that only one sequencer is producing blocks at a time.
 
 <p align="center">
-  <img src="./assets/op-stack-ha.png" style="width:85%;" />
+  <img src="../assets/op-stack-ha.png" style="width:85%;" />
 </p>
 
 With the introduction of `rollup-boost`, an additional component is introduced that sits in-between `op-node` and `op-geth` that forwards Engine API requests to an external builder.
@@ -44,7 +44,7 @@ The following designs build on the existing HA sequencer setup by introducing a 
 
 In this design, each `rollup-boost` instance is configured with a single external builder and default execution client. When `op-node` sends an FCU containing payload attributes, `rollup-boost` forwards the request to both the default execution client and its paired builder. Upon receiving a `get_payload` request from `op-node`, `rollup-boost` queries both the execution client and the builder. If the builder returns a payload, it is validated via a `new_payload` request sent to the default execution client. If the builder payload is invalid or unavailable, `rollup-boost` falls back to the execution client's payload.
 
-![1:1 Builder to Rollup Boost](./assets/1-1-builder-rb.png)
+![1:1 Builder to Rollup Boost](../assets/1-1-builder-rb.png)
 
 In the event of sequencer failover, `op-conductor` elects a new leader, promoting a different `op-node` along with its associated `rollup-boost` and builder instance. Since each builder is isolated and only serves requests from its local `rollup-boost`, no coordination between builders is required. This separation mirrors the existing HA model of the OP Stack, extending it to external block production.
 
@@ -133,7 +133,7 @@ Below is a high level summary of how each failure scenario is handled. All exist
 
 In this design, each `rollup-boost` instance can be configured with `n` builders. When an FCU with payload attributes is received, it is broadcast to all builders, each of which begins building a block. Once `rollup-boost` receives a `get_payload` request from `op-node`, it multiplexes the request to all builders. Each builder returns its built payload, and if a payload isn't returned within `n` ms, it is ignored. A block selection policy is applied across the successful responses to choose the final payload (eg. selecting the block with the highest gas used). The selected payload is then validated with via a `new_payload` request sent to the sequencer's default execution client. In the event that the selected block is invalid, the next best block is selected and validated with the default execution client instead. If all builder blocks are invalid, then the default execution client's block is selected.
 
-![n Block Builders](./assets/n-block-builders.png)
+![n Block Builders](../assets/n-block-builders.png)
 
 In this HA design, each `rollup-boost` instance is configured to point at the same set of `n` builders. This design assumes that `rollup-boost` will only forward FCUs with payload attributes ( which are only sent by `op-node` when actively sequencing) ensuring that builders only receive build jobs from the current leader. If `op-conductor` elects a new leader, the previous sequencer stops sending FCUs with attributes, and the new leader begins building blocks without any change required at the builder layer. To the builders, the transition is seamless.
 
@@ -229,7 +229,7 @@ Below is a high level summary of how each failure scenario is handled. All exist
 
 In this design, all `rollup-boost` instances forward requests to a single builder endpoint that load balances across a cluster of builder nodes. When an FCU with payload attributes is received, the request is relayed to the load balancer which fans it out to all builders concurrently. Upon receiving a `get_payload` request from `rollup-boost`, the load balancer forwards the `get_payload` request to all builders and selects a block from the successful responses. Alternatively, the load balancer could preform a health check identifying which builders have successfully produced payloads and select one of the healthy responses to return to `rollup-boost`.
 
-![Builder LB](./assets/builder-lb.png)
+![Builder LB](../assets/builder-lb.png)
 
 This design prioritizes builder fault tolerance compared to a 1:1 (sequencer-to-builder) mapping or a single builder model. As long as any builder in the cluster is healthy, the builder block will be selected regardless of which sequencer instance is currently active. This ensures liveness in the case of builder failures or during rolling deployments. This also allows a chain operator to scale builders horizontally and in various availability zones (or infra providers) without needing to adjust any sequencer infrastructure.
 
