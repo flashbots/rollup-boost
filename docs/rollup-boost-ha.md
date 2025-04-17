@@ -59,7 +59,7 @@ sequenceDiagram
     participant CL as op-node
     participant RB as rollup-boost
     participant EL as op-geth
-    participant B as Builders
+    participant B as Builder
 
     %% FCU forwarded with payload attrs
     Note over CL: FCU with Attributes
@@ -84,7 +84,7 @@ sequenceDiagram
     EL->>RB: {status: VALID, ...}
 
     %% Propagate block to builders
-    Note over RB: Propagate new block to builders
+    Note over RB: Propagate new block to builder
     RB->>B: engine_newPayload(ExecutionPayload)
 
     %% Return final payload to op-node
