@@ -18,7 +18,7 @@ use crate::cli::{Args, LogFormat};
 /// Use caution when adding new attributes here and keep
 /// label cardinality in mind. Not all span attributes make
 /// appropriate labels.
-pub const SPAN_ATTRIBUTE_LABELS: [&str; 5] = ["code", "has_attributes", "payload_source", "gas_delta", "tx_count_delta"];
+pub const SPAN_ATTRIBUTE_LABELS: [&str; 3] = ["code", "has_attributes", "payload_source"];
 
 /// Custom span processor that records span durations as histograms
 #[derive(Debug)]
@@ -56,28 +56,38 @@ impl SpanProcessor for MetricsSpanProcessor {
                 ("status".to_string(), status.into()),
             ])
             .collect::<Vec<_>>();
-        
-        let payload_source = span.attributes.iter()
-            .find(|attr| attr.key.as_str() == "payload_source")
-            .map(|attr| attr.value.as_str().to_string())
-            .unwrap_or("unknown".to_string());
 
-        counter!("block_building_payload_returned", "payload_source" => payload_source.clone()).increment(1);
+        let code = span
+            .attributes
+            .iter()
+            .find(|attr| attr.key.as_str() == "code")
+            .and_then(|attr| attr.value.as_str().parse::<i32>().ok())
+            .unwrap_or(0);
 
-        let gas_delta = span.attributes.iter()
+        if code != 0 {
+            counter!("error", &labels).increment(1);
+        }
+
+        let gas_delta = span
+            .attributes
+            .iter()
             .find(|attr| attr.key.as_str() == "gas_delta")
             .map(|attr| attr.value.as_str().to_string());
 
         if let Some(gas_delta) = gas_delta {
-            counter!("block_building_gas_delta").increment(gas_delta.parse::<u64>().unwrap_or_default());
+            histogram!("block_building_gas_delta", &labels)
+                .record(gas_delta.parse::<u64>().unwrap_or_default() as f64);
         }
-        
-        let tx_count_delta = span.attributes.iter()
+
+        let tx_count_delta = span
+            .attributes
+            .iter()
             .find(|attr| attr.key.as_str() == "tx_count_delta")
             .map(|attr| attr.value.as_str().to_string());
 
         if let Some(tx_count_delta) = tx_count_delta {
-            counter!("block_building_tx_count_delta").increment(tx_count_delta.parse::<u64>().unwrap_or_default());
+            histogram!("block_building_tx_count_delta", &labels)
+                .record(tx_count_delta.parse::<u64>().unwrap_or_default() as f64);
         }
 
         histogram!(format!("{}_duration", span.name), &labels).record(duration);

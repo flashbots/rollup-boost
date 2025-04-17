@@ -12,7 +12,6 @@ use http::Uri;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorObjectOwned;
-use metrics::counter;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -25,6 +24,9 @@ use thiserror::Error;
 use tracing::{error, info, instrument};
 
 const INTERNAL_ERROR: i32 = 13;
+const INVALID_PAYLOAD: i32 = 1337;
+const IO_ERROR: i32 = 1338;
+const JWT_ERROR: i32 = 1339;
 
 pub(crate) type ClientResult<T> = Result<T, RpcClientError>;
 
@@ -44,7 +46,8 @@ trait Code: Sized {
     fn code(&self) -> i32;
 
     fn set_code(self) -> Self {
-        tracing::Span::current().record("code", self.code());
+        let code_value: i64 = self.code().into();
+        tracing::Span::current().record("code", code_value.to_string());
         self
     }
 }
@@ -62,9 +65,10 @@ impl<T, E: Code> Code for Result<T, E> {
 impl Code for RpcClientError {
     fn code(&self) -> i32 {
         match self {
+            RpcClientError::InvalidPayload(_) => INVALID_PAYLOAD,
+            RpcClientError::Io(_) => IO_ERROR,
+            RpcClientError::Jwt(_) => JWT_ERROR,
             RpcClientError::Jsonrpsee(e) => e.code(),
-            // Status code 13 == internal error
-            _ => INTERNAL_ERROR,
         }
     }
 }
@@ -154,7 +158,7 @@ impl RpcClient {
         }
 
         if res.is_invalid() {
-            counter!("rpc_invalid_payload", "method" => "fork_choice_updated_v3", "payload_source" => self.payload_source.to_string()).increment(1);
+            error!("Invalid payload ({}): {:?}", self.payload_source, res);
             return Err(RpcClientError::InvalidPayload(
                 res.payload_status.status.to_string(),
             ))
@@ -172,6 +176,7 @@ impl RpcClient {
             target = self.payload_source.to_string(),
             url = %self.auth_rpc,
             %payload_id,
+            code,
         )
     )]
     pub async fn get_payload_v3(
@@ -215,7 +220,7 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
-            counter!("rpc_invalid_payload", "method" => "new_payload_v3", "payload_source" => self.payload_source.to_string()).increment(1);
+            error!("Invalid payload ({}): {:?}", self.payload_source, res);
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
@@ -230,6 +235,7 @@ impl RpcClient {
             target = self.payload_source.to_string(),
             url = %self.auth_rpc,
             %payload_id,
+            code,
         )
     )]
     pub async fn get_payload_v4(
@@ -294,7 +300,7 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
-            counter!("rpc_invalid_payload", "method" => "new_payload_v4", "payload_source" => self.payload_source.to_string()).increment(1);
+            error!("Invalid payload ({}): {:?}", self.payload_source, res);
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 

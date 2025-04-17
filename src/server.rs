@@ -2,7 +2,6 @@ use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::flashblocks::FlashblocksService;
 use alloy_primitives::{B256, Bytes};
-use metrics::counter;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
@@ -319,7 +318,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v3(
@@ -367,7 +368,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v4(
@@ -568,11 +571,7 @@ impl RollupBoostServer {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move {
-                let result = builder.new_payload(new_payload_clone).await;
-                if let Err(_) = &result {
-                    error!("Invalid payload (builder): {:?}", result);
-                    counter!("invalid_payload", "method" => "new_payload", "payload_source" => "builder").increment(1);
-                }
+                let _ = builder.new_payload(new_payload_clone).await;
             });
         }
         Ok(self.l2_client.new_payload(new_payload).await?)
@@ -644,10 +643,16 @@ impl RollupBoostServer {
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let (payload, context) = match (builder_payload, l2_payload) {
             (Ok(Some(builder)), Ok(l2)) => {
-                tracing::Span::current().record("gas_delta", (builder.gas_used() - l2.gas_used()).to_string());
-                tracing::Span::current().record("tx_count_delta", (builder.transactions().len() - l2.transactions().len()).to_string());
+                tracing::Span::current().record(
+                    "gas_delta",
+                    (builder.gas_used() - l2.gas_used()).to_string(),
+                );
+                tracing::Span::current().record(
+                    "tx_count_delta",
+                    (builder.transactions().len() - l2.transactions().len()).to_string(),
+                );
                 Ok((builder, PayloadSource::Builder))
-            },
+            }
             (Ok(Some(builder)), _) => Ok((builder, PayloadSource::Builder)),
             (_, Ok(l2)) => Ok((l2, PayloadSource::L2)),
             (_, Err(e)) => Err(e),
