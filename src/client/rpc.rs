@@ -24,6 +24,9 @@ use thiserror::Error;
 use tracing::{error, info, instrument};
 
 const INTERNAL_ERROR: i32 = 13;
+const INVALID_PAYLOAD: i32 = 1337;
+const IO_ERROR: i32 = 1338;
+const JWT_ERROR: i32 = 1339;
 
 pub(crate) type ClientResult<T> = Result<T, RpcClientError>;
 
@@ -43,7 +46,8 @@ trait Code: Sized {
     fn code(&self) -> i32;
 
     fn set_code(self) -> Self {
-        tracing::Span::current().record("code", self.code());
+        let code_value: i64 = self.code().into();
+        tracing::Span::current().record("code", code_value.to_string());
         self
     }
 }
@@ -61,9 +65,10 @@ impl<T, E: Code> Code for Result<T, E> {
 impl Code for RpcClientError {
     fn code(&self) -> i32 {
         match self {
+            RpcClientError::InvalidPayload(_) => INVALID_PAYLOAD,
+            RpcClientError::Io(_) => IO_ERROR,
+            RpcClientError::Jwt(_) => JWT_ERROR,
             RpcClientError::Jsonrpsee(e) => e.code(),
-            // Status code 13 == internal error
-            _ => INTERNAL_ERROR,
         }
     }
 }
@@ -153,6 +158,7 @@ impl RpcClient {
         }
 
         if res.is_invalid() {
+            error!("Invalid payload ({}): {:?}", self.payload_source, res);
             return Err(RpcClientError::InvalidPayload(
                 res.payload_status.status.to_string(),
             ))
@@ -170,6 +176,7 @@ impl RpcClient {
             target = self.payload_source.to_string(),
             url = %self.auth_rpc,
             %payload_id,
+            code,
         )
     )]
     pub async fn get_payload_v3(
@@ -213,6 +220,7 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
+            error!("Invalid payload ({}): {:?}", self.payload_source, res);
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
@@ -227,6 +235,7 @@ impl RpcClient {
             target = self.payload_source.to_string(),
             url = %self.auth_rpc,
             %payload_id,
+            code,
         )
     )]
     pub async fn get_payload_v4(
@@ -291,6 +300,7 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
+            error!("Invalid payload ({}): {:?}", self.payload_source, res);
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
@@ -377,7 +387,7 @@ mod tests {
     use super::*;
 
     const AUTH_PORT: u32 = 8550;
-    const AUTH_ADDR: &str = "0.0.0.0";
+    const AUTH_ADDR: &str = "127.0.0.1";
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
 
     #[test]
