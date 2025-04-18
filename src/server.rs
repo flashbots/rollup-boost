@@ -257,7 +257,9 @@ impl EngineApiServer for RollupBoostServer {
             span.record("payload_id", payload_id.to_string());
         }
 
-        // If execution mode is enabled and the FCU has payload attributes,
+        // If execution mode is enabled and the FCU has payload attributes, forward the payload to
+        // the builder. In the case where the FCU does not have payload attributes but boost_sync
+        // is enabled, the payload should still be forwarded to the builder.
         if self.execution_mode().is_enabled() {
             if self.boost_sync || payload_attributes.is_some() {
                 let builder_client = self.builder_client.clone();
