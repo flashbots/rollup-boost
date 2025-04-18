@@ -100,12 +100,12 @@ jobs:
           kurtosis engine status
           kurtosis enclave ls || ( kurtosis engine restart && kurtosis enclave ls )
 
-      - name: Deploy Up
+      - name: Devnet Up
         run: |
           eval $(minikube -p minikube docker-env)
           just devnet-up
 
-      - name: Run Integration Tests
+      - name: Stress Tests
         run: just stress-test
     
       - name: Devnet Down
