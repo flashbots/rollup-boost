@@ -276,7 +276,6 @@ impl EngineApiServer for RollupBoostServer {
             debug!(message = "execution mode is disabled, skipping builder", "head_block_hash" = %fork_choice_state.head_block_hash);
         }
 
-        // TODO: Use _is_block_building_call to log the correct message during the async call to builder
         let trace_id = span.id();
         if let Some(payload_id) = l2_response.payload_id {
             self.payload_trace_context.store(
