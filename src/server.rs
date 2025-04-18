@@ -106,13 +106,8 @@ pub enum ExecutionMode {
 }
 
 impl ExecutionMode {
-    fn is_get_payload_enabled(&self) -> bool {
-        // get payload is only enabled in 'enabled' mode
+    fn is_enabled(&self) -> bool {
         matches!(self, ExecutionMode::Enabled)
-    }
-
-    fn is_disabled(&self) -> bool {
-        matches!(self, ExecutionMode::Disabled)
     }
 }
 
@@ -262,21 +257,24 @@ impl EngineApiServer for RollupBoostServer {
             span.record("payload_id", payload_id.to_string());
         }
 
-        // TODO: Use _is_block_building_call to log the correct message during the async call to builder
-        let (should_send_to_builder, _is_block_building_call) =
-            if let Some(attr) = payload_attributes.as_ref() {
-                // payload attributes are present. It is a FCU call to start block building
-                // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
-                // a deterministic block without txs. We let the fallback EL node compute those.
-                let use_tx_pool = !attr.no_tx_pool.unwrap_or_default();
-                (use_tx_pool, true)
+        // If execution mode is enabled and the FCU has payload attributes,
+        if self.execution_mode().is_enabled() {
+            if self.boost_sync || payload_attributes.is_some() {
+                let builder_client = self.builder_client.clone();
+                let payload_attrs = payload_attributes.clone();
+                tokio::spawn(async move {
+                    let _ = builder_client
+                        .fork_choice_updated_v3(fork_choice_state, payload_attrs)
+                        .await;
+                });
             } else {
-                // no payload attributes. It is a FCU call to lock the head block
-                // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
-                (self.boost_sync, false)
-            };
+                info!(message = "FCU without payload attributes, skipping builder", "head_block_hash" = %fork_choice_state.head_block_hash);
+            }
+        } else {
+            debug!(message = "execution mode is disabled, skipping builder", "head_block_hash" = %fork_choice_state.head_block_hash);
+        }
 
-        let execution_mode = self.execution_mode();
+        // TODO: Use _is_block_building_call to log the correct message during the async call to builder
         let trace_id = span.id();
         if let Some(payload_id) = l2_response.payload_id {
             self.payload_trace_context.store(
@@ -285,19 +283,6 @@ impl EngineApiServer for RollupBoostServer {
                 payload_attributes.is_some(),
                 trace_id,
             );
-        }
-
-        if execution_mode.is_disabled() {
-            debug!(message = "execution mode is disabled, skipping FCU call to builder", "head_block_hash" = %fork_choice_state.head_block_hash);
-        } else if should_send_to_builder {
-            let builder_client = self.builder_client.clone();
-            tokio::spawn(async move {
-                let _ = builder_client
-                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-                    .await;
-            });
-        } else {
-            info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash);
         }
 
         Ok(l2_response)
@@ -509,7 +494,7 @@ impl RollupBoostServer {
 
         // async call to builder to sync the builder node
         let execution_mode = self.execution_mode();
-        if self.boost_sync && !execution_mode.is_disabled() {
+        if self.boost_sync && execution_mode.is_enabled() {
             if let Some(causes) = self
                 .payload_trace_context
                 .trace_ids_from_parent_hash(&parent_hash)
@@ -539,7 +524,7 @@ impl RollupBoostServer {
         let l2_client_future = self.l2_client.get_payload(payload_id, version);
         let builder_client_future = Box::pin(async move {
             let execution_mode = self.execution_mode();
-            if !execution_mode.is_get_payload_enabled() {
+            if !execution_mode.is_enabled() {
                 info!(message = "dry run mode is enabled, skipping get payload builder call");
 
                 // We are in dry run mode, so we do not want to call the builder.
