@@ -19,7 +19,3 @@ optimism_package:
       additional_services: 
         - rollup-boost
         - blockscout
-ethereum_package:
-  participants:
-  - el_type: geth
-    cl_type: lighthouse

@@ -106,7 +106,9 @@ jobs:
           just devnet-up
 
       - name: Stress Tests
-        run: just stress-test
+        run: |
+          rm -rf ~/.contender/contender.db
+          just stress-test
     
       - name: Devnet Down
         run: |
