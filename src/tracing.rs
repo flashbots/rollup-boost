@@ -57,17 +57,9 @@ impl SpanProcessor for MetricsSpanProcessor {
             ])
             .collect::<Vec<_>>();
 
-        let code = span
-            .attributes
-            .iter()
-            .find(|attr| attr.key.as_str() == "code")
-            .and_then(|attr| attr.value.as_str().parse::<i32>().ok())
-            .unwrap_or(0);
-
-        if code != 0 {
-            counter!("error", &labels).increment(1);
-        }
-
+        // 0 = no difference in gas build via builder vs l2
+        // > 0 = gas used by builder block is greater than l2 block
+        // < 0 = gas used by l2 block is greater than builder block
         let gas_delta = span
             .attributes
             .iter()
@@ -79,6 +71,9 @@ impl SpanProcessor for MetricsSpanProcessor {
                 .record(gas_delta.parse::<u64>().unwrap_or_default() as f64);
         }
 
+        // 0 = no difference in tx count build via builder vs l2
+        // > 0 = num txs in builder block is greater than l2 block
+        // < 0 = num txs in l2 block is greater than builder block
         let tx_count_delta = span
             .attributes
             .iter()
