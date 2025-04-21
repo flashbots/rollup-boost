@@ -318,7 +318,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v3(
@@ -366,7 +368,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v4(
@@ -422,6 +426,39 @@ impl OpExecutionPayloadEnvelope {
         match self {
             OpExecutionPayloadEnvelope::V3(_) => Version::V3,
             OpExecutionPayloadEnvelope::V4(_) => Version::V4,
+        }
+    }
+
+    pub fn transactions(&self) -> &[Bytes] {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                &v3.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                &v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+        }
+    }
+
+    pub fn gas_used(&self) -> u64 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.gas_used
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .gas_used
+            }
         }
     }
 }
@@ -605,6 +642,17 @@ impl RollupBoostServer {
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let (payload, context) = match (builder_payload, l2_payload) {
+            (Ok(Some(builder)), Ok(l2)) => {
+                tracing::Span::current().record(
+                    "gas_delta",
+                    (builder.gas_used() - l2.gas_used()).to_string(),
+                );
+                tracing::Span::current().record(
+                    "tx_count_delta",
+                    (builder.transactions().len() - l2.transactions().len()).to_string(),
+                );
+                Ok((builder, PayloadSource::Builder))
+            }
             (Ok(Some(builder)), _) => Ok((builder, PayloadSource::Builder)),
             (_, Ok(l2)) => Ok((l2, PayloadSource::L2)),
             (_, Err(e)) => Err(e),
@@ -651,12 +699,12 @@ mod tests {
     use std::sync::Arc;
     use tokio::time::sleep;
 
-    const HOST: &str = "0.0.0.0";
+    const HOST: &str = "127.0.0.1";
     const L2_PORT: u16 = 8545;
     const L2_ADDR: &str = "127.0.0.1:8545";
     const BUILDER_PORT: u16 = 8544;
     const BUILDER_ADDR: &str = "127.0.0.1:8544";
-    const SERVER_ADDR: &str = "0.0.0.0:8556";
+    const SERVER_ADDR: &str = "127.0.0.1:8556";
 
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
@@ -753,7 +801,7 @@ mod tests {
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
 
             let proxy_server = ServerBuilder::default()
-                .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
+                .build(SERVER_ADDR.parse::<SocketAddr>().unwrap())
                 .await
                 .unwrap()
                 .start(module);
