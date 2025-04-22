@@ -2,6 +2,7 @@ use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::probe::{Health, Probes};
 use alloy_primitives::{B256, Bytes};
+use metrics::counter;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
@@ -103,6 +104,8 @@ pub enum ExecutionMode {
     DryRun,
     // Not sending any requests
     Disabled,
+    // Defaulting to op-geth payloads
+    Fallback,
 }
 
 impl ExecutionMode {
@@ -113,6 +116,10 @@ impl ExecutionMode {
 
     fn is_disabled(&self) -> bool {
         matches!(self, ExecutionMode::Disabled)
+    }
+
+    fn is_fallback_enabled(&self) -> bool {
+        matches!(self, ExecutionMode::Fallback)
     }
 }
 
@@ -579,10 +586,15 @@ impl RollupBoostServer {
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
         let (payload, context) = match (builder_payload, l2_payload) {
-            (Ok(Some(builder)), _) => {
+            (Ok(Some(builder)), Ok(l2_payload)) => {
                 // builder successfully returned a payload
                 self.probes.set_health(Health::Healthy);
-                Ok((builder, PayloadSource::Builder))
+                if self.execution_mode().is_fallback_enabled() {
+                    // Default to op-geth's payload
+                    Ok((l2_payload, PayloadSource::L2))
+                } else {
+                    Ok((builder, PayloadSource::Builder))
+                }
             }
             (_, Ok(l2)) => {
                 // builder failed to return a payload
@@ -597,6 +609,9 @@ impl RollupBoostServer {
         }?;
 
         tracing::Span::current().record("payload_source", context.to_string());
+        // To maintain backwards compatibility with old metrics, we need to record blocks built
+        // This is temporary until we migrate to the new metrics
+        counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
 
         let inner_payload = ExecutionPayload::from(payload.clone());
         let block_hash = inner_payload.block_hash();
