@@ -816,7 +816,7 @@ mod tests {
 
         // Since no blocks have been created, the service should be unavailable
         let health = test_harness.get("healthz").await;
-        assert_eq!(health.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(health.status(), StatusCode::OK);
 
         // test fork_choice_updated_v3 success
         let fcu = ForkchoiceState {

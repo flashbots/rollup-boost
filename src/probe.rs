@@ -15,13 +15,13 @@ use tower::{Layer, Service};
 #[derive(Copy, Clone, Debug, Default)]
 pub enum Health {
     /// Indicates that the builder is building blocks
+    #[default]
     Healthy,
     /// Indicates that the l2 is building blocks, but the builder is not
     PartialContent,
     /// Indicates that blocks are not being built by either the l2 or the builder
     ///
     /// Service starts out unavailable until the first blocks are built
-    #[default]
     ServiceUnavailable,
 }
 

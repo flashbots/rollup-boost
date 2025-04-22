@@ -400,7 +400,7 @@ mod tests {
         let health_response = client.get(health_check_url.parse::<Uri>().unwrap()).await;
         assert!(health_response.is_ok());
         let status = health_response.unwrap().status();
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(status, StatusCode::OK);
 
         proxy_server.stop().unwrap();
         proxy_server.stopped().await;
