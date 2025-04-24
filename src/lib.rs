@@ -24,3 +24,6 @@ pub use tracing::*;
 
 mod probe;
 pub use probe::*;
+
+mod health;
+pub use health::*;

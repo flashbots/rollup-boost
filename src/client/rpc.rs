@@ -322,6 +322,12 @@ impl RpcClient {
             }
         }
     }
+
+    pub async fn get_block_number(&self) -> ClientResult<u64> {
+        info!("Sending get_block_number to {}", self.payload_source);
+        let block_number = self.auth_client.get_block_number().await.set_code()?;
+        Ok(block_number)
+    }
 }
 
 /// Generates Clap argument structs with a prefix to create a unique namespace when specifying RPC client config via the CLI.

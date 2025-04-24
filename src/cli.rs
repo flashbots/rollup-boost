@@ -27,6 +27,10 @@ pub struct Args {
     #[clap(flatten)]
     pub l2_client: L2ClientArgs,
 
+    /// Duration in seconds between async health checks on the builder, and the l2 client
+    #[arg(long, env, default_value = "60")]
+    pub health_check_interval: u64,
+
     /// Disable using the proposer to sync the builder node
     #[arg(long, env, default_value = "false")]
     pub no_boost_sync: bool,
@@ -164,6 +168,7 @@ impl Args {
             boost_sync_enabled,
             self.execution_mode,
             probes,
+            self.health_check_interval,
         );
 
         // Spawn the debug server
