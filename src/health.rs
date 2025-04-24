@@ -20,8 +20,8 @@ impl HealthHandle {
         let handle = tokio::spawn(async move {
             loop {
                 let (l2_block_height, builder_block_height) = tokio::join!(
-                    self.l2_client.get_block_number(),
-                    self.builder_client.get_block_number()
+                    self.l2_client.block_number(),
+                    self.builder_client.block_number()
                 );
                 match l2_block_height {
                     Err(e) => {

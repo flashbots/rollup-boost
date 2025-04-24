@@ -2,7 +2,7 @@ use crate::HealthHandle;
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::probe::{Health, Probes};
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::{B256, Bytes, U256};
 use metrics::counter;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
@@ -256,8 +256,8 @@ pub trait EngineApi {
         execution_requests: Vec<Bytes>,
     ) -> RpcResult<PayloadStatus>;
 
-    #[method(name = "eth_getBlockNumber")]
-    async fn get_block_number(&self) -> RpcResult<u64>;
+    #[method(name = "eth_blockNumber")]
+    async fn block_number(&self) -> RpcResult<U256>;
 }
 
 #[async_trait]
@@ -429,9 +429,8 @@ impl EngineApiServer for RollupBoostServer {
         .await
     }
 
-    async fn get_block_number(&self) -> RpcResult<u64> {
-        info!("received get_block_number");
-        Ok(self.l2_client.get_block_number().await?)
+    async fn block_number(&self) -> RpcResult<U256> {
+        Ok(self.l2_client.block_number().await?)
     }
 }
 

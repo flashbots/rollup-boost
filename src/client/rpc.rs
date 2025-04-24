@@ -2,7 +2,7 @@ use crate::client::auth::AuthLayer;
 use crate::server::{
     EngineApiClient, NewPayload, OpExecutionPayloadEnvelope, PayloadSource, Version,
 };
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::{B256, Bytes, U256};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,
     PayloadId, PayloadStatus,
@@ -323,9 +323,8 @@ impl RpcClient {
         }
     }
 
-    pub async fn get_block_number(&self) -> ClientResult<u64> {
-        info!("Sending get_block_number to {}", self.payload_source);
-        let block_number = self.auth_client.get_block_number().await.set_code()?;
+    pub async fn block_number(&self) -> ClientResult<U256> {
+        let block_number = self.auth_client.block_number().await.set_code()?;
         Ok(block_number)
     }
 }
