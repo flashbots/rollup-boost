@@ -17,7 +17,7 @@ pub struct HealthHandle {
 
 impl HealthHandle {
     pub fn spawn(self) -> JoinHandle<()> {
-        let handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 let (l2_block_height, builder_block_height) = tokio::join!(
                     self.l2_client.block_number(),
@@ -46,8 +46,6 @@ impl HealthHandle {
                 }
                 sleep_until(Instant::now() + Duration::from_secs(self.health_check_interval)).await;
             }
-        });
-
-        handle
+        })
     }
 }
