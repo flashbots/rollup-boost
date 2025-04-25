@@ -4,9 +4,10 @@
   - [Goals](#goals)
   - [Non Goals](#non-goals)
 - [Design](#design)
-    - [Failure Scenarios](#failure-scenarios)
-    - [Pros/Cons](#pros-and-cons)
-- [Additional Considerations](#additional-considerations)
+  - [Overview](#overview)
+  - [Health Checks]()
+  - [DebugAPI]()
+  - [Failure Scenarios](#failure-scenarios)
 
 # Context/Scope
 
@@ -31,16 +32,16 @@ This design document outlines the architecture, components, and failure strategi
 
 # Design
 
-The following design builds on the existing HA sequencer setup by introducing a `rollup-boost` instance between each `op-node` and its local `op-geth` instance.
-In the proposed design, each `rollup-boost` instance is configured with a single external builder and default execution client. When `op-node` sends an FCU containing payload attributes, `rollup-boost` forwards the request to both the default execution client and its paired builder. Upon receiving a `get_payload` request from `op-node`, `rollup-boost` queries both the execution client and the builder. If the builder returns a payload, it is validated via a `new_payload` request sent to the default execution client. If the builder payload is invalid or unavailable, `rollup-boost` falls back to the execution client's payload.
+## Overview
+The following design builds on the existing HA sequencer setup by introducing a `rollup-boost` instance between each `op-node` and its local `op-geth` instance. In this model, each `rollup-boost` is paired with a single external builder and default execution client. When `op-node` sends an FCU containing payload attributes, `rollup-boost` forwards the request to both the default execution client and its paired builder.
+
+Upon receiving a `get_payload` request from `op-node`, `rollup-boost` forwards the call to both the builder and default execution client. If the builder returns a payload, it is validated via a `new_payload` call to the sequencer's local execution client. If the builder payload is invalid or unavailable, `rollup-boost` falls back to the local execution client’s payload.
 
 ![1:1 Builder to Rollup Boost](../assets/1-1-builder-rb.png)
 
 In the event of sequencer failover, `op-conductor` elects a new leader, promoting a different `op-node` along with its associated `rollup-boost` and builder instance. Since each builder is isolated and only serves requests from its local `rollup-boost`, no coordination between builders is required. This separation mirrors the existing HA model of the OP Stack, extending it to external block production.
 
-This approach is operationally simple and relies on the same liveness and fault tolerance guarantees already provided by the OP Stack's sequencer HA setup. Currently, `op-conductor` health checks only evaluate the state of the default execution client, and are unaware of builder health. In the event that the builder is down, `op-conductor` will not switch over to another sequencer instance. Further, if more than one builder is down, `op-conductor` will not currently know if the builder associated with the incoming leader is healthy or unhealthy. One potential solution would be to point `op-conductor` at `rollup-boost` for health checks which could incorporate both the builder and default execution client health. Alternatively `op-conductor` could feature health checks for `rollup-boost` in addition to the existing health checks.
-
-Note that `rollup-boost` does not currently feature a block selection policy and will optimistically select the builder's block for validation. In the event of a bug in the builder, it is possible valid but undesirable blocks (eg. empty blocks) are produced. Without a block selection policy, `rollup-boost` will prefer these blocks over the default execution client. Proper monitoring alerting can help mitigate this but further designs should be explored to introduce safeguards into `rollup-boost` directly rather than relying on the builder implementation being correct.
+This approach is operationally simple and relies on the same liveness and fault tolerance guarantees already provided by the OP Stack's sequencer HA setup. Note that `rollup-boost` does not currently feature a block selection policy and will optimistically select the builder's block for validation. In the event of a bug in the builder, it is possible valid, but undesirable blocks (eg. empty blocks) are produced. Without a block selection policy, `rollup-boost` will prefer the builder's block over the default execution client. If the builder produces undesirable but valid blocks, operators must either manually disable external block production via the `rollup-boost` debug API, disable the block builder directly (causing health checks to fail), or manually select a new sequencer leader. Proper monitoring alerting can help mitigate this but further designs should be explored to introduce safeguards into rollup-boost directly rather than relying on the builder implementation being correct.
 
 Below is a happy path sequence diagram illustrating how `rollup-boost` facilitates payload construction/validation:
 
@@ -82,7 +83,7 @@ sequenceDiagram
 
 ```
 
-### Failure Scenarios
+## Failure Scenarios
 Below is a high level summary of how each failure scenario is handled. All existing failure modes assumed by upstream `op-conductor` are maintained:
 
 | Failure Scenario | Category | Scenario and Solution |
