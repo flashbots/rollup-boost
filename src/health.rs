@@ -20,7 +20,7 @@ pub struct HealthHandle {
 }
 
 impl HealthHandle {
-    /// Periodically checks that the latest unsafe block timestamp is not older than the 
+    /// Periodically checks that the latest unsafe block timestamp is not older than the
     /// the current time minus the max_unsafe_interval.
     pub fn spawn(self) -> JoinHandle<()> {
         tokio::spawn(async move {
@@ -34,6 +34,10 @@ impl HealthHandle {
                     Err(e) => {
                         warn!(target: "rollup_boost::health", "Failed to get unsafe block from builder client: {} - updating health status", e);
                         self.probes.set_health(Health::PartialContent);
+                        sleep_until(
+                            Instant::now() + Duration::from_secs(self.health_check_interval),
+                        )
+                        .await;
                         continue;
                     }
                 };
