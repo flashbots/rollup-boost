@@ -31,6 +31,10 @@ pub struct Args {
     #[arg(long, env, default_value = "60")]
     pub health_check_interval: u64,
 
+    /// Max duration in seconds between the unsafe head block and the current time to be considered healthy
+    #[arg(long, env, default_value = "5")]
+    pub max_unsafe_interval: u64,
+
     /// Disable using the proposer to sync the builder node
     #[arg(long, env, default_value = "false")]
     pub no_boost_sync: bool,
@@ -169,6 +173,7 @@ impl Args {
             self.execution_mode,
             probes,
             self.health_check_interval,
+            self.max_unsafe_interval,
         );
 
         // Spawn the debug server

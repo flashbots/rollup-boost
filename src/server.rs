@@ -2,7 +2,8 @@ use crate::HealthHandle;
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::probe::{Health, Probes};
-use alloy_primitives::{B256, Bytes, U256};
+use alloy_primitives::{B256, Bytes};
+use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use metrics::counter;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
@@ -142,13 +143,14 @@ impl RollupBoostServer {
         initial_execution_mode: ExecutionMode,
         probes: Arc<Probes>,
         health_check_interval: u64,
+        max_unsafe_interval: u64,
     ) -> Self {
         // Spawns a helth check service in the background to continuously check the health of the L2 and builder clients
         let health_handle = HealthHandle {
             probes: probes.clone(),
             builder_client: Arc::new(builder_client.clone()),
-            l2_client: Arc::new(l2_client.clone()),
             health_check_interval,
+            max_unsafe_interval,
         }
         .spawn();
 
@@ -257,8 +259,8 @@ pub trait EngineApi {
         execution_requests: Vec<Bytes>,
     ) -> RpcResult<PayloadStatus>;
 
-    #[method(name = "eth_blockNumber")]
-    async fn block_number(&self) -> RpcResult<U256>;
+    #[method(name = "eth_getBlockByNumber")]
+    async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block>;
 }
 
 #[async_trait]
@@ -430,8 +432,8 @@ impl EngineApiServer for RollupBoostServer {
         .await
     }
 
-    async fn block_number(&self) -> RpcResult<U256> {
-        Ok(self.l2_client.block_number().await?)
+    async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block> {
+        Ok(self.l2_client.get_block_by_number(number, full).await?)
     }
 }
 
@@ -782,7 +784,8 @@ mod tests {
                 boost_sync,
                 ExecutionMode::Enabled,
                 probes,
-                10,
+                60,
+                5,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
