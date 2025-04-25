@@ -20,7 +20,8 @@ pub struct HealthHandle {
 }
 
 impl HealthHandle {
-    /// Periodically checks that the latest unsafe block is not older than the max_unsafe_interval by a specified threshold.
+    /// Periodically checks that the latest unsafe block timestamp is not older than the 
+    /// the current time minus the max_unsafe_interval.
     pub fn spawn(self) -> JoinHandle<()> {
         tokio::spawn(async move {
             loop {
