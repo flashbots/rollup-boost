@@ -1,7 +1,9 @@
+use crate::HealthHandle;
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use crate::probe::{Health, Probes};
 use alloy_primitives::{B256, Bytes};
+use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use metrics::counter;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
@@ -21,7 +23,7 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use serde::{Deserialize, Serialize};
-
+use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument};
 
 use jsonrpsee::proc_macros::rpc;
@@ -123,12 +125,12 @@ impl ExecutionMode {
     }
 }
 
-#[derive(Clone)]
 pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<RpcClient>,
     pub boost_sync: bool,
     pub payload_trace_context: Arc<PayloadTraceContext>,
+    health_handle: JoinHandle<()>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
 }
@@ -140,7 +142,17 @@ impl RollupBoostServer {
         boost_sync: bool,
         initial_execution_mode: ExecutionMode,
         probes: Arc<Probes>,
+        health_check_interval: u64,
+        max_unsafe_interval: u64,
     ) -> Self {
+        let health_handle = HealthHandle {
+            probes: probes.clone(),
+            builder_client: Arc::new(builder_client.clone()),
+            health_check_interval,
+            max_unsafe_interval,
+        }
+        .spawn();
+
         Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
@@ -148,6 +160,7 @@ impl RollupBoostServer {
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
             probes,
+            health_handle,
         }
     }
 
@@ -160,6 +173,10 @@ impl RollupBoostServer {
     pub fn execution_mode(&self) -> ExecutionMode {
         *self.execution_mode.lock()
     }
+
+    pub fn health_handle(&self) -> &JoinHandle<()> {
+        &self.health_handle
+    }
 }
 
 impl TryInto<RpcModule<()>> for RollupBoostServer {
@@ -167,7 +184,7 @@ impl TryInto<RpcModule<()>> for RollupBoostServer {
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
         let mut module: RpcModule<()> = RpcModule::new(());
-        module.merge(EngineApiServer::into_rpc(self.clone()))?;
+        module.merge(EngineApiServer::into_rpc(self))?;
 
         for method in module.method_names() {
             info!(?method, "method registered");
@@ -203,22 +220,22 @@ impl PayloadSource {
     }
 }
 
-#[rpc(server, client, namespace = "engine")]
+#[rpc(server, client)]
 pub trait EngineApi {
-    #[method(name = "forkchoiceUpdatedV3")]
+    #[method(name = "engine_forkchoiceUpdatedV3")]
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated>;
 
-    #[method(name = "getPayloadV3")]
+    #[method(name = "engine_getPayloadV3")]
     async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3>;
 
-    #[method(name = "newPayloadV3")]
+    #[method(name = "engine_newPayloadV3")]
     async fn new_payload_v3(
         &self,
         payload: ExecutionPayloadV3,
@@ -226,13 +243,13 @@ pub trait EngineApi {
         parent_beacon_block_root: B256,
     ) -> RpcResult<PayloadStatus>;
 
-    #[method(name = "getPayloadV4")]
+    #[method(name = "engine_getPayloadV4")]
     async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV4>;
 
-    #[method(name = "newPayloadV4")]
+    #[method(name = "engine_newPayloadV4")]
     async fn new_payload_v4(
         &self,
         payload: OpExecutionPayloadV4,
@@ -240,6 +257,9 @@ pub trait EngineApi {
         parent_beacon_block_root: B256,
         execution_requests: Vec<Bytes>,
     ) -> RpcResult<PayloadStatus>;
+
+    #[method(name = "eth_getBlockByNumber")]
+    async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block>;
 }
 
 #[async_trait]
@@ -409,6 +429,10 @@ impl EngineApiServer for RollupBoostServer {
             execution_requests,
         }))
         .await
+    }
+
+    async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block> {
+        Ok(self.l2_client.get_block_by_number(number, full).await?)
     }
 }
 
@@ -759,6 +783,8 @@ mod tests {
                 boost_sync,
                 ExecutionMode::Enabled,
                 probes,
+                60,
+                5,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();

@@ -27,6 +27,14 @@ pub struct Args {
     #[clap(flatten)]
     pub l2_client: L2ClientArgs,
 
+    /// Duration in seconds between async health checks on the builder
+    #[arg(long, env, default_value = "60")]
+    pub health_check_interval: u64,
+
+    /// Max duration in seconds between the unsafe head block of the builder and the current time
+    #[arg(long, env, default_value = "5")]
+    pub max_unsafe_interval: u64,
+
     /// Disable using the proposer to sync the builder node
     #[arg(long, env, default_value = "false")]
     pub no_boost_sync: bool,
@@ -164,6 +172,8 @@ impl Args {
             boost_sync_enabled,
             self.execution_mode,
             probes,
+            self.health_check_interval,
+            self.max_unsafe_interval,
         );
 
         // Spawn the debug server

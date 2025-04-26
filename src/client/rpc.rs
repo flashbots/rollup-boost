@@ -2,11 +2,13 @@ use crate::client::auth::AuthLayer;
 use crate::server::{
     EngineApiClient, NewPayload, OpExecutionPayloadEnvelope, PayloadSource, Version,
 };
+
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,
     PayloadId, PayloadStatus,
 };
+use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use clap::{Parser, arg};
 use http::Uri;
 use jsonrpsee::http_client::transport::HttpBackend;
@@ -321,6 +323,18 @@ impl RpcClient {
                 .await
             }
         }
+    }
+
+    pub async fn get_block_by_number(
+        &self,
+        number: BlockNumberOrTag,
+        full: bool,
+    ) -> ClientResult<Block> {
+        Ok(self
+            .auth_client
+            .get_block_by_number(number, full)
+            .await
+            .set_code()?)
     }
 }
 
