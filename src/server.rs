@@ -145,7 +145,6 @@ impl RollupBoostServer {
         health_check_interval: u64,
         max_unsafe_interval: u64,
     ) -> Self {
-        // Spawns a helth check service in the background to continuously check the health of the L2 and builder clients
         let health_handle = HealthHandle {
             probes: probes.clone(),
             builder_client: Arc::new(builder_client.clone()),
