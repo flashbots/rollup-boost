@@ -22,10 +22,12 @@ With the introduction of `rollup-boost`, an additional component is introduced t
 This design document outlines the architecture, components, and failure strategies required for HA `rollup-boost`. The proposed design prioritizes fault tolerance, liveliness, horizontal scalability, and minimal failover time while maintaining upstream compatibility with `op-conductor`.
 
 ## Goals
+
 - Explore HA designs for `rollup-boost` prioritizing liveliness, fault tolerance and horizontal scalability for external block builders.
 - Maintain compatibility with `op-conductor` and its sequencing assumptions.
 
 ## Non Goals
+
 - Define how Flashblocks are handled, consumed or streamed to the network.
 - Define how pending transactions are relayed/peered across the builders/sequencer execution clients.
 - Monitoring / alerting strategies. This can be specified in a separate document once an architecture is solidified.
@@ -33,6 +35,7 @@ This design document outlines the architecture, components, and failure strategi
 # Design
 
 ## Overview
+
 The following design builds on the existing HA sequencer setup by introducing a `rollup-boost` instance between each `op-node` and its local `op-geth` instance. In this model, each `rollup-boost` is paired with a single external builder and default execution client. When `op-node` sends an FCU containing payload attributes, `rollup-boost` forwards the request to both the default execution client and its paired builder.
 
 Upon receiving a `get_payload` request from `op-node`, `rollup-boost` forwards the call to both the builder and default execution client. If the builder returns a payload, it is validated via a `new_payload` call to the sequencer's local execution client. If the builder payload is invalid or unavailable, `rollup-boost` falls back to the local execution client’s payload.
@@ -83,7 +86,36 @@ sequenceDiagram
 
 ```
 
+## Health Checks
+
+In high availability deployments, `op-conductor` must assess the full health of the block production path. Rollup Boost will expose a composite `/healthz` endpoint to report on both builder synchronization and payload production status. These checks allow `op-conductor` to detect degraded block building conditions and make informed leadership decisions.
+
+Rollup Boost will continuously monitors two independent conditions to inform the health of the builder and the default execution client:
+
+- **Builder Synchronization**:  
+  A background task periodically queries the builder’s latest unsafe block via `engine_getBlockByNumber`. The task compares the timestamp of the returned block to the local system time. If the difference exceeds a configured maximum unsafe interval (`max_unsafe_interval`), the builder is considered out of sync. Failure to fetch a block from the builder or detection of an outdated block timestamp results in the health status being downgraded to Partial. If the builder is responsive and the block timestamp is within the acceptable interval, the builder is considered synchronized and healthy.
+- **Payload Production**:  
+  During each `get_payload` request, Rollup Boost will verify payload availability from both the builder and the execution client. If the builder fails to deliver a payload, Rollup Boost will report partial health. If the execution client fails to deliver a payload, Rollup Boost will report unhealthy.
+
+| Condition | Health Status |
+|:----------|:--------------|
+| Builder is synced and both execution client and builder return payloads | `200 OK` (Healthy) |
+| Builder is out of sync| `206 Partial Content` (Partially Healthy) |
+| Builder fails to return payload on `get_payload` request | `206 Partial Content` (Partially Healthy) |
+| Execution client fails to return payload on `get_payload` request | `503 Service Unavailable` (Unhealthy) |
+
+### Integration with op-conductor
+
+`op-conductor` should query the `/healthz` endpoint on each sequencer node alongside existing execution client health checks. Health status should be interpreted as follows:
+
+- `200 OK`: Sequencer is fully healthy and eligible for leadership.
+- `206 Partial Content`: Sequencer is partially healthy; eligible only if no fully healthy candidates are available.
+- `503 Service Unavailable`: Sequencer is unhealthy; triggers immediate leadership transfer.
+
+Inactive sequencer instances (followers) will only rely on the background sync check since they are not actively producing blocks. This mirrors the liveness guarantees in the existing OP Stack HA model and ensures readiness for rapid promotion during failover events.
+
 ## Failure Scenarios
+
 Below is a high level summary of how each failure scenario is handled. All existing failure modes assumed by upstream `op-conductor` are maintained:
 
 | Failure Scenario | Category | Scenario and Solution |
