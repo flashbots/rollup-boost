@@ -104,15 +104,19 @@ Rollup Boost will continuously monitors two independent conditions to inform the
 | Builder fails to return payload on `get_payload` request | `206 Partial Content` (Partially Healthy) |
 | Execution client fails to return payload on `get_payload` request | `503 Service Unavailable` (Unhealthy) |
 
-### Integration with op-conductor
+`op-conductor` should query the `/healthz` endpoint exposed by Rollup Boost in addition to the existing execution client health checks. Health should be interpreted as follows:
 
-`op-conductor` should query the `/healthz` endpoint on each sequencer node alongside existing execution client health checks. Health status should be interpreted as follows:
+- `200 OK` (Healthy): The node is fully healthy and eligible for leadership.
+- `206 Partial Content` (Partially Healthy): The node is degraded but may be considered for leadership if no fully healthy candidates are available.
+- `503 Service Unavailable` (Unhealthy): The node is unhealthy and must be excluded from leadership.
 
-- `200 OK`: Sequencer is fully healthy and eligible for leadership.
-- `206 Partial Content`: Sequencer is partially healthy; eligible only if no fully healthy candidates are available.
-- `503 Service Unavailable`: Sequencer is unhealthy; triggers immediate leadership transfer.
+During normal operation and leadership transfers, `op-conductor` should prioritize candidates in the following order:
 
-Inactive sequencer instances (followers) will only rely on the background sync check since they are not actively producing blocks. This mirrors the liveness guarantees in the existing OP Stack HA model and ensures readiness for rapid promotion during failover events.
+1. Prefer nodes reporting `200 OK`.
+2. If no fully healthy nodes are available, select from nodes reporting `206 Partial Content`.
+3. Nodes reporting `503 Service Unavailable` must not be selected as leader.
+
+Rollup Boost instances that are not actively sequencing rely exclusively on the builder sync check to report health, as they are not producing blocks. This behavior mirrors the existing `op-conductor` health checks for inactive sequencers and ensures readiness during failover without compromising network liveness guarantees.
 
 ## Failure Scenarios
 
