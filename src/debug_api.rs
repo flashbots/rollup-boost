@@ -3,36 +3,17 @@ use jsonrpsee::http_client::HttpClient;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::server::Server;
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::server::ExecutionMode;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SetExecutionModeRequest {
-    pub execution_mode: ExecutionMode,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SetExecutionModeResponse {
-    pub execution_mode: ExecutionMode,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct GetExecutionModeResponse {
-    pub execution_mode: ExecutionMode,
-}
-
 #[rpc(server, client, namespace = "debug")]
 trait DebugApi {
     #[method(name = "setExecutionMode")]
-    async fn set_execution_mode(
-        &self,
-        request: SetExecutionModeRequest,
-    ) -> RpcResult<SetExecutionModeResponse>;
+    async fn set_execution_mode(&self, request: ExecutionMode) -> RpcResult<()>;
 
     #[method(name = "getExecutionMode")]
-    async fn get_execution_mode(&self) -> RpcResult<GetExecutionModeResponse>;
+    async fn get_execution_mode(&self) -> RpcResult<ExecutionMode>;
 }
 
 pub struct DebugServer {
@@ -69,23 +50,14 @@ impl DebugServer {
 
 #[async_trait]
 impl DebugApiServer for DebugServer {
-    async fn set_execution_mode(
-        &self,
-        request: SetExecutionModeRequest,
-    ) -> RpcResult<SetExecutionModeResponse> {
-        self.set_execution_mode(request.execution_mode);
-
-        tracing::info!("Set execution mode to {:?}", request.execution_mode);
-
-        Ok(SetExecutionModeResponse {
-            execution_mode: request.execution_mode,
-        })
+    async fn set_execution_mode(&self, request: ExecutionMode) -> RpcResult<()> {
+        self.set_execution_mode(request);
+        tracing::info!("Set execution mode to {:?}", request);
+        Ok(())
     }
 
-    async fn get_execution_mode(&self) -> RpcResult<GetExecutionModeResponse> {
-        Ok(GetExecutionModeResponse {
-            execution_mode: self.execution_mode(),
-        })
+    async fn get_execution_mode(&self) -> RpcResult<ExecutionMode> {
+        Ok(self.execution_mode())
     }
 }
 
@@ -100,16 +72,12 @@ impl DebugClient {
         Ok(Self { client })
     }
 
-    pub async fn set_execution_mode(
-        &self,
-        execution_mode: ExecutionMode,
-    ) -> eyre::Result<SetExecutionModeResponse> {
-        let request = SetExecutionModeRequest { execution_mode };
-        let result = DebugApiClient::set_execution_mode(&self.client, request).await?;
+    pub async fn set_execution_mode(&self, execution_mode: ExecutionMode) -> eyre::Result<()> {
+        let result = DebugApiClient::set_execution_mode(&self.client, execution_mode).await?;
         Ok(result)
     }
 
-    pub async fn get_execution_mode(&self) -> eyre::Result<GetExecutionModeResponse> {
+    pub async fn get_execution_mode(&self) -> eyre::Result<ExecutionMode> {
         let result = DebugApiClient::get_execution_mode(&self.client).await?;
         Ok(result)
     }
@@ -122,7 +90,7 @@ mod tests {
     const DEFAULT_ADDR: &str = "127.0.0.1:5555";
 
     #[tokio::test]
-    async fn test_debug_client() {
+    async fn test_set_execution_mode() -> eyre::Result<()> {
         // spawn the server and try to modify it with the client
         let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
@@ -132,37 +100,27 @@ mod tests {
         let client = DebugClient::new(format!("http://{}", DEFAULT_ADDR).as_str()).unwrap();
 
         // Test setting execution mode to Disabled
-        let result = client
-            .set_execution_mode(ExecutionMode::Disabled)
-            .await
-            .unwrap();
-        assert_eq!(result.execution_mode, ExecutionMode::Disabled);
+        client.set_execution_mode(ExecutionMode::Disabled).await?;
 
-        // Verify with get_execution_mode
-        let status = client.get_execution_mode().await.unwrap();
-        assert_eq!(status.execution_mode, ExecutionMode::Disabled);
+        assert_eq!(*execution_mode.lock(), ExecutionMode::Disabled);
 
-        // Test setting execution mode back to Enabled
-        let result = client
-            .set_execution_mode(ExecutionMode::Enabled)
-            .await
-            .unwrap();
-        assert_eq!(result.execution_mode, ExecutionMode::Enabled);
+        Ok(())
+    }
 
-        // Verify again with get_execution_mode
-        let status = client.get_execution_mode().await.unwrap();
-        assert_eq!(status.execution_mode, ExecutionMode::Enabled);
+    #[tokio::test]
+    async fn test_get_execution_mode() -> eyre::Result<()> {
+        // spawn the server and try to modify it with the client
+        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
+        let server = DebugServer::new(execution_mode.clone());
+        server.run(DEFAULT_ADDR).await?;
 
-        // Test setting fallback execution mode
-        let result = client
-            .set_execution_mode(ExecutionMode::Fallback)
-            .await
-            .unwrap();
+        let client = DebugClient::new(format!("http://{}", DEFAULT_ADDR).as_str()).unwrap();
+        client.set_execution_mode(ExecutionMode::Disabled).await?;
 
-        assert_eq!(result.execution_mode, ExecutionMode::Fallback);
+        // Test setting execution mode to Disabled
+        let result = client.get_execution_mode().await?;
+        assert_eq!(result, ExecutionMode::Disabled);
 
-        // Verify again with get_execution_mode
-        let status = client.get_execution_mode().await.unwrap();
-        assert_eq!(status.execution_mode, ExecutionMode::Fallback);
+        Ok(())
     }
 }

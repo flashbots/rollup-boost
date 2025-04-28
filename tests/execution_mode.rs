@@ -53,24 +53,16 @@ async fn execution_mode() -> eyre::Result<()> {
 
     // enable dry run mode
     {
-        let response = client
-            .set_execution_mode(ExecutionMode::DryRun)
-            .await
-            .unwrap();
-        assert_eq!(response.execution_mode, ExecutionMode::DryRun);
+        client.set_execution_mode(ExecutionMode::DryRun).await?;
 
         // the new valid block should be created the the l2 builder
         let (_block, block_creator) = block_generator.generate_block(false).await?;
         assert!(block_creator.is_l2(), "Block creator should be l2");
     }
 
-    // toggle again dry run mode
+    // Enable execution mode again
     {
-        let response = client
-            .set_execution_mode(ExecutionMode::Enabled)
-            .await
-            .unwrap();
-        assert_eq!(response.execution_mode, ExecutionMode::Enabled);
+        client.set_execution_mode(ExecutionMode::Enabled).await?;
 
         // the new valid block should be created the the builder
         let (_block, block_creator) = block_generator.generate_block(false).await?;
@@ -90,11 +82,7 @@ async fn execution_mode() -> eyre::Result<()> {
     // to track the number of calls to the builder during the disabled mode which
     // should be 0
     {
-        let response = client
-            .set_execution_mode(ExecutionMode::Disabled)
-            .await
-            .unwrap();
-        assert_eq!(response.execution_mode, ExecutionMode::Disabled);
+        client.set_execution_mode(ExecutionMode::Disabled).await?;
 
         // reset the counter in the proxy
         *counter.lock().unwrap() = 0;
