@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-op-alloy-rpc-types-engine = "0.14.1"
-alloy-rpc-types-engine = "0.14.0"
-alloy-rpc-types-eth = "0.14.0"
-alloy-serde = "0.14.0"
-alloy-eips = { version = "0.14.0", features = ["serde"], optional = true }
+op-alloy-rpc-types-engine = "0.15.0"
+alloy-rpc-types-engine = "0.15.5"
+alloy-rpc-types-eth = "0.15.5"
+alloy-serde = "0.15.5"
+alloy-eips = { version = "0.15.5", features = ["serde"], optional = true }
 alloy-primitives = { version = "1.0.0", features = ["rand"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1.4"
