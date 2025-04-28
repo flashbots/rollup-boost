@@ -124,6 +124,7 @@ pub struct RollupBoostServer {
     pub payload_trace_context: Arc<PayloadTraceContext>,
     pub flashblocks_client: Option<Arc<FlashblocksService>>,
     pub execution_mode: Arc<Mutex<ExecutionMode>>,
+    pub rollout_pct: u16,
 }
 
 impl RollupBoostServer {
@@ -133,6 +134,7 @@ impl RollupBoostServer {
         boost_sync: bool,
         initial_execution_mode: ExecutionMode,
         flashblocks_client: Option<FlashblocksService>,
+        rollout_pct: u16,
     ) -> Self {
         Self {
             l2_client: Arc::new(l2_client),
@@ -141,6 +143,7 @@ impl RollupBoostServer {
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             flashblocks_client: flashblocks_client.map(Arc::new),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
+            rollout_pct,
         }
     }
 
@@ -596,6 +599,15 @@ impl RollupBoostServer {
                 ));
             }
 
+            if !should_rollout(self.rollout_pct) {
+                // Skip due to slow rollout
+                return Err(ErrorObject::owned(
+                    INVALID_REQUEST_CODE,
+                    "Skipped because of (self.rollout_pct)% slow rollout",
+                    None::<String>,
+                ));
+            }
+
             if let Some(cause) = self.payload_trace_context.trace_id(&payload_id) {
                 tracing::Span::current().follows_from(cause);
             }
@@ -673,8 +685,18 @@ impl RollupBoostServer {
             "number" = %block_number,
             %context,
             %payload_id,
+            "rollout_pct" = self.rollout_pct,
         );
         Ok(payload)
+    }
+}
+
+/// Returns true if the rollout percentage is 100 or if the random number is less than the rollout percentage
+fn should_rollout(rollout_pct: u16) -> bool {
+    if rollout_pct == 100 {
+        true
+    } else {
+        rand::random::<f64>() < rollout_pct as f64 / 100.0
     }
 }
 
@@ -796,6 +818,7 @@ mod tests {
                 boost_sync,
                 ExecutionMode::Enabled,
                 None,
+                100,
             );
 
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
@@ -837,6 +860,7 @@ mod tests {
         boost_sync_enabled().await;
         builder_payload_err().await;
         test_local_external_payload_ids_same().await;
+        test_should_rollout();
     }
 
     async fn engine_success() {
@@ -1099,5 +1123,33 @@ mod tests {
         }
 
         test_harness.cleanup().await;
+    }
+
+    fn test_should_rollout() {
+        // Test with 100% rollout - should always return true
+        for _ in 0..100 {
+            assert!(
+                should_rollout(100),
+                "100% rollout should always return true"
+            );
+        }
+
+        // Test with 0% rollout - should always return false
+        for _ in 0..100 {
+            assert!(!should_rollout(0), "0% rollout should always return false");
+        }
+
+        // Test with 50% rollout - should be statistically around 50%
+        let trials = 1000;
+        let successes = (0..trials).filter(|_| should_rollout(50)).count();
+
+        let success_rate = successes as f64 / trials as f64;
+
+        // With 1000 trials, we should be within 5% of expected 50%
+        assert!(
+            (success_rate - 0.5).abs() < 0.05,
+            "Expected success rate near 50%, got {}%",
+            success_rate * 100.0
+        );
     }
 }

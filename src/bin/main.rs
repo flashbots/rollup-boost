@@ -105,6 +105,7 @@ async fn main() -> eyre::Result<()> {
         boost_sync_enabled,
         args.execution_mode,
         flashblocks_client,
+        args.rollout_pct,
     );
 
     // Spawn the debug server

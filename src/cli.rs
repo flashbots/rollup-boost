@@ -73,6 +73,10 @@ pub struct Args {
     /// Enable Flashblocks client
     #[clap(flatten)]
     pub flashblocks: FlashblocksArgs,
+
+    /// Percentage of blocks built by the builder
+    #[arg(long, env, default_value = "100")]
+    pub rollout_pct: u16,
 }
 
 #[derive(Parser, Debug)]
