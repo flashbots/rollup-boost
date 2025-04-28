@@ -1,5 +1,5 @@
 use eyre::Context as _;
-use metrics::{counter, histogram};
+use metrics::histogram;
 use opentelemetry::trace::{Status, TracerProvider as _};
 use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::WithExportConfig;
