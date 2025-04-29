@@ -7,7 +7,7 @@
   - [Overview](#overview)
   - [Health Checks]()
   - [Execution Mode](#execution-mode)
-  - [DebugAPI](#debug-api)
+  - [Debug API](#debug-api)
   - [Failure Scenarios](#failure-scenarios)
 
 # Context/Scope
@@ -156,7 +156,7 @@ pub enum ExecutionMode {
 
 ## Debug API
 
-`rollup-boost` exposes a Debug API that allows operators to inspect and modify the current execution mode at runtime without restarting the service. This provides flexibility to dynamically enable, disable, or dry-run external block production based on builder behavior or network conditions. The Debug API is served over HTTP using JSON RPC and contains the following endpoints:
+`rollup-boost` exposes a Debug API that allows operators to inspect and modify the current execution mode at runtime without restarting the service. This provides flexibility to dynamically enable, disable, or dry-run external block production based on builder behavior or network conditions. The Debug API is served over HTTP using JSON RPC and consists of the following endpoints:
 
 ### `debug_setExecutionMode`
 
@@ -221,11 +221,3 @@ Below is a high level summary of how each failure scenario is handled. All exist
 | Leader Builder Fails | Builder Failure| The builder associated with the sequencer leader fails and is no longer producing blocks. `rollup-boost` will fallback to the default execution client's payload and continue to produce blocks. Once the builder has been recovered and synced back to the chain tip, it will continue block production as normal.|
 | Follower Builder Fails| Builder Failure| The builder associated with a follower sequencer instance fails. Block production is not interrupted. Once the builder has been recovered it will sync back to the chain tip and process FCUs as normal.|
 | Leader Builder Producing Bad Blocks| Builder Failure| In this scenario, the builder is "healthy" but producing bad blocks (eg. empty blocks). If the builder block passes validation via a `new_payload` call to the default execution client, it will be proposed to the network. Manual intervention is needed to either switch to a different sequencer or shutoff the builder. Further mitigation can be introduced via block selection policy allowing `rollup-boost` to select the "healthiest" block. Currently, it is unclear what block selection policy would provide the strongest guarantees.|
-
-<br/>
-
-## Additional Considerations
-
-### Emergency Shutoff Switch
-
-To ensure safe and reliable block production, `rollup-boost` could expose an emergency shutoff switch that allows operators to disable external block production in the event of a critical or unexpected failure that affects block production/liveliness where automated recovery mechanisms do not cover. This mechanism could be an API that enables a flag causing `rollup-boost` to bypass all external builders and use the default execution client's payload exclusively.
