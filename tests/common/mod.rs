@@ -20,6 +20,7 @@ use rollup_boost::DebugClient;
 use rollup_boost::{AuthLayer, AuthService};
 use rollup_boost::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
 use rollup_boost::{NewPayload, PayloadSource};
+use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
 use std::collections::HashSet;
@@ -28,6 +29,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use std::time::SystemTime;
+use std::{fs::File, io::BufReader, time::UNIX_EPOCH};
 use testcontainers::core::ContainerPort;
 use testcontainers::core::client::docker_client_instance;
 use testcontainers::core::logs::LogFrame;
@@ -160,16 +162,89 @@ pub trait BlockApi {
     ) -> RpcResult<Option<alloy_rpc_types_eth::Block>>;
 }
 
+pub struct GenesisBuilder {
+    block_time: u64,
+    isthmus_block: Option<u64>,
+}
+
+impl Default for GenesisBuilder {
+    fn default() -> Self {
+        Self {
+            block_time: 2,
+            isthmus_block: None,
+        }
+    }
+}
+
+impl GenesisBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_isthmus_block(mut self, isthmus_block: u64) -> Self {
+        self.isthmus_block = Some(isthmus_block);
+        self
+    }
+}
+
+impl GenesisBuilder {
+    fn build(&self) -> eyre::Result<Genesis> {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        Ok(Genesis {
+            timestamp,
+            isthmus_block: self.isthmus_block,
+            block_time: self.block_time,
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct Genesis {
+    pub timestamp: u64,
+    pub isthmus_block: Option<u64>,
+    pub block_time: u64,
+}
+
+impl Genesis {
+    fn to_string(&self) -> eyre::Result<String> {
+        let file = File::open(PathBuf::from(format!("{}/genesis.json", *TEST_DATA))).unwrap();
+        let reader = BufReader::new(file);
+        let mut genesis: Value = serde_json::from_reader(reader).unwrap();
+
+        if let Some(config) = genesis.as_object_mut() {
+            // Assuming timestamp is at the root level - adjust path as needed
+            config["timestamp"] = Value::String(format!("0x{:x}", self.timestamp));
+
+            if let Some(isthmus_block) = self.isthmus_block {
+                let isthmus_time = self.timestamp + isthmus_block * self.block_time;
+                if let Some(config_obj) = config.get_mut("config").and_then(|c| c.as_object_mut()) {
+                    config_obj["isthmusTime"] =
+                        Value::Number(serde_json::Number::from(isthmus_time));
+                }
+            }
+        }
+
+        serde_json::to_string_pretty(&genesis)
+            .map_err(|e| eyre::eyre!("Failed to serialize genesis: {}", e))
+    }
+}
+
 /// Test flavor that sets up one Rollup-boost instance connected to two Reth nodes
 pub struct RollupBoostTestHarness {
     pub l2: ContainerAsync<OpRethImage>,
     pub builder: ContainerAsync<OpRethImage>,
     pub rollup_boost: RollupBoost,
+    pub genesis: Genesis,
 }
 
 pub struct RollupBoostTestHarnessBuilder {
     test_name: String,
     proxy_handler: Option<Arc<dyn ProxyHandler>>,
+    genesis: GenesisBuilder,
 }
 
 impl RollupBoostTestHarnessBuilder {
@@ -177,7 +252,13 @@ impl RollupBoostTestHarnessBuilder {
         Self {
             test_name: test_name.to_string(),
             proxy_handler: None,
+            genesis: GenesisBuilder::default(),
         }
+    }
+
+    pub fn with_genesis(mut self, genesis: GenesisBuilder) -> Self {
+        self.genesis = genesis;
+        self
     }
 
     pub fn file_path(&self, service_name: &str) -> eyre::Result<PathBuf> {
@@ -223,12 +304,16 @@ impl RollupBoostTestHarnessBuilder {
         let builder_log_consumer = self.log_consumer("builder").await?;
         let rollup_boost_log_file_path = self.file_path("rollup_boost")?;
 
+        let genesis = self.genesis.build()?;
+        let genesis_str = genesis.to_string()?;
+
         let l2_p2p_port = get_available_port();
         let l2 = OpRethConfig::default()
             .set_p2p_secret(Some(PathBuf::from(format!(
                 "{}/p2p_secret.hex",
                 *TEST_DATA
             ))))
+            .set_genesis(genesis_str.clone())
             .build()?
             .with_mapped_port(l2_p2p_port, ContainerPort::Tcp(P2P_PORT))
             .with_mapped_port(l2_p2p_port, ContainerPort::Udp(P2P_PORT))
@@ -247,6 +332,7 @@ impl RollupBoostTestHarnessBuilder {
         let builder_p2p_port = get_available_port();
         let builder = OpRethConfig::default()
             .set_trusted_peers(vec![l2_enode])
+            .set_genesis(genesis_str)
             .build()?
             .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(P2P_PORT))
             .with_mapped_port(builder_p2p_port, ContainerPort::Udp(P2P_PORT))
@@ -283,6 +369,7 @@ impl RollupBoostTestHarnessBuilder {
             l2,
             builder,
             rollup_boost,
+            genesis,
         })
     }
 }
@@ -294,7 +381,8 @@ impl RollupBoostTestHarness {
 
         let engine_api = EngineApi::new(&self.rollup_boost.rpc_endpoint(), JWT_SECRET)?;
 
-        let mut block_creator = SimpleBlockGenerator::new(validator, engine_api);
+        let mut block_creator =
+            SimpleBlockGenerator::new(validator, engine_api, self.genesis.clone());
         block_creator.init().await?;
         Ok(block_creator)
     }
@@ -310,17 +398,23 @@ pub struct SimpleBlockGenerator {
     engine_api: EngineApi,
     latest_hash: B256,
     timestamp: u64,
-    version: Version,
+    genesis: Genesis,
+    current_block_number: u64,
 }
 
 impl SimpleBlockGenerator {
-    pub fn new(validator: BlockBuilderCreatorValidator, engine_api: EngineApi) -> Self {
+    pub fn new(
+        validator: BlockBuilderCreatorValidator,
+        engine_api: EngineApi,
+        genesis: Genesis,
+    ) -> Self {
         Self {
             validator,
             engine_api,
             latest_hash: B256::ZERO, // temporary value
-            timestamp: 0,            // temporary value
-            version: Version::V3,
+            timestamp: 0,
+            genesis,
+            current_block_number: 0,
         }
     }
 
@@ -337,7 +431,20 @@ impl SimpleBlockGenerator {
         &mut self,
         empty_blocks: bool,
     ) -> eyre::Result<(B256, PayloadSource)> {
-        let txns = match self.version {
+        self.current_block_number += 1;
+
+        let version = match self.genesis.isthmus_block {
+            Some(num) => {
+                if self.current_block_number < num {
+                    Version::V3
+                } else {
+                    Version::V4
+                }
+            }
+            None => Version::V3,
+        };
+
+        let txns = match version {
             Version::V4 => {
                 let tx = create_deposit_tx();
                 Some(vec![tx])
@@ -373,10 +480,7 @@ impl SimpleBlockGenerator {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
 
-        let payload = self
-            .engine_api
-            .get_payload(self.version, payload_id)
-            .await?;
+        let payload = self.engine_api.get_payload(version, payload_id).await?;
 
         // Submit the new payload to the node
         let validation_status = self
