@@ -15,5 +15,7 @@ async fn engine_calls_in_order() -> eyre::Result<()> {
         let (_block, _block_creator) = block_generator.generate_block(false).await?;
     }
 
+    // TODO: check condition
+
     Ok(())
 }
