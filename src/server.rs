@@ -257,56 +257,8 @@ impl EngineApiServer for RollupBoostServer {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
         info!("received fork_choice_updated_v3");
-        // First get the local payload ID from L2 client
-        let l2_response = self
-            .l2_client
-            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-            .await?;
-
-        let span = tracing::Span::current();
-        if let Some(payload_id) = l2_response.payload_id {
-            span.record("payload_id", payload_id.to_string());
-        }
-
-        // TODO: Use _is_block_building_call to log the correct message during the async call to builder
-        let (should_send_to_builder, _is_block_building_call) =
-            if let Some(attr) = payload_attributes.as_ref() {
-                // payload attributes are present. It is a FCU call to start block building
-                // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
-                // a deterministic block without txs. We let the fallback EL node compute those.
-                let use_tx_pool = !attr.no_tx_pool.unwrap_or_default();
-                (use_tx_pool, true)
-            } else {
-                // no payload attributes. It is a FCU call to lock the head block
-                // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
-                (self.boost_sync, false)
-            };
-
-        let execution_mode = self.execution_mode();
-        let trace_id = span.id();
-        if let Some(payload_id) = l2_response.payload_id {
-            self.payload_trace_context.store(
-                payload_id,
-                fork_choice_state.head_block_hash,
-                payload_attributes.is_some(),
-                trace_id,
-            );
-        }
-
-        if execution_mode.is_disabled() {
-            debug!(message = "execution mode is disabled, skipping FCU call to builder", "head_block_hash" = %fork_choice_state.head_block_hash);
-        } else if should_send_to_builder {
-            let builder_client = self.builder_client.clone();
-            tokio::spawn(async move {
-                let _ = builder_client
-                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-                    .await;
-            });
-        } else {
-            info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash);
-        }
-
-        Ok(l2_response)
+        self.fork_choice_updated_v3(fork_choice_state, payload_attributes)
+            .await
     }
 
     #[instrument(
@@ -507,6 +459,64 @@ impl Version {
 }
 
 impl RollupBoostServer {
+    async fn fork_choice_updated_v3(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> RpcResult<ForkchoiceUpdated> {
+        info!("received fork_choice_updated_v3");
+        // First get the local payload ID from L2 client
+        let l2_response = self
+            .l2_client
+            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+            .await?;
+
+        let span = tracing::Span::current();
+        if let Some(payload_id) = l2_response.payload_id {
+            span.record("payload_id", payload_id.to_string());
+        }
+
+        // TODO: Use _is_block_building_call to log the correct message during the async call to builder
+        let (should_send_to_builder, _is_block_building_call) =
+            if let Some(attr) = payload_attributes.as_ref() {
+                // payload attributes are present. It is a FCU call to start block building
+                // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
+                // a deterministic block without txs. We let the fallback EL node compute those.
+                let use_tx_pool = !attr.no_tx_pool.unwrap_or_default();
+                (use_tx_pool, true)
+            } else {
+                // no payload attributes. It is a FCU call to lock the head block
+                // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
+                (self.boost_sync, false)
+            };
+
+        let execution_mode = self.execution_mode();
+        let trace_id = span.id();
+        if let Some(payload_id) = l2_response.payload_id {
+            self.payload_trace_context.store(
+                payload_id,
+                fork_choice_state.head_block_hash,
+                payload_attributes.is_some(),
+                trace_id,
+            );
+        }
+
+        if execution_mode.is_disabled() {
+            debug!(message = "execution mode is disabled, skipping FCU call to builder", "head_block_hash" = %fork_choice_state.head_block_hash);
+        } else if should_send_to_builder {
+            let builder_client = self.builder_client.clone();
+            tokio::spawn(async move {
+                let _ = builder_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+                    .await;
+            });
+        } else {
+            info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash);
+        }
+
+        Ok(l2_response)
+    }
+
     async fn new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
         let execution_payload = ExecutionPayload::from(new_payload.clone());
         let block_hash = execution_payload.block_hash();
