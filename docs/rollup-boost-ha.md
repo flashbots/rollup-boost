@@ -119,6 +119,10 @@ During normal operation and leadership transfers, `op-conductor` should prioriti
 
 Rollup Boost instances that are not actively sequencing rely exclusively on the builder sync check to report health, as they are not producing blocks. This behavior mirrors the existing `op-conductor` health checks for inactive sequencers and ensures readiness during failover without compromising network liveness guarantees.
 
+Note that in the case where the builder is unhealthy, `rollup-boost` should bypass forwarding block production requests to the builder entirely and immediately use the default execution client for payload construction. This avoids introducing unnecessary latency to wait for the builder response to timeout.
+
+When builder health is restored, normal request forwarding and payload selection behavior will resume.
+
 ## Execution mode
 
 `ExecutionMode` is a configuration setting that controls how `rollup-boost` interacts with the external builder during block production. Execution mode can be set either at startup via CLI flags or dynamically modified at runtime through the [Debug API](#debugapi).
