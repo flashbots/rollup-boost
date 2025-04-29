@@ -7,7 +7,7 @@ use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
-use tracing::debug;
+use tracing::info;
 
 const ENGINE_METHOD: &str = "engine_";
 
