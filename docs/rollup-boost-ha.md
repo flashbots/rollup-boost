@@ -119,13 +119,34 @@ During normal operation and leadership transfers, `op-conductor` should prioriti
 
 Rollup Boost instances that are not actively sequencing rely exclusively on the builder sync check to report health, as they are not producing blocks. This behavior mirrors the existing `op-conductor` health checks for inactive sequencers and ensures readiness during failover without compromising network liveness guarantees.
 
-
 ## Execution mode
+
 `ExecutionMode` is a configuration setting that controls how `rollup-boost` interacts with the external builder during block production. Execution mode can be set either at startup via CLI flags or dynamically modified at runtime through the [Debug API](#debugapi).
+Operators can use `ExecutionMode` to selectively forward or bypass builder interactions, enabling dry runs during deployments or fully disabling external block production during emergencies.
 
-Operators can use `ExecutionMode` to selectively forward or bypass requests to the builder, enabling dry runs during deployments or disabling external block production in case of failures or emergencies.
+The available execution modes are:
 
- `ExecutionMode` should feature the following options:
+- `DryRun`
+  - `rollup-boost` forwards all Engine API requests to both the builder and default execution client.
+  - Optimistically selects the builder’s payload for validation and block publication.
+  - Falls back to the local execution client *only* if the builder fails to produce a payload or the payload is invalid.
+  - Default setting for normal external block production.
+
+- `DryRun`  
+  - `rollup-boost` forwards Engine API requests to the builder and validates the builder's payload, but *always* returns the local execution client's payload to `op-node`.
+  - Builder results are logged and validated but never proposed to the network.
+  - Useful during deployments or experiments to assess builder behavior without risking production.
+
+- `DryRun`  
+  - `rollup-boost` forwards all Engine API requests to both the builder and default execution client.
+  - Builder payloads are validated with the local execution client but the default execution client block will always be returned to `op-node` to propagate to the network.
+  - Useful during deployments, dry runs, or to validate builder behavior without publishing builder blocks.
+
+- `Disabled`
+  - `rollup-boost` does not forward any Engine API requests to the builder.
+  - Block construction is handled exclusively by the default execution client.
+  - Useful as an emergency shutoff switch in the case of critical failures/emergencies.
+
 ```rust
 pub enum ExecutionMode {
     /// Forward Engine API requests to the builder, validate builder payloads and propagate to the network 
@@ -138,10 +159,8 @@ pub enum ExecutionMode {
 }
 ```
 
-TODO: describe each execution mode in detail
-
-
 ## Debug API
+
 TODO: document debug api endpoints
 
 ## Failure Scenarios
