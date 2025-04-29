@@ -310,6 +310,7 @@ pub struct SimpleBlockGenerator {
     latest_hash: B256,
     timestamp: u64,
     version: Version,
+    block_time_sec: u64,
 }
 
 impl SimpleBlockGenerator {
@@ -320,7 +321,12 @@ impl SimpleBlockGenerator {
             latest_hash: B256::ZERO, // temporary value
             timestamp: 0,            // temporary value
             version: Version::V3,
+            block_time_sec: 1,
         }
+    }
+
+    pub fn set_block_time(&mut self, block_time_sec: u64) {
+        self.block_time_sec = block_time_sec;
     }
 
     /// Initialize the block generator by fetching the latest block
@@ -368,8 +374,8 @@ impl SimpleBlockGenerator {
 
         let payload_id = result.payload_id.expect("missing payload id");
 
-        if !empty_blocks {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        if !empty_blocks && self.block_time_sec > 0 {
+            tokio::time::sleep(tokio::time::Duration::from_secs(self.block_time_sec)).await;
         }
 
         let payload = self

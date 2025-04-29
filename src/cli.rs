@@ -5,10 +5,11 @@ use clap::{Parser, Subcommand};
 use eyre::bail;
 use jsonrpsee::{RpcModule, server::Server};
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
+use tokio::sync::mpsc;
 use tracing::{Level, info};
 
 use crate::{
-    DebugClient, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
+    DebugClient, EngineHandler, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     init_metrics, init_tracing,
     server::ExecutionMode,
@@ -165,7 +166,14 @@ impl Args {
         // Spawn the debug server
         rollup_boost.start_debug_server(debug_addr.as_str()).await?;
 
-        let module: RpcModule<()> = rollup_boost.try_into()?;
+        let (tx, rx) = mpsc::unbounded_channel();
+        let engine_handler = EngineHandler::new(tx);
+        let module: RpcModule<()> = engine_handler.try_into()?;
+
+        // Spawn the rollup boost server
+        tokio::spawn(async move {
+            rollup_boost.run(rx).await.unwrap();
+        });
 
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);

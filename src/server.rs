@@ -20,6 +20,10 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::{
+    mpsc::{UnboundedReceiver, UnboundedSender},
+    oneshot,
+};
 
 use tracing::{debug, info, instrument};
 
@@ -131,6 +135,23 @@ pub struct RollupBoostServer {
     execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
+pub enum EngineMessage {
+    NewPayload {
+        new_payload: NewPayload,
+        tx: oneshot::Sender<RpcResult<PayloadStatus>>,
+    },
+    ForkchoiceUpdated {
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+        tx: oneshot::Sender<RpcResult<ForkchoiceUpdated>>,
+    },
+    GetPayload {
+        payload_id: PayloadId,
+        version: Version,
+        tx: oneshot::Sender<RpcResult<OpExecutionPayloadEnvelope>>,
+    },
+}
+
 impl RollupBoostServer {
     pub fn new(
         l2_client: RpcClient,
@@ -158,7 +179,7 @@ impl RollupBoostServer {
     }
 }
 
-impl TryInto<RpcModule<()>> for RollupBoostServer {
+impl TryInto<RpcModule<()>> for EngineHandler {
     type Error = RegisterMethodError;
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
@@ -238,8 +259,77 @@ pub trait EngineApi {
     ) -> RpcResult<PayloadStatus>;
 }
 
+#[derive(Debug, Clone)]
+pub struct EngineHandler {
+    to_engine: UnboundedSender<EngineMessage>,
+}
+
+impl EngineHandler {
+    pub fn new(to_engine: UnboundedSender<EngineMessage>) -> Self {
+        Self { to_engine }
+    }
+
+    async fn send_payload(
+        &self,
+        payload_id: PayloadId,
+        version: Version,
+    ) -> RpcResult<OpExecutionPayloadEnvelope> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.to_engine.send(EngineMessage::GetPayload {
+            payload_id,
+            version,
+            tx,
+        });
+        rx.await.map_err(|_| {
+            // handle this error
+            ErrorObject::owned(
+                INVALID_REQUEST_CODE,
+                "Engine server disconnected",
+                None::<String>,
+            )
+        })?
+    }
+
+    async fn send_new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .to_engine
+            .send(EngineMessage::NewPayload { new_payload, tx });
+        rx.await.map_err(|_| {
+            // handle this error
+            ErrorObject::owned(
+                INVALID_REQUEST_CODE,
+                "Engine server disconnected",
+                None::<String>,
+            )
+        })?
+    }
+
+    async fn send_fork_choice_updated_v3(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> RpcResult<ForkchoiceUpdated> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.to_engine.send(EngineMessage::ForkchoiceUpdated {
+            fork_choice_state,
+            payload_attributes,
+            tx,
+        });
+
+        rx.await.map_err(|_| {
+            // TODO: handle this error
+            ErrorObject::owned(
+                INVALID_REQUEST_CODE,
+                "Engine server disconnected",
+                None::<String>,
+            )
+        })?
+    }
+}
+
 #[async_trait]
-impl EngineApiServer for RollupBoostServer {
+impl EngineApiServer for EngineHandler {
     #[instrument(
         skip_all,
         err,
@@ -257,7 +347,7 @@ impl EngineApiServer for RollupBoostServer {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
         info!("received fork_choice_updated_v3");
-        self.fork_choice_updated_v3(fork_choice_state, payload_attributes)
+        self.send_fork_choice_updated_v3(fork_choice_state, payload_attributes)
             .await
     }
 
@@ -276,7 +366,7 @@ impl EngineApiServer for RollupBoostServer {
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
         info!("received get_payload_v3");
 
-        match self.get_payload(payload_id, Version::V3).await? {
+        match self.send_payload(payload_id, Version::V3).await? {
             OpExecutionPayloadEnvelope::V3(v3) => Ok(v3),
             OpExecutionPayloadEnvelope::V4(_) => Err(ErrorObject::owned(
                 INVALID_REQUEST_CODE,
@@ -301,7 +391,7 @@ impl EngineApiServer for RollupBoostServer {
     ) -> RpcResult<PayloadStatus> {
         info!("received new_payload_v3");
 
-        self.new_payload(NewPayload::V3(NewPayloadV3 {
+        self.send_new_payload(NewPayload::V3(NewPayloadV3 {
             payload,
             versioned_hashes,
             parent_beacon_block_root,
@@ -324,7 +414,7 @@ impl EngineApiServer for RollupBoostServer {
     ) -> RpcResult<OpExecutionPayloadEnvelopeV4> {
         info!("received get_payload_v4");
 
-        match self.get_payload(payload_id, Version::V4).await? {
+        match self.send_payload(payload_id, Version::V4).await? {
             OpExecutionPayloadEnvelope::V4(v4) => Ok(v4),
             OpExecutionPayloadEnvelope::V3(_) => Err(ErrorObject::owned(
                 INVALID_REQUEST_CODE,
@@ -350,7 +440,7 @@ impl EngineApiServer for RollupBoostServer {
     ) -> RpcResult<PayloadStatus> {
         info!("received new_payload_v4");
 
-        self.new_payload(NewPayload::V4(NewPayloadV4 {
+        self.send_new_payload(NewPayload::V4(NewPayloadV4 {
             payload,
             versioned_hashes,
             parent_beacon_block_root,
@@ -459,6 +549,36 @@ impl Version {
 }
 
 impl RollupBoostServer {
+    pub async fn run(&self, mut rx: UnboundedReceiver<EngineMessage>) -> eyre::Result<()> {
+        while let Some(message) = rx.recv().await {
+            match message {
+                EngineMessage::ForkchoiceUpdated {
+                    fork_choice_state,
+                    payload_attributes,
+                    tx,
+                } => {
+                    let result = self
+                        .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+                        .await;
+                    let _ = tx.send(result);
+                }
+                EngineMessage::NewPayload { new_payload, tx } => {
+                    let result = self.new_payload(new_payload).await;
+                    let _ = tx.send(result);
+                }
+                EngineMessage::GetPayload {
+                    payload_id,
+                    version,
+                    tx,
+                } => {
+                    let result = self.get_payload(payload_id, version).await;
+                    let _ = tx.send(result);
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
@@ -646,6 +766,7 @@ mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
+    use tokio::sync::mpsc;
     use tokio::time::sleep;
 
     const HOST: &str = "0.0.0.0";
@@ -746,7 +867,14 @@ mod tests {
                 ExecutionMode::Enabled,
             );
 
-            let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
+            let (tx, rx) = mpsc::unbounded_channel();
+            let engine_handler = EngineHandler::new(tx);
+            let module: RpcModule<()> = engine_handler.try_into().unwrap();
+
+            tokio::spawn(async move {
+                // TODO: Not sure if this is the correct way to spawn in test
+                rollup_boost_client.run(rx).await.unwrap();
+            });
 
             let proxy_server = ServerBuilder::default()
                 .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())

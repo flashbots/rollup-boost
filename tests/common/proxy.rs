@@ -86,6 +86,8 @@ async fn proxy(
 
     let json_rpc_response = serde_json::from_slice::<JsonRpcResponse>(&bytes).unwrap();
     let bytes = if let Some(result) = json_rpc_response.clone().result {
+        println!("Received response: {:?}", json_rpc_response.id);
+
         let value = config
             .handler
             .handle(json_rpc_request.method, json_rpc_request.params, result)
