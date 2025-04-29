@@ -5,7 +5,7 @@
   - [Non Goals](#non-goals)
 - [Design](#design)
   - [Overview](#overview)
-  - [Health Checks]()
+  - [Health Checks](#health-checks)
   - [Execution Mode](#execution-mode)
   - [Debug API](#debug-api)
   - [Failure Scenarios](#failure-scenarios)
@@ -34,6 +34,8 @@ This design document outlines the architecture, components, and failure strategi
 - Monitoring / alerting strategies. This can be specified in a separate document once an architecture is solidified.
 
 # Design
+
+<br>
 
 ## Overview
 
@@ -87,6 +89,8 @@ sequenceDiagram
 
 ```
 
+<br>
+
 ## Health Checks
 
 In high availability deployments, `op-conductor` must assess the full health of the block production path. Rollup Boost will expose a composite `/healthz` endpoint to report on both builder synchronization and payload production status. These checks allow `op-conductor` to detect degraded block building conditions and make informed leadership decisions.
@@ -97,6 +101,8 @@ Rollup Boost will continuously monitors two independent conditions to inform the
   A background task periodically queries the builder’s latest unsafe block via `engine_getBlockByNumber`. The task compares the timestamp of the returned block to the local system time. If the difference exceeds a configured maximum unsafe interval (`max_unsafe_interval`), the builder is considered out of sync. Failure to fetch a block from the builder or detection of an outdated block timestamp results in the health status being downgraded to Partial. If the builder is responsive and the block timestamp is within the acceptable interval, the builder is considered synchronized and healthy.
 - **Payload Production**:  
   During each `get_payload` request, Rollup Boost will verify payload availability from both the builder and the execution client. If the builder fails to deliver a payload, Rollup Boost will report partial health. If the execution client fails to deliver a payload, Rollup Boost will report unhealthy.
+
+<br>
 
 | Condition | Health Status |
 |:----------|:--------------|
@@ -122,6 +128,8 @@ Rollup Boost instances that are not actively sequencing rely exclusively on the 
 Note that in the case where the builder is unhealthy, `rollup-boost` should bypass forwarding block production requests to the builder entirely and immediately use the default execution client for payload construction. This avoids introducing unnecessary latency to wait for the builder response to timeout.
 
 When builder health is restored, normal request forwarding and payload selection behavior will resume.
+
+<br>
 
 ## Execution mode
 
@@ -157,6 +165,8 @@ pub enum ExecutionMode {
     Disabled,
 }
 ```
+
+<br>
 
 ## Debug API
 
@@ -212,6 +222,8 @@ Retrieves the current execution mode.
   "jsonrpc": "2.0"
 }
 ```
+
+<br>
 
 ## Failure Scenarios
 
