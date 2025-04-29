@@ -126,21 +126,16 @@ Operators can use `ExecutionMode` to selectively forward or bypass builder inter
 
 The available execution modes are:
 
-- `DryRun`
+- `Enabled`
   - `rollup-boost` forwards all Engine API requests to both the builder and default execution client.
   - Optimistically selects the builder’s payload for validation and block publication.
   - Falls back to the local execution client *only* if the builder fails to produce a payload or the payload is invalid.
   - Default setting for normal external block production.
 
 - `DryRun`  
-  - `rollup-boost` forwards Engine API requests to the builder and validates the builder's payload, but *always* returns the local execution client's payload to `op-node`.
-  - Builder results are logged and validated but never proposed to the network.
-  - Useful during deployments or experiments to assess builder behavior without risking production.
-
-- `DryRun`  
   - `rollup-boost` forwards all Engine API requests to both the builder and default execution client.
   - Builder payloads are validated with the local execution client but the default execution client block will always be returned to `op-node` to propagate to the network.
-  - Useful during deployments, dry runs, or to validate builder behavior without publishing builder blocks.
+  - Useful during deployments, dry runs, or to validate builder behavior without publishing builder blocks to the network.
 
 - `Disabled`
   - `rollup-boost` does not forward any Engine API requests to the builder.
