@@ -156,7 +156,58 @@ pub enum ExecutionMode {
 
 ## Debug API
 
-TODO: document debug api endpoints
+`rollup-boost` exposes a Debug API that allows operators to inspect and modify the current execution mode at runtime without restarting the service. This provides flexibility to dynamically enable, disable, or dry-run external block production based on builder behavior or network conditions. The Debug API is served over HTTP using JSON RPC and contains the following endpoints:
+
+### `debug_setExecutionMode`
+
+Sets the current execution mode for `rollup-boost`.
+
+**Request**:
+
+```json
+{
+  "method": "debug_setExecutionMode",
+  "params": [ "enabled" | "dry_run" | "disabled" ],
+  "id": 1,
+  "jsonrpc": "2.0"
+}
+
+```
+
+**Response**:
+
+```json
+{
+  "result": null,
+  "id": 1,
+  "jsonrpc": "2.0"
+}
+```
+
+### `debug_getExecutionMode`
+
+Retrieves the current execution mode.
+
+**Request**:
+
+```json
+{
+  "method": "debug_getExecutionMode",
+  "params": [],
+  "id": 1,
+  "jsonrpc": "2.0"
+}
+```
+
+**Response:**
+
+```json
+{
+  "result": "enabled" | "dry_run" | "disabled",
+  "id": 1,
+  "jsonrpc": "2.0"
+}
+```
 
 ## Failure Scenarios
 
