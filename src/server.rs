@@ -1,6 +1,7 @@
 use crate::client::rpc::RpcClient;
 use crate::debug_api::DebugServer;
 use alloy_primitives::{B256, Bytes};
+use clap::Parser;
 use metrics::counter;
 use moka::sync::Cache;
 use opentelemetry::trace::SpanKind;
@@ -29,7 +30,7 @@ const CACHE_SIZE: u64 = 100;
 
 pub struct PayloadTraceContext {
     block_hash_to_payload_ids: Cache<B256, Vec<PayloadId>>,
-    payload_id: Cache<PayloadId, (bool, Option<tracing::Id>)>,
+    payload_id: Cache<PayloadId, (bool, bool, Option<tracing::Id>)>,
 }
 
 impl PayloadTraceContext {
@@ -45,10 +46,11 @@ impl PayloadTraceContext {
         payload_id: PayloadId,
         parent_hash: B256,
         has_attributes: bool,
+        no_tx_pool: bool,
         trace_id: Option<tracing::Id>,
     ) {
         self.payload_id
-            .insert(payload_id, (has_attributes, trace_id));
+            .insert(payload_id, (has_attributes, no_tx_pool, trace_id));
         self.block_hash_to_payload_ids
             .entry(parent_hash)
             .and_upsert_with(|o| match o {
@@ -69,19 +71,26 @@ impl PayloadTraceContext {
             .map(|payload_ids| {
                 payload_ids
                     .iter()
-                    .filter_map(|payload_id| self.payload_id.get(payload_id).and_then(|x| x.1))
+                    .filter_map(|payload_id| self.payload_id.get(payload_id).and_then(|x| x.2))
                     .collect()
             })
     }
 
     fn trace_id(&self, payload_id: &PayloadId) -> Option<tracing::Id> {
-        self.payload_id.get(payload_id).and_then(|x| x.1)
+        self.payload_id.get(payload_id).and_then(|x| x.2)
     }
 
     fn has_attributes(&self, payload_id: &PayloadId) -> bool {
         self.payload_id
             .get(payload_id)
             .map(|x| x.0)
+            .unwrap_or_default()
+    }
+
+    fn no_tx_pool(&self, payload_id: &PayloadId) -> bool {
+        self.payload_id
+            .get(payload_id)
+            .map(|x| x.1)
             .unwrap_or_default()
     }
 
@@ -107,6 +116,47 @@ pub enum ExecutionMode {
     Fallback,
 }
 
+#[derive(Clone, Parser, Debug)]
+pub struct BlockSelectionArgs {
+    #[arg(long, env, default_value = "builder")]
+    pub block_selection_strategy: BlockSelectionStrategy,
+    #[arg(long, env)]
+    pub required_builder_gas_pct: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
+pub enum BlockSelectionStrategy {
+    Builder,
+    L2,
+    GasUsed,
+    NoEmptyBlocks,
+}
+
+#[derive(Debug, Clone)]
+pub enum BlockSelectionConfig {
+    // Always use the builder's payload if valid
+    Builder,
+    // Always use the L2's payload if valid
+    L2,
+    // Percentage of L2 gas used the builder payload should be within to use the builder payload
+    GasUsed { pct: u64 },
+    // Do not use builder payloads if they are empty
+    NoEmptyBlocks,
+}
+
+impl BlockSelectionConfig {
+    pub fn from_args(args: BlockSelectionArgs) -> Self {
+        match args.block_selection_strategy {
+            BlockSelectionStrategy::Builder => BlockSelectionConfig::Builder,
+            BlockSelectionStrategy::L2 => BlockSelectionConfig::L2,
+            BlockSelectionStrategy::GasUsed => BlockSelectionConfig::GasUsed {
+                pct: args.required_builder_gas_pct.unwrap_or(100),
+            },
+            BlockSelectionStrategy::NoEmptyBlocks => BlockSelectionConfig::NoEmptyBlocks,
+        }
+    }
+}
+
 impl ExecutionMode {
     fn is_get_payload_enabled(&self) -> bool {
         // get payload is only enabled in 'enabled' mode
@@ -122,6 +172,65 @@ impl ExecutionMode {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct BlockSelector {
+    config: BlockSelectionConfig,
+    payload_id_to_tx_count: Cache<PayloadId, usize>,
+}
+
+impl BlockSelector {
+    pub fn new(config: BlockSelectionConfig) -> Self {
+        BlockSelector {
+            config,
+            payload_id_to_tx_count: Cache::new(CACHE_SIZE),
+        }
+    }
+
+    fn store_tx_count(&self, payload_id: PayloadId, tx_count: usize) {
+        if matches!(self.config, BlockSelectionConfig::NoEmptyBlocks) {
+            self.payload_id_to_tx_count.insert(payload_id, tx_count);
+        }
+    }
+
+    // Returns the payload and payload source
+    fn select_block(
+        &self,
+        payload_id: PayloadId,
+        l2_payload: OpExecutionPayloadEnvelope,
+        builder_payload: OpExecutionPayloadEnvelope,
+    ) -> (OpExecutionPayloadEnvelope, PayloadSource) {
+        match self.config {
+            BlockSelectionConfig::Builder => (builder_payload, PayloadSource::Builder),
+            BlockSelectionConfig::L2 => (l2_payload, PayloadSource::L2),
+            BlockSelectionConfig::GasUsed { pct } => {
+                // If the builder payload gas used is more than or equal to the L2 payload gas used * the percentage, we use the builder payload
+                if builder_payload.gas_used() * 100 >= l2_payload.gas_used() * pct {
+                    (builder_payload, PayloadSource::Builder)
+                } else {
+                    (l2_payload, PayloadSource::L2)
+                }
+            }
+            BlockSelectionConfig::NoEmptyBlocks => {
+                let tx_count = self.payload_id_to_tx_count.get(&payload_id);
+                if let Some(tx_count) = tx_count {
+                    let builder_tx_count = builder_payload.transactions().len();
+                    let l2_tx_count = l2_payload.transactions().len();
+                    // Builder payload only contains the transactions from the sequencer and the builder transaction
+                    // and considered an empty block as there are no user transactions.
+                    // We use the l2 payload if the builder payload is empty and the l2 payload has user transactions
+                    if builder_tx_count == tx_count + 1 && builder_tx_count < l2_tx_count + 1 {
+                        return (l2_payload, PayloadSource::L2);
+                    }
+                    (builder_payload, PayloadSource::Builder)
+                } else {
+                    // If payload attributes are not present, we default to the l2 payload
+                    (l2_payload, PayloadSource::L2)
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
@@ -129,6 +238,7 @@ pub struct RollupBoostServer {
     pub boost_sync: bool,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
+    block_selector: BlockSelector,
 }
 
 impl RollupBoostServer {
@@ -137,6 +247,7 @@ impl RollupBoostServer {
         builder_client: RpcClient,
         boost_sync: bool,
         initial_execution_mode: ExecutionMode,
+        block_selector: BlockSelector,
     ) -> Self {
         Self {
             l2_client: Arc::new(l2_client),
@@ -144,6 +255,7 @@ impl RollupBoostServer {
             boost_sync,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
+            block_selector,
         }
     }
 
@@ -284,13 +396,25 @@ impl EngineApiServer for RollupBoostServer {
 
         let execution_mode = self.execution_mode();
         let trace_id = span.id();
+
+        let has_attributes = payload_attributes.is_some();
+        let no_tx_pool = payload_attributes
+            .as_ref()
+            .is_some_and(|attr| attr.no_tx_pool.unwrap_or_default());
+        let tx_count = payload_attributes
+            .as_ref()
+            .map_or(0, |attr| attr.transactions.as_ref().map_or(0, |t| t.len()));
         if let Some(payload_id) = l2_response.payload_id {
             self.payload_trace_context.store(
                 payload_id,
                 fork_choice_state.head_block_hash,
-                payload_attributes.is_some(),
+                has_attributes,
+                no_tx_pool,
                 trace_id,
             );
+            if has_attributes {
+                self.block_selector.store_tx_count(payload_id, tx_count);
+            }
         }
 
         if execution_mode.is_disabled() {
@@ -419,6 +543,39 @@ impl OpExecutionPayloadEnvelope {
         match self {
             OpExecutionPayloadEnvelope::V3(_) => Version::V3,
             OpExecutionPayloadEnvelope::V4(_) => Version::V4,
+        }
+    }
+
+    pub fn transactions(&self) -> &[Bytes] {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                &v3.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                &v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+        }
+    }
+
+    pub fn gas_used(&self) -> u64 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.gas_used
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .gas_used
+            }
         }
     }
 }
@@ -560,8 +717,11 @@ impl RollupBoostServer {
                 tracing::Span::current().follows_from(cause);
             }
 
-            if !self.payload_trace_context.has_attributes(&payload_id) {
-                // block builder won't build a block without attributes
+            if (!self.payload_trace_context.has_attributes(&payload_id))
+                || (self.payload_trace_context.has_attributes(&payload_id)
+                    && self.payload_trace_context.no_tx_pool(&payload_id))
+            {
+                // block builder won't build a block without attributes or if no_tx_pool is true
                 info!(message = "no attributes found, skipping get_payload call to builder");
                 return Ok(None);
             }
@@ -587,7 +747,9 @@ impl RollupBoostServer {
                     // Default to op-geth's payload
                     Ok((l2_payload, PayloadSource::L2))
                 } else {
-                    Ok((builder, PayloadSource::Builder))
+                    Ok(self
+                        .block_selector
+                        .select_block(payload_id, l2_payload, builder))
                 }
             }
             (_, Ok(l2)) => Ok((l2, PayloadSource::L2)),
@@ -728,12 +890,18 @@ mod tests {
                 Uri::from_str(&format!("http://{}:{}", HOST, BUILDER_PORT)).unwrap();
             let builder_client =
                 RpcClient::new(builder_auth_rpc, jwt_secret, 2000, PayloadSource::Builder).unwrap();
+            let block_selection_config = BlockSelectionConfig::from_args(BlockSelectionArgs {
+                block_selection_strategy: BlockSelectionStrategy::Builder,
+                required_builder_gas_pct: None,
+            });
+            let block_selector = BlockSelector::new(block_selection_config);
 
             let rollup_boost_client = RollupBoostServer::new(
                 l2_client,
                 builder_client,
                 boost_sync,
                 ExecutionMode::Enabled,
+                block_selector,
             );
 
             let module: RpcModule<()> = rollup_boost_client.try_into().unwrap();
