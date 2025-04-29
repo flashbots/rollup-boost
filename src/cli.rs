@@ -8,7 +8,8 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    DebugClient, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
+    BlockSelectionArgs, BlockSelectionConfig, BlockSelector, DebugClient, PayloadSource,
+    ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     init_metrics, init_tracing,
     server::ExecutionMode,
@@ -81,6 +82,10 @@ pub struct Args {
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     pub execution_mode: ExecutionMode,
+
+    /// Block selection config
+    #[clap(flatten)]
+    pub block_selection: BlockSelectionArgs,
 }
 
 impl Args {
@@ -155,11 +160,15 @@ impl Args {
             info!("Boost sync enabled");
         }
 
+        let block_selection_config = BlockSelectionConfig::from_args(self.block_selection);
+        let block_selector = BlockSelector::new(block_selection_config);
+
         let rollup_boost = RollupBoostServer::new(
             l2_client,
             builder_client,
             boost_sync_enabled,
             self.execution_mode,
+            block_selector,
         );
 
         // Spawn the debug server

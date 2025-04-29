@@ -27,6 +27,8 @@ cargo run -- [OPTIONS]
 - `--no-boost-sync`: Disables using the proposer to sync the builder node (default: true)
 - `--debug-host <HOST>`: Host to run the server on (default: 127.0.0.1)
 - `--debug-server-port <PORT>`: Port to run the debug server on (default: 5555)
+- `--execution-mode <EXECUTION_MODE>`: Initial execution mode to run (default: enabled)
+- `--block_selection_strategy`: Selection strategy between the builder and l2 block (default: builder)
 
 ### Environment Variables
 
@@ -192,6 +194,21 @@ To run rollup-boost in debug mode with a specific execution mode, you can use th
 ```
 rollup-boost debug set-execution-mode [enabled|dry-run|disabled]
 ```
+
+## Block Selection Strategy
+
+There are several block selection configurations for rollup-boost if both the builder and local block payloads returned are valid:
+
+- `builder`: the builder payload will always be chosen
+- `l2`: the local l2 block will always be chosen
+- `gas-used`: a percentage threshold will be used to decide between the builder and local block
+- `no-empty-blocks`: if the builder block has no user transactions while the local l2 block does, use the local block
+
+By default rollup-boost will always choose the builder payload.
+
+### Gas Usage Block Selection Strategy
+
+If `gas-used` is chosen as the block selection strategy, the `--required-builder-gas-pct` flag may optionally be specified. This is the percentage value of the local l2 block the builder payload should be within for the builder payload to be chosen. For instance, a value of 70 means that the gas used by the builder block should be at least 70% of the local l2 block, otherwise fallback to the local l2 block. By default it will be at 100, meaning that the local block will be chosen if it used more gas than the builder block.
 
 ## Maintainers
 
