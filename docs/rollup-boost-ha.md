@@ -33,9 +33,9 @@ This design document outlines the architecture, components, and failure strategi
 - Define how pending transactions are relayed/peered across the builders/sequencer execution clients.
 - Monitoring / alerting strategies. This can be specified in a separate document once an architecture is solidified.
 
-# Design
-
 <br>
+
+# Design
 
 ## Overview
 
