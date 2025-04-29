@@ -185,7 +185,6 @@ Sets the current execution mode for `rollup-boost`.
   "id": 1,
   "jsonrpc": "2.0"
 }
-
 ```
 
 **Response**:
