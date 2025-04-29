@@ -1,3 +1,4 @@
+use crate::client::auth::AuthLayer;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
@@ -13,11 +14,13 @@ use tower::{Service as _, ServiceBuilder, ServiceExt};
 use tower_http::decompression::{Decompression, DecompressionLayer};
 use tracing::{debug, error, instrument};
 
-use super::auth::{AuthClientLayer, AuthClientService};
+use super::auth::Auth;
+
+pub type HttpClientService = Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>;
 
 #[derive(Clone, Debug)]
 pub struct HttpClient {
-    client: Decompression<AuthClientService<Client<HttpsConnector<HttpConnector>, HttpBody>>>,
+    client: HttpClientService,
     url: Uri,
     target: PayloadSource,
 }
@@ -36,7 +39,7 @@ impl HttpClient {
 
         let client = ServiceBuilder::new()
             .layer(DecompressionLayer::new())
-            .layer(AuthClientLayer::new(secret))
+            .layer(AuthLayer::new(secret))
             .service(client);
 
         Self {
@@ -49,7 +52,11 @@ impl HttpClient {
     /// Forwards an HTTP request to the `authrpc`, attaching the provided JWT authorization.
     #[instrument(
         skip(self, req),
-        fields(otel.kind = ?SpanKind::Client),
+        fields(otel.kind = ?SpanKind::Client,
+        url = %self.url,
+        method,
+        code,
+        ),
         err(Debug)
     )]
     pub async fn forward(
@@ -58,6 +65,7 @@ impl HttpClient {
         method: String,
     ) -> Result<http::Response<HttpBody>, BoxError> {
         debug!("forwarding {} to {}", method, self.target);
+        tracing::Span::current().record("method", method);
         *req.uri_mut() = self.url.clone();
 
         let res = self.client.ready().await?.call(req).await?;
@@ -67,6 +75,7 @@ impl HttpClient {
 
         if let Some(code) = parse_response_code(&body_bytes)? {
             error!(%code, "error in forwarded response");
+            tracing::Span::current().record("code", code);
         }
 
         Ok(http::Response::from_parts(
