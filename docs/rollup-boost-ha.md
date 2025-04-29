@@ -6,7 +6,8 @@
 - [Design](#design)
   - [Overview](#overview)
   - [Health Checks]()
-  - [DebugAPI]()
+  - [Execution Mode](#execution-mode)
+  - [DebugAPI](#debug-api)
   - [Failure Scenarios](#failure-scenarios)
 
 # Context/Scope
@@ -117,6 +118,31 @@ During normal operation and leadership transfers, `op-conductor` should prioriti
 3. Nodes reporting `503 Service Unavailable` must not be selected as leader.
 
 Rollup Boost instances that are not actively sequencing rely exclusively on the builder sync check to report health, as they are not producing blocks. This behavior mirrors the existing `op-conductor` health checks for inactive sequencers and ensures readiness during failover without compromising network liveness guarantees.
+
+
+## Execution mode
+`ExecutionMode` is a configuration setting that controls how `rollup-boost` interacts with the external builder during block production. Execution mode can be set either at startup via CLI flags or dynamically modified at runtime through the [Debug API](#debugapi).
+
+Operators can use `ExecutionMode` to selectively forward or bypass requests to the builder, enabling dry runs during deployments or disabling external block production in case of failures or emergencies.
+
+ `ExecutionMode` should feature the following options:
+```rust
+pub enum ExecutionMode {
+    /// Forward Engine API requests to the builder, validate builder payloads and propagate to the network 
+    Enabled,
+    /// Forward Engine API requests to the builder, validate builder payloads but
+    /// fallback to default execution payload
+    DryRun,
+    // Do not forward Engine API requests to the builder 
+    Disabled,
+}
+```
+
+TODO: describe each execution mode in detail
+
+
+## Debug API
+TODO: document debug api endpoints
 
 ## Failure Scenarios
 
