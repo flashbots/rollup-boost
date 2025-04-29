@@ -178,7 +178,7 @@ Sets the current execution mode for `rollup-boost`.
 
 **Request**:
 
-```json
+```
 {
   "method": "debug_setExecutionMode",
   "params": [ "enabled" | "dry_run" | "disabled" ],
@@ -190,7 +190,7 @@ Sets the current execution mode for `rollup-boost`.
 
 **Response**:
 
-```json
+```
 {
   "result": null,
   "id": 1,
@@ -204,7 +204,7 @@ Retrieves the current execution mode.
 
 **Request**:
 
-```json
+```
 {
   "method": "debug_getExecutionMode",
   "params": [],
@@ -215,7 +215,7 @@ Retrieves the current execution mode.
 
 **Response:**
 
-```json
+```
 {
   "result": "enabled" | "dry_run" | "disabled",
   "id": 1,
