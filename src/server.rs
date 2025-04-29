@@ -142,7 +142,7 @@ pub enum EngineMessage {
     },
     ForkchoiceUpdated {
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<OpPayloadAttributes>,
+        payload_attributes: Box<Option<OpPayloadAttributes>>,
         tx: oneshot::Sender<RpcResult<ForkchoiceUpdated>>,
     },
     GetPayload {
@@ -313,7 +313,7 @@ impl EngineHandler {
         let (tx, rx) = oneshot::channel();
         let _ = self.to_engine.send(EngineMessage::ForkchoiceUpdated {
             fork_choice_state,
-            payload_attributes,
+            payload_attributes: Box::new(payload_attributes),
             tx,
         });
 
@@ -558,7 +558,7 @@ impl RollupBoostServer {
                     tx,
                 } => {
                     let result = self
-                        .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+                        .fork_choice_updated_v3(fork_choice_state, *payload_attributes)
                         .await;
                     let _ = tx.send(result);
                 }
