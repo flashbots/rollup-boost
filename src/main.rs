@@ -36,7 +36,12 @@ struct Args {
     )]
     listen_addr: SocketAddr,
 
-    #[arg(long, env, help = "WebSocket URI of the upstream server to connect to")]
+    #[arg(
+        long,
+        env,
+        value_delimiter = ',',
+        help = "WebSocket URI of the upstream server to connect to"
+    )]
     upstream_ws: Vec<Uri>,
 
     #[arg(
