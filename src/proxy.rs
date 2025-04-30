@@ -1,11 +1,14 @@
 use crate::client::http::HttpClient;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
-use http::Uri;
+use http::{Request, Uri};
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
+use reqwest::Body;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
+use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot;
 use tower::{Layer, Service};
 use tracing::info;
 
@@ -74,6 +77,7 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
+    engine_tx: Sender<(Request<HttpBody>, oneshot::Receiver<HttpResponse>)>,
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
@@ -104,6 +108,7 @@ where
         // for an explanation of this pattern
         let mut service = self.clone();
         service.inner = std::mem::replace(&mut self.inner, service.inner);
+        let engine_tx = self.engine_tx.clone();
 
         let fut = async move {
             let (parts, body) = req.into_parts();
@@ -118,7 +123,13 @@ where
             if method.starts_with(ENGINE_METHOD) {
                 let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                service.inner.call(req).await.map_err(|e| e.into())
+
+                let (rx, tx) = oneshot::channel();
+                engine_tx.send((req, tx));
+
+                // TODO:  await response
+                // service.inner.call(req).await.map_err(|e| e.into())
+                todo!()
             } else if FORWARD_REQUESTS.contains(&method.as_str()) {
                 // If the request should be forwarded, send to both the
                 // default execution client and the builder
