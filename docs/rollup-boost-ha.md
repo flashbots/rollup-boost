@@ -26,6 +26,7 @@ This design document outlines the architecture, components, and failure strategi
 
 - Explore HA designs for `rollup-boost` prioritizing liveliness, fault tolerance and horizontal scalability for external block builders.
 - Maintain compatibility with `op-conductor` and its sequencing assumptions.
+- Explore designs that are forward compatible with the Flashblocks spec.
 
 ## Non Goals
 
