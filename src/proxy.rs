@@ -87,7 +87,10 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
-    engine_tx: UnboundedSender<(http::Request<HttpBody>, oneshot::Sender<HttpResponse>)>,
+    engine_tx: UnboundedSender<(
+        http::Request<HttpBody>,
+        oneshot::Sender<Result<http::Response<HttpBody>, BoxError>>,
+    )>,
 }
 
 impl<S> ProxyService<S>
@@ -101,20 +104,14 @@ where
         &self,
         mut rx: UnboundedReceiver<(
             http::Request<HttpBody>,
-            oneshot::Sender<http::Response<HttpBody>>,
+            oneshot::Sender<Result<http::Response<HttpBody>, BoxError>>,
         )>,
     ) {
         let mut service = self.clone();
 
         tokio::spawn(async move {
             while let Some((req, resp_tx)) = rx.recv().await {
-                let resp = service
-                    .inner
-                    .call(req)
-                    .await
-                    .map_err(|e| e.into())
-                    .expect("TODO: handle error");
-
+                let resp = service.inner.call(req).await.map_err(|e| e.into());
                 resp_tx.send(resp).expect("TODO: handle error");
             }
         });
@@ -168,8 +165,7 @@ where
                 let (tx, rx) = oneshot::channel();
                 engine_tx.send((req, tx)).unwrap();
 
-                let resp = rx.await.expect("TODO: handle error");
-                Ok(resp)
+                rx.await.expect("TODO: handle error")
             } else if FORWARD_REQUESTS.contains(&method.as_str()) {
                 // If the request should be forwarded, send to both the
                 // default execution client and the builder
