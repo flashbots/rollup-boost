@@ -24,7 +24,7 @@ use op_alloy_rpc_types_engine::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use jsonrpsee::proc_macros::rpc;
 
@@ -32,7 +32,7 @@ const CACHE_SIZE: u64 = 100;
 
 #[derive(Debug, Clone)]
 pub struct PayloadTrace {
-    pub builder_has_payload: bool,
+    pub builder_payload_id: Option<PayloadId>,
     pub trace_id: Option<tracing::Id>,
 }
 
@@ -53,13 +53,13 @@ impl PayloadTraceContext {
         &self,
         payload_id: PayloadId,
         parent_hash: B256,
-        builder_has_payload: bool,
+        builder_payload_id: Option<PayloadId>,
         trace_id: Option<tracing::Id>,
     ) {
         self.payload_id.insert(
             payload_id,
             PayloadTrace {
-                builder_has_payload,
+                builder_payload_id,
                 trace_id,
             },
         );
@@ -81,18 +81,18 @@ impl PayloadTraceContext {
         &self,
         payload_id: PayloadId,
         trace_id: Option<tracing::Id>,
-        builder_has_payload: bool,
+        builder_payload_id: Option<PayloadId>,
     ) {
         self.payload_id
             .entry(payload_id)
             .and_upsert_with(|o| match o {
                 Some(e) => {
                     let mut trace = e.into_value();
-                    trace.builder_has_payload = builder_has_payload;
+                    trace.builder_payload_id = builder_payload_id;
                     trace
                 }
                 None => PayloadTrace {
-                    builder_has_payload,
+                    builder_payload_id,
                     trace_id,
                 },
             });
@@ -115,11 +115,10 @@ impl PayloadTraceContext {
         self.payload_id.get(payload_id).and_then(|x| x.trace_id)
     }
 
-    fn has_builder_payload(&self, payload_id: &PayloadId) -> bool {
+    fn builder_payload_id(&self, payload_id: &PayloadId) -> Option<PayloadId> {
         self.payload_id
             .get(payload_id)
-            .map(|x| x.builder_has_payload)
-            .unwrap_or_default()
+            .and_then(|x| x.builder_payload_id)
     }
 
     fn remove_by_parent_hash(&self, block_hash: &B256) {
@@ -326,19 +325,19 @@ impl EngineApiServer for RollupBoostServer {
             span.record("payload_id", payload_id.to_string());
         }
 
-        let (should_send_to_builder, has_attributes, use_tx_pool) =
-            if let Some(attr) = payload_attributes.as_ref() {
-                // payload attributes are present. It is a FCU call to start block building
-                // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
-                // a deterministic block without txs. We let the fallback EL node compute those.
-                let use_tx_pool = !attr.no_tx_pool.unwrap_or_default();
+        let (should_send_to_builder, use_tx_pool) = if let Some(attr) = payload_attributes.as_ref()
+        {
+            // payload attributes are present. It is a FCU call to start block building
+            // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
+            // a deterministic block without txs. We let the fallback EL node compute those.
+            let use_tx_pool = !attr.no_tx_pool.unwrap_or_default();
 
-                (use_tx_pool, true, use_tx_pool)
-            } else {
-                // no payload attributes. It is a FCU call to lock the head block
-                // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
-                (self.boost_sync, false, false)
-            };
+            (use_tx_pool, use_tx_pool)
+        } else {
+            // no payload attributes. It is a FCU call to lock the head block
+            // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
+            (self.boost_sync, false)
+        };
 
         let execution_mode = self.execution_mode();
         let trace_id = span.id();
@@ -346,7 +345,7 @@ impl EngineApiServer for RollupBoostServer {
             self.payload_trace_context.store(
                 payload_id,
                 fork_choice_state.head_block_hash,
-                has_attributes && use_tx_pool,
+                None,
                 trace_id,
             );
         }
@@ -356,18 +355,34 @@ impl EngineApiServer for RollupBoostServer {
         } else if should_send_to_builder {
             let builder_client = self.builder_client.clone();
             let payload_trace_context = self.payload_trace_context.clone();
-            let payload_id = l2_response.payload_id;
             let trace_id = span.id();
             tokio::spawn(async move {
-                let response = builder_client
+                let _ = match builder_client
                     .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-                    .await;
-                if let (Err(_), Some(id)) = (response, payload_id) {
-                    payload_trace_context.upsert_builder_has_payload(id, trace_id, false);
-                }
+                    .await
+                {
+                    Ok(response) => {
+                        if let (Some(payload_id), Some(builder_payload_id)) =
+                            (l2_response.payload_id, response.payload_id)
+                        {
+                            // It was a block building call and both L2/Builder returned a payload ID
+                            if payload_id != builder_payload_id {
+                                warn!(message = "builder returned a different payload ID than L2", "payload_id" = %payload_id, "builder_payload_id" = %builder_payload_id);
+                            }
+                            payload_trace_context.upsert_builder_has_payload(
+                                payload_id,
+                                trace_id,
+                                Some(builder_payload_id),
+                            );
+                        }
+                    }
+                    Err(_) => {
+                        // this is already logged in the builder client
+                    }
+                };
             });
         } else {
-            info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash, "payload_id" = %l2_response.payload_id.unwrap_or_default(), "has_attributes" = has_attributes, "use_tx_pool" = use_tx_pool);
+            info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash, "payload_id" = %l2_response.payload_id.unwrap_or_default(), "use_tx_pool" = use_tx_pool);
         }
 
         Ok(l2_response)
@@ -628,14 +643,20 @@ impl RollupBoostServer {
                 tracing::Span::current().follows_from(cause);
             }
 
-            if !self.payload_trace_context.has_builder_payload(&payload_id) {
-                // block builder won't build a block without attributes
-                info!(message = "builder has no payload, skipping get_payload call to builder");
-                return Ok(None);
-            }
+            let builder_payload_id = match self
+                .payload_trace_context
+                .builder_payload_id(&payload_id)
+            {
+                Some(builder_payload_id) => builder_payload_id,
+                None => {
+                    // block builder won't build a block without attributes
+                    info!(message = "builder has no payload, skipping get_payload call to builder");
+                    return Ok(None);
+                }
+            };
 
             let builder = self.builder_client.clone();
-            let payload = builder.get_payload(payload_id, version).await?;
+            let payload = builder.get_payload(builder_payload_id, version).await?;
 
             // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
             // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
