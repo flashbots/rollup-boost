@@ -76,8 +76,8 @@ where
             builder_client,
             engine_tx: tx,
         };
-        service.process_engine_queue(rx);
 
+        service.process_engine_queue(rx);
         service
     }
 }
@@ -108,7 +108,6 @@ where
         )>,
     ) {
         let mut service = self.clone();
-
         tokio::spawn(async move {
             while let Some((req, resp_tx)) = rx.recv().await {
                 let resp = service.inner.call(req).await.map_err(|e| e.into());
@@ -164,7 +163,6 @@ where
 
                 let (tx, rx) = oneshot::channel();
                 engine_tx.send((req, tx)).unwrap();
-
                 rx.await.expect("TODO: handle error")
             } else if FORWARD_REQUESTS.contains(&method.as_str()) {
                 // If the request should be forwarded, send to both the
