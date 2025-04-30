@@ -140,22 +140,15 @@ pub enum ExecutionMode {
     DryRun,
     // Not sending any requests
     Disabled,
-    // Defaulting to op-geth payloads
-    Fallback,
 }
 
 impl ExecutionMode {
-    fn is_get_payload_enabled(&self) -> bool {
-        // get payload is only enabled in 'enabled' mode
-        matches!(self, ExecutionMode::Enabled)
+    fn is_dry_run(&self) -> bool {
+        matches!(self, ExecutionMode::DryRun)
     }
 
     fn is_disabled(&self) -> bool {
         matches!(self, ExecutionMode::Disabled)
-    }
-
-    fn is_fallback_enabled(&self) -> bool {
-        matches!(self, ExecutionMode::Fallback)
     }
 }
 
@@ -612,18 +605,6 @@ impl RollupBoostServer {
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
         let l2_client_future = self.l2_client.get_payload(payload_id, version);
         let builder_client_future = Box::pin(async move {
-            let execution_mode = self.execution_mode();
-            if !execution_mode.is_get_payload_enabled() {
-                info!(message = "dry run mode is enabled, skipping get payload builder call");
-
-                // We are in dry run mode, so we do not want to call the builder.
-                return Err(ErrorObject::owned(
-                    INVALID_REQUEST_CODE,
-                    "Dry run mode is enabled",
-                    None::<String>,
-                ));
-            }
-
             if let Some(cause) = self.payload_trace_context.trace_id(&payload_id) {
                 tracing::Span::current().follows_from(cause);
             }
@@ -631,7 +612,7 @@ impl RollupBoostServer {
             if !self.payload_trace_context.has_builder_payload(&payload_id) {
                 // block builder won't build a block without attributes
                 info!(message = "builder has no payload, skipping get_payload call to builder");
-                return Ok(None);
+                return RpcResult::Ok(None);
             }
 
             let builder = self.builder_client.clone();
@@ -653,7 +634,7 @@ impl RollupBoostServer {
             (Ok(Some(builder)), Ok(l2_payload)) => {
                 // builder successfully returned a payload
                 self.probes.set_health(Health::Healthy);
-                if self.execution_mode().is_fallback_enabled() {
+                if self.execution_mode().is_dry_run() {
                     // Default to op-geth's payload
                     Ok((l2_payload, PayloadSource::L2))
                 } else {
