@@ -7,7 +7,7 @@ use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
 use reqwest::Body;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tower::{Layer, Service};
 use tracing::info;
@@ -64,11 +64,16 @@ impl<S> Layer<S> for ProxyLayer {
             PayloadSource::Builder,
         );
 
-        ProxyService {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let service = ProxyService {
             inner,
             l2_client,
             builder_client,
-        }
+            engine_tx: tx,
+        };
+        service.process_engine_queue();
+
+        service
     }
 }
 
@@ -77,7 +82,29 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
-    engine_tx: Sender<(Request<HttpBody>, oneshot::Receiver<HttpResponse>)>,
+    engine_tx: UnboundedSender<(Request<HttpBody>, oneshot::Sender<HttpResponse>)>,
+}
+
+impl<S> ProxyService<S>
+where
+    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
+    S::Response: 'static,
+    S::Error: Into<BoxError> + 'static,
+    S::Future: Send + 'static,
+{
+    pub fn process_engine_queue(
+        &self,
+        mut rx: UnboundedReceiver<(Request<HttpBody>, oneshot::Sender<HttpResponse>)>,
+    ) {
+        let mut service = self.clone();
+
+        tokio::spawn(async move {
+            while let Some((req, resp_tx)) = rx.recv().await {
+                let resp = service.inner.call(req).await.expect("TODO: handle error");
+                resp_tx.send(resp);
+            }
+        });
+    }
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
@@ -124,7 +151,7 @@ where
                 let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
 
-                let (rx, tx) = oneshot::channel();
+                let (tx, rx) = oneshot::channel();
                 engine_tx.send((req, tx));
 
                 // TODO:  await response
