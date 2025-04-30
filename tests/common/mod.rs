@@ -162,46 +162,6 @@ pub trait BlockApi {
     ) -> RpcResult<Option<alloy_rpc_types_eth::Block>>;
 }
 
-pub struct GenesisBuilder {
-    block_time: u64,
-    isthmus_block: Option<u64>,
-}
-
-impl Default for GenesisBuilder {
-    fn default() -> Self {
-        Self {
-            block_time: 2,
-            isthmus_block: None,
-        }
-    }
-}
-
-impl GenesisBuilder {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn with_isthmus_block(mut self, isthmus_block: u64) -> Self {
-        self.isthmus_block = Some(isthmus_block);
-        self
-    }
-}
-
-impl GenesisBuilder {
-    fn build(&self) -> eyre::Result<Genesis> {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        Ok(Genesis {
-            timestamp,
-            isthmus_block: self.isthmus_block,
-            block_time: self.block_time,
-        })
-    }
-}
-
 #[derive(Clone)]
 pub struct Genesis {
     pub timestamp: u64,
@@ -220,9 +180,17 @@ impl Genesis {
             config["timestamp"] = Value::String(format!("0x{:x}", self.timestamp));
 
             if let Some(isthmus_block) = self.isthmus_block {
+                // In the genesis file the Isthmus fork is represented not as a block number
+                // but as a timestamp.
                 let isthmus_time = self.timestamp + isthmus_block * self.block_time;
                 if let Some(config_obj) = config.get_mut("config").and_then(|c| c.as_object_mut()) {
+                    // you need to enable also the Prague hardfork since it is the one that
+                    // enables the engine v4 API.
+                    // In the test_data/genesis.json file they are set as '100000000000000' which
+                    // represents that they are not enabled.
                     config_obj["isthmusTime"] =
+                        Value::Number(serde_json::Number::from(isthmus_time));
+                    config_obj["pragueTime"] =
                         Value::Number(serde_json::Number::from(isthmus_time));
                 }
             }
@@ -244,7 +212,8 @@ pub struct RollupBoostTestHarness {
 pub struct RollupBoostTestHarnessBuilder {
     test_name: String,
     proxy_handler: Option<Arc<dyn ProxyHandler>>,
-    genesis: GenesisBuilder,
+    isthmus_block: Option<u64>,
+    block_time: u64,
 }
 
 impl RollupBoostTestHarnessBuilder {
@@ -252,12 +221,18 @@ impl RollupBoostTestHarnessBuilder {
         Self {
             test_name: test_name.to_string(),
             proxy_handler: None,
-            genesis: GenesisBuilder::default(),
+            isthmus_block: None,
+            block_time: 1,
         }
     }
 
-    pub fn with_genesis(mut self, genesis: GenesisBuilder) -> Self {
-        self.genesis = genesis;
+    pub fn with_isthmus_block(mut self, isthmus_block: u64) -> Self {
+        self.isthmus_block = Some(isthmus_block);
+        self
+    }
+
+    pub fn with_block_time(mut self, block_time: u64) -> Self {
+        self.block_time = block_time;
         self
     }
 
@@ -304,7 +279,17 @@ impl RollupBoostTestHarnessBuilder {
         let builder_log_consumer = self.log_consumer("builder").await?;
         let rollup_boost_log_file_path = self.file_path("rollup_boost")?;
 
-        let genesis = self.genesis.build()?;
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let genesis = Genesis {
+            timestamp,
+            isthmus_block: self.isthmus_block,
+            block_time: self.block_time,
+        };
+
         let genesis_str = genesis.to_string()?;
 
         let l2_p2p_port = get_available_port();
@@ -412,7 +397,7 @@ impl SimpleBlockGenerator {
             validator,
             engine_api,
             latest_hash: B256::ZERO, // temporary value
-            timestamp: 0,
+            timestamp: genesis.timestamp,
             genesis,
             current_block_number: 0,
         }
@@ -431,6 +416,7 @@ impl SimpleBlockGenerator {
         &mut self,
         empty_blocks: bool,
     ) -> eyre::Result<(B256, PayloadSource)> {
+        let timestamp = self.timestamp + self.genesis.block_time;
         self.current_block_number += 1;
 
         let version = match self.genesis.isthmus_block {
@@ -446,6 +432,10 @@ impl SimpleBlockGenerator {
 
         let txns = match version {
             Version::V4 => {
+                // Starting on the Ishtmus hardfork, the payload attributes must include a "BlockInfo"
+                // transaction which is a deposit transaction with info about the gas fees on L1.
+                // Op-Reth will fail to process the block if the state resulting from executing this transaction
+                // is not set in REVM.
                 let tx = create_deposit_tx();
                 Some(vec![tx])
             }
@@ -462,7 +452,7 @@ impl SimpleBlockGenerator {
                     payload_attributes: PayloadAttributes {
                         withdrawals: Some(vec![]),
                         parent_beacon_block_root: Some(B256::ZERO),
-                        timestamp: self.timestamp + 1000, // 1 second later
+                        timestamp,
                         prev_randao: B256::ZERO,
                         suggested_fee_recipient: Default::default(),
                     },
@@ -513,6 +503,16 @@ impl SimpleBlockGenerator {
 
         Ok((new_block_hash, block_creator))
     }
+
+    pub async fn generate_builder_blocks(&mut self, num_blocks: u64) -> eyre::Result<()> {
+        for _ in 0..num_blocks {
+            let (_block, block_creator) = self.generate_block(false).await?;
+            if !block_creator.is_builder() {
+                eyre::bail!("Block creator should be the builder");
+            }
+        }
+        Ok(())
+    }
 }
 
 pub struct BlockBuilderCreatorValidator {
@@ -560,6 +560,7 @@ impl BlockBuilderCreatorValidator {
 }
 
 fn create_deposit_tx() -> Bytes {
+    // Extracted from a Isthmus enabled chain running in builder-playground
     const ISTHMUS_DATA: &[u8] = &hex!(
         "098999be00000558000c5fc500000000000000030000000067a9f765000000000000002900000000000000000000000000000000000000000000000000000000006a6d09000000000000000000000000000000000000000000000000000000000000000172fcc8e8886636bdbe96ba0e4baab67ea7e7811633f52b52e8cf7a5123213b6f000000000000000000000000d3f2c5afb2d76f5579f326b0cd7da5f5a4126c3500004e2000000000000001f4"
     );

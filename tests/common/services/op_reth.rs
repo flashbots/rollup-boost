@@ -8,7 +8,7 @@ use testcontainers::{
 use crate::common::TEST_DATA;
 
 const NAME: &str = "ghcr.io/paradigmxyz/op-reth";
-const TAG: &str = "v1.3.4";
+const TAG: &str = "v1.3.12";
 
 pub const AUTH_RPC_PORT: u16 = 8551;
 pub const P2P_PORT: u16 = 30303;
