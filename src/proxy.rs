@@ -1,10 +1,9 @@
 use crate::client::http::HttpClient;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
-use http::{Request, Uri};
+use http::Uri;
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
-use reqwest::Body;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
@@ -48,7 +47,13 @@ impl ProxyLayer {
     }
 }
 
-impl<S> Layer<S> for ProxyLayer {
+impl<S> Layer<S> for ProxyLayer
+where
+    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
+    S::Response: 'static,
+    S::Error: Into<BoxError> + 'static,
+    S::Future: Send + 'static,
+{
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
@@ -71,7 +76,7 @@ impl<S> Layer<S> for ProxyLayer {
             builder_client,
             engine_tx: tx,
         };
-        service.process_engine_queue();
+        service.process_engine_queue(rx);
 
         service
     }
@@ -82,7 +87,7 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
-    engine_tx: UnboundedSender<(Request<HttpBody>, oneshot::Sender<HttpResponse>)>,
+    engine_tx: UnboundedSender<(http::Request<HttpBody>, oneshot::Sender<HttpResponse>)>,
 }
 
 impl<S> ProxyService<S>
@@ -94,14 +99,23 @@ where
 {
     pub fn process_engine_queue(
         &self,
-        mut rx: UnboundedReceiver<(Request<HttpBody>, oneshot::Sender<HttpResponse>)>,
+        mut rx: UnboundedReceiver<(
+            http::Request<HttpBody>,
+            oneshot::Sender<http::Response<HttpBody>>,
+        )>,
     ) {
         let mut service = self.clone();
 
         tokio::spawn(async move {
             while let Some((req, resp_tx)) = rx.recv().await {
-                let resp = service.inner.call(req).await.expect("TODO: handle error");
-                resp_tx.send(resp);
+                let resp = service
+                    .inner
+                    .call(req)
+                    .await
+                    .map_err(|e| e.into())
+                    .expect("TODO: handle error");
+
+                resp_tx.send(resp).expect("TODO: handle error");
             }
         });
     }
@@ -152,11 +166,10 @@ where
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
 
                 let (tx, rx) = oneshot::channel();
-                engine_tx.send((req, tx));
+                engine_tx.send((req, tx)).unwrap();
 
-                // TODO:  await response
-                // service.inner.call(req).await.map_err(|e| e.into())
-                todo!()
+                let resp = rx.await.expect("TODO: handle error");
+                Ok(resp)
             } else if FORWARD_REQUESTS.contains(&method.as_str()) {
                 // If the request should be forwarded, send to both the
                 // default execution client and the builder
