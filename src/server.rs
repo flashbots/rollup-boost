@@ -324,6 +324,11 @@ impl EngineApiServer for RollupBoostServer {
         let span = tracing::Span::current();
         if let Some(payload_id) = l2_response.payload_id {
             span.record("payload_id", payload_id.to_string());
+
+            info!(
+                "received fork_choice_updated_v3, payload_id: {}",
+                payload_id
+            );
         }
 
         let (should_send_to_builder, has_attributes, use_tx_pool) =
@@ -386,7 +391,7 @@ impl EngineApiServer for RollupBoostServer {
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
-        info!("received get_payload_v3");
+        info!("received get_payload_v3, payload_id: {}", payload_id);
 
         match self.get_payload(payload_id, Version::V3).await? {
             OpExecutionPayloadEnvelope::V3(v3) => Ok(v3),
