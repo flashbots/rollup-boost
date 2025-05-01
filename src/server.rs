@@ -629,29 +629,67 @@ impl RollupBoostServer {
             Ok(Some(payload))
         });
 
-        let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
-        let (payload, context) = match (builder_payload, l2_payload) {
-            (Ok(Some(builder)), Ok(l2_payload)) => {
-                // builder successfully returned a payload
-                self.probes.set_health(Health::Healthy);
-                if self.execution_mode().is_dry_run() {
-                    // Default to op-geth's payload
-                    Ok((l2_payload, PayloadSource::L2))
-                } else {
+        let execution_mode = self.execution_mode();
+
+        // if mode is `dry_run` dont want to wait for the builder payload
+        let (payload, context) = if execution_mode.is_dry_run() {
+            let result = match l2_client_future.await {
+                Ok(payload) => {
+                    self.probes.set_health(Health::Healthy);
+                    Ok((payload, PayloadSource::L2))
+                }
+                Err(e) => {
+                    self.probes.set_health(Health::ServiceUnavailable);
+                    Err(e)
+                }
+            };
+            result
+        } else {
+            let (l2_payload, builder_payload) =
+                tokio::join!(l2_client_future, builder_client_future);
+            let result = match (builder_payload, l2_payload) {
+                (Ok(Some(builder)), Ok(_)) => {
+                    // builder successfully returned a payload
+                    self.probes.set_health(Health::Healthy);
                     Ok((builder, PayloadSource::Builder))
                 }
-            }
-            (_, Ok(l2)) => {
-                // builder failed to return a payload
-                self.probes.set_health(Health::PartialContent);
-                Ok((l2, PayloadSource::L2))
-            }
-            (_, Err(e)) => {
-                // builder and l2 failed to return a payload
-                self.probes.set_health(Health::ServiceUnavailable);
-                Err(e)
-            }
+                (_, Ok(l2)) => {
+                    // builder failed to return a payload
+                    self.probes.set_health(Health::PartialContent);
+                    Ok((l2, PayloadSource::L2))
+                }
+                (_, Err(e)) => {
+                    // builder and l2 failed to return a payload
+                    self.probes.set_health(Health::ServiceUnavailable);
+                    Err(e)
+                }
+            };
+            result
         }?;
+
+        // let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
+        // let (payload, context) = match (builder_payload, l2_payload) {
+        //     (Ok(Some(builder)), Ok(l2_payload)) => {
+        //         // builder successfully returned a payload
+        //         self.probes.set_health(Health::Healthy);
+        //         if self.execution_mode().is_dry_run() {
+        //             // Default to op-geth's payload
+        //             Ok((l2_payload, PayloadSource::L2))
+        //         } else {
+        //             Ok((builder, PayloadSource::Builder))
+        //         }
+        //     }
+        //     (_, Ok(l2)) => {
+        //         // builder failed to return a payload
+        //         self.probes.set_health(Health::PartialContent);
+        //         Ok((l2, PayloadSource::L2))
+        //     }
+        //     (_, Err(e)) => {
+        //         // builder and l2 failed to return a payload
+        //         self.probes.set_health(Health::ServiceUnavailable);
+        //         Err(e)
+        //     }
+        // }?;
 
         tracing::Span::current().record("payload_source", context.to_string());
         // To maintain backwards compatibility with old metrics, we need to record blocks built
