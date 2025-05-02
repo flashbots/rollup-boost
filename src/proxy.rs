@@ -82,15 +82,22 @@ where
     }
 }
 
+pub type EngineResponseTx = UnboundedSender<(
+    http::Request<HttpBody>,
+    oneshot::Sender<Result<http::Response<HttpBody>, BoxError>>,
+)>;
+
+pub type EngineResponseRx = UnboundedReceiver<(
+    http::Request<HttpBody>,
+    oneshot::Sender<Result<http::Response<HttpBody>, BoxError>>,
+)>;
+
 #[derive(Clone, Debug)]
 pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
-    engine_tx: UnboundedSender<(
-        http::Request<HttpBody>,
-        oneshot::Sender<Result<http::Response<HttpBody>, BoxError>>,
-    )>,
+    engine_tx: EngineResponseTx,
 }
 
 impl<S> ProxyService<S>
@@ -100,13 +107,7 @@ where
     S::Error: Into<BoxError> + 'static,
     S::Future: Send + 'static,
 {
-    pub fn process_engine_queue(
-        &self,
-        mut rx: UnboundedReceiver<(
-            http::Request<HttpBody>,
-            oneshot::Sender<Result<http::Response<HttpBody>, BoxError>>,
-        )>,
-    ) {
+    pub fn process_engine_queue(&self, mut rx: EngineResponseRx) {
         let mut service = self.clone();
         tokio::spawn(async move {
             while let Some((req, resp_tx)) = rx.recv().await {
