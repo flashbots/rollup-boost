@@ -603,36 +603,11 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: Version,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        let l2_client_future = self.l2_client.get_payload(payload_id, version);
-        let builder_client_future = Box::pin(async move {
-            if let Some(cause) = self.payload_trace_context.trace_id(&payload_id) {
-                tracing::Span::current().follows_from(cause);
-            }
-
-            if !self.payload_trace_context.has_builder_payload(&payload_id) {
-                // block builder won't build a block without attributes
-                info!(message = "builder has no payload, skipping get_payload call to builder");
-                return RpcResult::Ok(None);
-            }
-
-            let builder = self.builder_client.clone();
-            let payload = builder.get_payload(payload_id, version).await?;
-
-            // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
-            // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
-            // If validation fails, return the local block since that one has already been validated.
-            let _ = self
-                .l2_client
-                .new_payload(NewPayload::from(payload.clone()))
-                .await?;
-
-            Ok(Some(payload))
-        });
-
         let execution_mode = self.execution_mode();
+        let l2_client_future = self.l2_client.get_payload(payload_id, version);
 
-        // if mode is `dry_run` dont want to wait for the builder payload
-        let (payload, context) = if execution_mode.is_dry_run() {
+        // if mode is `disabled` dont await the builder payload
+        let (payload, context) = if execution_mode.is_disabled() {
             let result = match l2_client_future.await {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
@@ -645,51 +620,63 @@ impl RollupBoostServer {
             };
             result
         } else {
+            // if mode is `enabled` or `dry_run` await the builder + L2 payload
+            let builder_client_future = Box::pin(async move {
+                if let Some(cause) = self.payload_trace_context.trace_id(&payload_id) {
+                    tracing::Span::current().follows_from(cause);
+                }
+
+                if !self.payload_trace_context.has_builder_payload(&payload_id) {
+                    // block builder won't build a block without attributes
+                    info!(message = "builder has no payload, skipping get_payload call to builder");
+                    return RpcResult::Ok(None);
+                }
+
+                let builder = self.builder_client.clone();
+                let payload = builder.get_payload(payload_id, version).await?;
+
+                // Send the payload to the local execution engine with engine_newPayload to validate the block from the builder.
+                // Otherwise, we do not want to risk the network to a halt since op-node will not be able to propose the block.
+                // If validation fails, return the local block since that one has already been validated.
+                let _ = self
+                    .l2_client
+                    .new_payload(NewPayload::from(payload.clone()))
+                    .await?;
+
+                Ok(Some(payload))
+            });
+
             let (l2_payload, builder_payload) =
                 tokio::join!(l2_client_future, builder_client_future);
-            let result = match (builder_payload, l2_payload) {
-                (Ok(Some(builder)), Ok(_)) => {
-                    // builder successfully returned a payload
+            let result = match (builder_payload, l2_payload, execution_mode.is_dry_run()) {
+                (Ok(Some(_)), Ok(l2), true) => {
+                    // if builder and l2 is okay and `is_dry_run`, then always return L2 payload with signal `Healthy`
                     self.probes.set_health(Health::Healthy);
-                    Ok((builder, PayloadSource::Builder))
+                    Ok((l2, PayloadSource::L2))
                 }
-                (_, Ok(l2)) => {
-                    // builder failed to return a payload
+                (_, Ok(l2), true) => {
+                    // if builder has failed/errored and l2 is okay and `is_dry_run`, then always return L2 payload, but signal `PartialContent`
                     self.probes.set_health(Health::PartialContent);
                     Ok((l2, PayloadSource::L2))
                 }
-                (_, Err(e)) => {
-                    // builder and l2 failed to return a payload
+                (Ok(Some(builder)), Ok(_), false) => {
+                    // if builder and L2 is okay and `is_dry_run` is false, then always return builder payload i.e. `Enabled` Mode with signal `Healthy`
+                    self.probes.set_health(Health::Healthy);
+                    Ok((builder, PayloadSource::Builder))
+                }
+                (_, Ok(l2), false) => {
+                    // builder failed to return/errored and `l2_payload` is ok and `is_dry_run` is false, then always return L2 payload with signal `PartialContent`
+                    self.probes.set_health(Health::PartialContent);
+                    Ok((l2, PayloadSource::L2))
+                }
+                (_, Err(e), _) => {
+                    // l2 failed to return a payload
                     self.probes.set_health(Health::ServiceUnavailable);
                     Err(e)
                 }
             };
             result
         }?;
-
-        // let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
-        // let (payload, context) = match (builder_payload, l2_payload) {
-        //     (Ok(Some(builder)), Ok(l2_payload)) => {
-        //         // builder successfully returned a payload
-        //         self.probes.set_health(Health::Healthy);
-        //         if self.execution_mode().is_dry_run() {
-        //             // Default to op-geth's payload
-        //             Ok((l2_payload, PayloadSource::L2))
-        //         } else {
-        //             Ok((builder, PayloadSource::Builder))
-        //         }
-        //     }
-        //     (_, Ok(l2)) => {
-        //         // builder failed to return a payload
-        //         self.probes.set_health(Health::PartialContent);
-        //         Ok((l2, PayloadSource::L2))
-        //     }
-        //     (_, Err(e)) => {
-        //         // builder and l2 failed to return a payload
-        //         self.probes.set_health(Health::ServiceUnavailable);
-        //         Err(e)
-        //     }
-        // }?;
 
         tracing::Span::current().record("payload_source", context.to_string());
         // To maintain backwards compatibility with old metrics, we need to record blocks built
