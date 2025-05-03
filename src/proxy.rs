@@ -112,7 +112,9 @@ where
         tokio::spawn(async move {
             while let Some((req, resp_tx)) = rx.recv().await {
                 let resp = service.inner.call(req).await.map_err(|e| e.into());
-                resp_tx.send(resp).expect("TODO: handle error");
+                // Note that we can unwrap here since the rx will only be dropped if the rollup
+                // boostserver has been shut down
+                resp_tx.send(resp).unwrap();
             }
         });
     }
@@ -164,7 +166,7 @@ where
 
                 let (tx, rx) = oneshot::channel();
                 engine_tx.send((req, tx)).unwrap();
-                rx.await.expect("TODO: handle error")
+                rx.await.map_err(Box::new)?
             } else if FORWARD_REQUESTS.contains(&method.as_str()) {
                 // If the request should be forwarded, send to both the
                 // default execution client and the builder
