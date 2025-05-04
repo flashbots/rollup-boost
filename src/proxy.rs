@@ -112,8 +112,8 @@ where
         tokio::spawn(async move {
             while let Some((req, resp_tx)) = rx.recv().await {
                 let resp = service.inner.call(req).await.map_err(|e| e.into());
-                // Note that we can unwrap here since the rx will only be dropped if the rollup
-                // boostserver has been shut down
+                // Note that we can unwrap here since the rx will only be dropped
+                // if the rollup boost server has been shut down
                 resp_tx.send(resp).unwrap();
             }
         });
