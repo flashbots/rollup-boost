@@ -1,4 +1,4 @@
-name: CI
+name: Websocket Proxy CI
 
 on:
   push:
