@@ -131,7 +131,7 @@ fn extract_addr(header: &HeaderValue, fallback: IpAddr) -> IpAddr {
             let raw_value = header_value
                 .split(',')
                 .map(|ip| ip.trim().to_string())
-                .last();
+                .next_back();
 
             if let Some(raw_value) = raw_value {
                 return raw_value.parse::<IpAddr>().unwrap_or(fallback);
