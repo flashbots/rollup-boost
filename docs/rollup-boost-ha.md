@@ -120,7 +120,7 @@ Rollup Boost will continuously monitors two independent conditions to inform the
 `op-conductor` should query the `/healthz` endpoint exposed by Rollup Boost in addition to the existing execution client health checks. Health should be interpreted as follows:
 
 - `200 OK` (Healthy): The node is fully healthy and eligible for leadership.
-- `206 Partial Content` (Partially Healthy): The node is degraded but may be considered for leadership if no fully healthy candidates are available.
+- `206 Partial Content` (Partially Healthy): The node is degraded but may be considered for leadership if configured by operator
 - `503 Service Unavailable` (Unhealthy): The node is unhealthy and must be excluded from leadership.
 
 During normal operation and leadership transfers, `op-conductor` should prioritize candidates in the following order:
