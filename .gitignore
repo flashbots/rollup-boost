@@ -1,4 +1,7 @@
 /target
+/.idea/
+/.vscode/
 .env
+/websocket-proxy/.env
 integration_logs
 .vscode
