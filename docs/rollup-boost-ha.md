@@ -104,6 +104,8 @@ Rollup Boost will continuously monitors two independent conditions to inform the
 - **Payload Production**:  
   During each `get_payload` request, Rollup Boost will verify payload availability from both the builder and the execution client. If the builder fails to deliver a payload, Rollup Boost will report partial health. If the execution client fails to deliver a payload, Rollup Boost will report unhealthy.
 
+`op-conductor` should also be configurable in how it interprets health status for failover decisions. This allows chain operators to define thresholds based on their risk tolerance and operational goals. For example, operators may choose to maintain leadership with a sequencer reporting `206 Partial Content` to avoid unnecessary fail overs or they may configure `op-conductor` to immediately fail over when any degradation is detected. This flexibility allows the chain operator to configure a failover policy that aligns with network performance expectations and builder reliability.
+
 <br>
 
 | Condition | Health Status |
