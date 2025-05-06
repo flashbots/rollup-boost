@@ -628,7 +628,10 @@ impl RollupBoostServer {
                     Ok(payload)
                 }
 
-                Err(e) => Err(e.into()),
+                Err(e) => {
+                    self.probes.set_health(Health::ServiceUnavailable);
+                    Err(e.into())
+                }
             };
         }
 
