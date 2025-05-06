@@ -22,6 +22,8 @@ With the introduction of `rollup-boost`, an additional component is introduced t
 
 This design document outlines the architecture, components, and failure strategies required for HA `rollup-boost`. The proposed design prioritizes fault tolerance, liveliness, horizontal scalability, and minimal failover time while maintaining upstream compatibility with `op-conductor`.
 
+This design is structured to be forward compatible with Flashblocks, however it does not define the specifics of Flashblocks handling, streaming, or HA guarantees. A separate design document will extend this work to detail how Flashblocks will be integrated into the OP Stack with support for HA.
+
 ## Goals
 
 - Explore HA designs for `rollup-boost` prioritizing liveliness, fault tolerance and horizontal scalability for external block builders.
