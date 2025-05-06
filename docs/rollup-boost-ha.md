@@ -128,7 +128,7 @@ During normal operation and leadership transfers, `op-conductor` should prioriti
 1. Prefer nodes reporting `200 OK`.
 2. Nodes that return `503 Service Unavailable` are treated as unhealthy and must not be eligible for sequencer leadership. `op-conductor` should offer a configuration option to treat nodes returning `206 Partial Content` as either healthy or unhealthy.
 
-Rollup Boost instances that are not actively sequencing rely exclusively on the builder sync check to report health, as they are not producing blocks. This behavior mirrors the existing `op-conductor` health checks for inactive sequencers and ensures readiness during failover without compromising network liveness guarantees.
+Rollup Boost instances that are not actively sequencing rely on the builder sync check to report health, as they are not producing blocks. Note that `op-conductor` will still evaluate existing sequencer health checks to determine overall sequencer health. This behavior mirrors the existing `op-conductor` health checks for inactive sequencers and ensures readiness during failover without compromising network liveness guarantees.
 
 Note that in the case where the builder is unhealthy, `rollup-boost` should bypass forwarding block production requests to the builder entirely and immediately use the default execution client for payload construction. This avoids introducing unnecessary latency to wait for the builder response to timeout.
 
