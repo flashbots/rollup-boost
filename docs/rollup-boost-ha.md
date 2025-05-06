@@ -123,11 +123,10 @@ Rollup Boost will continuously monitors two independent conditions to inform the
 - `206 Partial Content` (Partially Healthy): The node is degraded but may be considered for leadership if configured by operator
 - `503 Service Unavailable` (Unhealthy): The node is unhealthy and must be excluded from leadership.
 
-During normal operation and leadership transfers, `op-conductor` should prioritize candidates in the following order:
+During normal operation and leadership transfers, `op-conductor` should prioritize sequencer candidates in the following order:
 
 1. Prefer nodes reporting `200 OK`.
-2. If no fully healthy nodes are available, select from nodes reporting `206 Partial Content`.
-3. Nodes reporting `503 Service Unavailable` must not be selected as leader.
+2. Nodes that return `503 Service Unavailable` are treated as unhealthy and must not be eligible for sequencer leadership. `op-conductor` should offer a configuration option to treat nodes returning `206 Partial Content` as either healthy or unhealthy.
 
 Rollup Boost instances that are not actively sequencing rely exclusively on the builder sync check to report health, as they are not producing blocks. This behavior mirrors the existing `op-conductor` health checks for inactive sequencers and ensures readiness during failover without compromising network liveness guarantees.
 
