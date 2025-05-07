@@ -611,17 +611,16 @@ impl RollupBoostServer {
             return match l2_fut.await {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
-                    tracing::Span::current()
-                        .record("payload_source", PayloadSource::L2.to_string());
-                    counter!("rpc.blocks_created", "source" => PayloadSource::L2.to_string())
-                        .increment(1);
+                    let context = PayloadSource::L2;
+                    tracing::Span::current().record("payload_source", context.to_string());
+                    counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
 
                     let execution_payload = ExecutionPayload::from(payload.clone());
                     info!(
                         message = "returning block",
                         "hash" = %execution_payload.block_hash(),
                         "number" = %execution_payload.block_number(),
-                        context = PayloadSource::L2.to_string(),
+                        %context,
                         %payload_id,
                     );
 
