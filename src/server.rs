@@ -358,14 +358,14 @@ impl EngineApiServer for RollupBoostServer {
             let payload_trace_context = self.payload_trace_context.clone();
             let payload_id = l2_response.payload_id;
             let trace_id = span.id();
-            tokio::spawn(async move {
-                let response = builder_client
-                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-                    .await;
-                if let (Err(_), Some(id)) = (response, payload_id) {
-                    payload_trace_context.upsert_builder_has_payload(id, trace_id, false);
-                }
-            });
+            //tokio::spawn(async move {
+            let response = builder_client
+                .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+                .await;
+            if let (Err(_), Some(id)) = (response, payload_id) {
+                payload_trace_context.upsert_builder_has_payload(id, trace_id, false);
+            }
+            //});
         } else {
             info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash, "payload_id" = %l2_response.payload_id.unwrap_or_default(), "has_attributes" = has_attributes, "use_tx_pool" = use_tx_pool);
         }
