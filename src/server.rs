@@ -294,91 +294,80 @@ impl EngineApiServer for RollupBoostServer {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
-        let execution_mode = self.execution_mode();
+        let should_send_to_builder = if let Some(attr) = payload_attributes.as_ref() {
+            info!(
+                message = "received fork_choice_updated_v3 with payload attributes",
+                "use_tx_pool" = !attr.no_tx_pool.unwrap_or_default()
+            );
 
-        println!("execution_mode: {:?}", execution_mode);
+            // Payload attributes are present, it is a FCU call to start block building.
+            // Send to builder if:
+            // - execution mode is enabled and,
+            // - use_tx_pool is true. It means that the CL node wants txs in the block.
+            // Otherwise, it is a deterministic block without txs. We let the fallback EL node compute those.
+            self.execution_mode().is_enabled() && !attr.no_tx_pool.unwrap_or_default()
+        } else {
+            // no payload attributes. It is a FCU call to lock the head block
+            // previously synced with the new_payload_v3 call. Send the call to both l2 and builder
+            // and return the response from the L2 client right away.
+            info!("received fork_choice_updated_v3");
 
-        let (should_send_to_builder, is_block_building_request) =
-            if let Some(attr) = payload_attributes.as_ref() {
-                info!(
-                    message = "received fork_choice_updated_v3 with payload attributes",
-                    "use_tx_pool" = !attr.no_tx_pool.unwrap_or_default()
-                );
-                // Payload attributes are present, it is a FCU call to start block building.
-                // Send to builder if:
-                // - execution mode is enabled and,
-                // - use_tx_pool is true. It means that the CL node wants txs in the block.
-                // Otherwise, it is a deterministic block without txs. We let the fallback EL node compute those.
-                (
-                    execution_mode.is_enabled() && !attr.no_tx_pool.unwrap_or_default(),
-                    true,
-                )
-            } else {
-                // no payload attributes. It is a FCU call to lock the head block
-                // previously synced with the new_payload_v3 call. Send to the builder
-                // to ensure that the builder is aware of the head block.
-                info!("received fork_choice_updated_v3");
-                (true, false)
-            };
+            let l2_response = self
+                .l2_client
+                .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
-        println!("should_send_to_builder: {:?}", should_send_to_builder);
-        println!("is_block_building_request: {:?}", is_block_building_request);
+            let builder_response = self
+                .builder_client
+                .fork_choice_updated_v3(fork_choice_state, payload_attributes);
 
+            let (l2_response, _builder_response) = tokio::join!(l2_response, builder_response);
+            return Ok(l2_response?);
+        };
+
+        // At this point, we know this FCU is for a block building request
+        // and both request are dispatched in parallel
         let l2_client_future = self
             .l2_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
-        if !should_send_to_builder {
-            // If we are not sending to builder, we can return the response from the L2 client right away
-            return Ok(l2_client_future.await?);
-        }
-
-        // Otherwise, we need to send to builder call on parallel and wait for both responses
         let builder_client = self.builder_client.clone();
         let builder_client_future = Box::pin(async move {
-            println!("sending to builder");
+            if !should_send_to_builder {
+                return Ok::<Option<ForkchoiceUpdated>, jsonrpsee::types::error::ErrorObject>(None);
+            }
 
             let response = builder_client
                 .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
                 .await?;
 
-            Ok::<ForkchoiceUpdated, jsonrpsee::types::error::ErrorObject>(response)
+            Ok(Some(response))
         });
 
         let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
 
-        println!("l2_payload: {:?}", l2_payload);
-        println!("builder_payload: {:?}", builder_payload);
+        let span = tracing::Span::current();
+        match (l2_payload, builder_payload) {
+            (Ok(l2_response), builder_response) => {
+                let is_builder_building = builder_response.unwrap_or(None).is_some();
 
-        let fcu_response = if is_block_building_request {
-            match l2_payload {
-                Ok(l2_response) => {
-                    let span = tracing::Span::current();
-                    if let Some(payload_id) = l2_response.payload_id {
-                        span.record("payload_id", payload_id.to_string());
-
-                        self.payload_trace_context.store(
-                            payload_id,
-                            fork_choice_state.head_block_hash,
-                            builder_payload.is_ok(),
-                            span.id(),
-                        );
-                    }
-
-                    Ok(l2_response)
+                if let Some(payload_id) = l2_response.payload_id {
+                    self.payload_trace_context.store(
+                        payload_id,
+                        fork_choice_state.head_block_hash,
+                        is_builder_building,
+                        span.id(),
+                    );
                 }
-                Err(e) => {
-                    // if the L2 client failed, return that error because it is the canonical source of truth
-                    // and we cannot build a block on top of it
-                    Err(e.into())
-                }
+
+                // We always return the value from the l2 client
+                Ok(l2_response)
             }
-        } else {
-            // It is not a block building request, we can return the L2 response right away
-            Ok(l2_payload?)
-        };
-
-        fcu_response
+            (Err(e), _) => {
+                // if the L2 client failed, return that error because it is the canonical source of truth
+                // and we cannot build a block on top of it
+                Err(e.into())
+            }
+        }
     }
 
     #[instrument(
@@ -893,9 +882,10 @@ mod tests {
     #[tokio::test]
     async fn test_server() {
         engine_success().await;
-        //builder_payload_err().await;
-        //test_local_external_payload_ids_same().await;
-        //has_builder_payload().await;
+        builder_payload_err().await;
+        test_local_external_payload_ids_same().await;
+        has_builder_payload().await;
+        l2_client_fails_fcu().await;
     }
 
     async fn engine_success() {
@@ -922,7 +912,7 @@ mod tests {
             let fcu_requests_builder = test_harness.builder_mock.fcu_requests.clone();
             let fcu_requests_builder_mu = fcu_requests_builder.lock();
             assert_eq!(fcu_requests_mu.len(), 1);
-            assert_eq!(fcu_requests_builder_mu.len(), 0);
+            assert_eq!(fcu_requests_builder_mu.len(), 1);
             let req: &(ForkchoiceState, Option<OpPayloadAttributes>) =
                 fcu_requests_mu.first().unwrap();
             assert_eq!(req.0, fcu);
@@ -952,7 +942,7 @@ mod tests {
                 test_harness.builder_mock.new_payload_requests.clone();
             let new_payload_requests_builder_mu = new_payload_requests_builder.lock();
             assert_eq!(new_payload_requests_mu.len(), 1);
-            assert_eq!(new_payload_requests_builder_mu.len(), 0);
+            assert_eq!(new_payload_requests_builder_mu.len(), 1);
             let req: &(ExecutionPayloadV3, Vec<FixedBytes<32>>, B256) =
                 new_payload_requests_mu.first().unwrap();
             assert_eq!(
@@ -1184,5 +1174,39 @@ mod tests {
         assert_eq!(get_payload_response.unwrap().block_value, U256::from(10));
 
         test_harness.cleanup().await;
+    }
+
+    async fn l2_client_fails_fcu() {
+        // If the canonical l2 client fails the FCU call, it does not matter what the builder returns
+        // the FCU call should fail
+        let mut l2_mock = MockEngineServer::new();
+        l2_mock.fcu_response = Err(ErrorObject::owned(
+            INVALID_REQUEST_CODE,
+            "Payload version 4 not supported",
+            None::<String>,
+        ));
+
+        let test_harness = TestHarness::new(Some(l2_mock), None).await;
+
+        let fcu = ForkchoiceState {
+            head_block_hash: FixedBytes::random(),
+            safe_block_hash: FixedBytes::random(),
+            finalized_block_hash: FixedBytes::random(),
+        };
+        let fcu_response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, None)
+            .await;
+        assert!(fcu_response.is_err());
+
+        let payload_attributes = OpPayloadAttributes {
+            gas_limit: Some(1000000),
+            ..Default::default()
+        };
+        let fcu_response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, Some(payload_attributes))
+            .await;
+        assert!(fcu_response.is_err());
     }
 }
