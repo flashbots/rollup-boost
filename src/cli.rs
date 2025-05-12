@@ -159,17 +159,11 @@ impl Args {
             PayloadSource::Builder,
         )?;
 
-        let boost_sync_enabled = !self.no_boost_sync;
-        if boost_sync_enabled {
-            info!("Boost sync enabled");
-        }
-
         let (probe_layer, probes) = ProbeLayer::new();
 
         let rollup_boost = RollupBoostServer::new(
             l2_client,
             builder_client,
-            boost_sync_enabled,
             self.execution_mode,
             probes,
             self.health_check_interval,
