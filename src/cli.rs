@@ -35,10 +35,6 @@ pub struct Args {
     #[arg(long, env, default_value = "5")]
     pub max_unsafe_interval: u64,
 
-    /// Disable using the proposer to sync the builder node
-    #[arg(long, env, default_value = "false")]
-    pub no_boost_sync: bool,
-
     /// Host to run the server on
     #[arg(long, env, default_value = "0.0.0.0")]
     pub rpc_host: String,
