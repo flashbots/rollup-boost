@@ -126,10 +126,6 @@ impl ExecutionMode {
         matches!(self, ExecutionMode::DryRun)
     }
 
-    fn is_enabled(&self) -> bool {
-        matches!(self, ExecutionMode::Enabled)
-    }
-
     fn is_disabled(&self) -> bool {
         matches!(self, ExecutionMode::Disabled)
     }
@@ -287,35 +283,70 @@ impl EngineApiServer for RollupBoostServer {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
-        let is_builder_enabled = self.execution_mode().is_enabled();
+        // Send the FCU to the default l2 client
+        let l2_fut = self
+            .l2_client
+            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
-        let should_send_to_builder = if let Some(attr) = payload_attributes.as_ref() {
-            info!(
-                message = "received fork_choice_updated_v3 with payload attributes",
-                "use_tx_pool" = !attr.no_tx_pool.unwrap_or_default(),
-                "builder_enabled" = is_builder_enabled,
-            );
+        // If execution mode is disabled, return the l2 client response immediately
+        if self.execution_mode().is_disabled() {
+            return Ok(l2_fut.await?);
+        }
 
-            // Payload attributes are present, it is a FCU call to start block building.
-            // Send to builder if:
-            // - execution mode is enabled and,
-            // - use_tx_pool is true. It means that the CL node wants txs in the block.
-            // Otherwise, it is a deterministic block without txs. We let the fallback EL node compute those.
-            is_builder_enabled && !attr.no_tx_pool.unwrap_or_default()
-        } else {
-            // no payload attributes. It is a FCU call to lock the head block
-            // previously synced with the new_payload_v3 call. Send the call to both l2 and builder
-            // and return the response from the L2 client right away.
-            info!("received fork_choice_updated_v3");
+        let span = tracing::Span::current();
+        // If the fcu contains payload attributes and the tx pool is disabled,
+        // only forward the FCU to the default l2 client
+        if let Some(attrs) = payload_attributes.as_ref() {
+            if attrs.no_tx_pool.unwrap_or_default() {
+                let l2_response = l2_fut.await?;
+                if let Some(payload_id) = l2_response.payload_id {
+                    info!(
+                        message = "block building started",
+                        "payload_id" = %payload_id,
+                        "builder_building" = false,
+                    );
 
-            let l2_response = self
-                .l2_client
-                .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
+                    self.payload_trace_context.store(
+                        payload_id,
+                        fork_choice_state.head_block_hash,
+                        false,
+                        span.id(),
+                    );
+                }
 
-            if !is_builder_enabled {
-                return Ok(l2_response.await?);
+                // We always return the value from the l2 client
+                return Ok(l2_response);
+            } else {
+                // If the tx pool is enabled, forward the fcu
+                // to both the builder and the default l2 client
+                let builder_fut = self
+                    .builder_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes);
+
+                let (l2_result, builder_result) = tokio::join!(l2_fut, builder_fut);
+                let l2_response = l2_result?;
+
+                if let Some(payload_id) = l2_response.payload_id {
+                    info!(
+                        message = "block building started",
+                        "payload_id" = %payload_id,
+                        "builder_building" = builder_result.is_ok(),
+                    );
+
+                    self.payload_trace_context.store(
+                        payload_id,
+                        fork_choice_state.head_block_hash,
+                        builder_result.is_ok(),
+                        span.id(),
+                    );
+                }
+
+                return Ok(l2_response);
             }
-
+        } else {
+            // If the FCU does not contain payload attributes
+            // forward the fcu to the builder to keep it synced and immediately return the l2
+            // response without awaiting the builder
             let builder_client = self.builder_client.clone();
             tokio::spawn(async move {
                 // It is not critical to wait for the builder response here
@@ -325,59 +356,7 @@ impl EngineApiServer for RollupBoostServer {
                     .fork_choice_updated_v3(fork_choice_state, payload_attributes)
                     .await
             });
-
-            return Ok(l2_response.await?);
-        };
-
-        // At this point, we know this FCU is for a block building request
-        // and both request are dispatched in parallel
-        let l2_client_future = self
-            .l2_client
-            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
-
-        let builder_client = self.builder_client.clone();
-        let builder_client_future = Box::pin(async move {
-            if !should_send_to_builder {
-                return Ok::<Option<ForkchoiceUpdated>, jsonrpsee::types::error::ErrorObject>(None);
-            }
-
-            let response = builder_client
-                .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-                .await?;
-
-            Ok(Some(response))
-        });
-
-        let (l2_payload, builder_payload) = tokio::join!(l2_client_future, builder_client_future);
-
-        let span = tracing::Span::current();
-        match (l2_payload, builder_payload) {
-            (Ok(l2_response), builder_response) => {
-                let is_builder_building = builder_response.unwrap_or(None).is_some();
-
-                if let Some(payload_id) = l2_response.payload_id {
-                    info!(
-                        message = "block building started",
-                        "payload_id" = %payload_id,
-                        "builder_building" = is_builder_building,
-                    );
-
-                    self.payload_trace_context.store(
-                        payload_id,
-                        fork_choice_state.head_block_hash,
-                        is_builder_building,
-                        span.id(),
-                    );
-                }
-
-                // We always return the value from the l2 client
-                Ok(l2_response)
-            }
-            (Err(e), _) => {
-                // if the L2 client failed, return that error because it is the canonical source of truth
-                // and we cannot build a block on top of it
-                Err(e.into())
-            }
+            return Ok(l2_fut.await?);
         }
     }
 
