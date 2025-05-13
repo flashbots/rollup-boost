@@ -99,8 +99,6 @@ async fn execution_mode() -> eyre::Result<()> {
         // reset the counter in the proxy
         *counter.lock().unwrap() = 0;
 
-        println!("Restarting here");
-
         // create 5 blocks which are processed by the l2 clients
         for _ in 0..5 {
             let (_block, block_creator) = block_generator.generate_block(false).await?;
