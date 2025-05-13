@@ -294,8 +294,8 @@ impl EngineApiServer for RollupBoostServer {
         }
 
         let span = tracing::Span::current();
-        // If the fcu contains payload attributes and no tx pool is enabled, only forward the FCU
-        // to the default exectuion client
+        // If the fcu contains payload attributes and the tx pool is disabled,
+        // only forward the FCU to the default execution client
         if let Some(attrs) = payload_attributes.as_ref() {
             if attrs.no_tx_pool.unwrap_or_default() {
                 let l2_response = l2_fut.await?;
@@ -317,7 +317,7 @@ impl EngineApiServer for RollupBoostServer {
                 // We always return the value from the l2 client
                 return Ok(l2_response);
             } else {
-                // If no_tx_pool is disabled, forward the fcu
+                // If the tx pool is enabled, forward the fcu
                 // to both the builder and the default l2 client
                 let builder_fut = self
                     .builder_client
