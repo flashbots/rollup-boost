@@ -1,6 +1,4 @@
 use crate::client::http::HttpClient;
-use crate::health::HealthLayer;
-use crate::health::HealthService;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
@@ -11,12 +9,9 @@ use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
 use tracing::info;
 
-const MULTIPLEX_METHODS: [&str; 4] = [
-    "engine_",
-    "eth_sendRawTransactionConditional",
-    "eth_sendRawTransaction",
-    "miner_",
-];
+const ENGINE_METHOD: &str = "engine_";
+
+/// Requests that should be forwarded to both the builder and default execution client
 const FORWARD_REQUESTS: [&str; 6] = [
     "eth_sendRawTransaction",
     "eth_sendRawTransactionConditional",
@@ -51,7 +46,7 @@ impl ProxyLayer {
 }
 
 impl<S> Layer<S> for ProxyLayer {
-    type Service = HealthService<ProxyService<S>>;
+    type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
         let l2_client = HttpClient::new(
@@ -66,13 +61,11 @@ impl<S> Layer<S> for ProxyLayer {
             PayloadSource::Builder,
         );
 
-        let proxy = ProxyService {
+        ProxyService {
             inner,
             l2_client,
             builder_client,
-        };
-
-        HealthLayer.layer(proxy)
+        }
     }
 }
 
@@ -121,52 +114,59 @@ where
                 .method
                 .to_string();
 
-            if MULTIPLEX_METHODS.iter().any(|&m| method.starts_with(m)) {
-                if FORWARD_REQUESTS.contains(&method.as_str()) {
-                    let builder_req =
-                        HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
-                    let builder_method = method.clone();
-                    let mut builder_client = service.builder_client.clone();
-                    tokio::spawn(async move {
-                        let _ = builder_client.forward(builder_req, builder_method).await;
-                    });
+            // If the request is an Engine API method, call the inner RollupBoostServer
+            if method.starts_with(ENGINE_METHOD) {
+                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+                service.inner.call(req).await.map_err(|e| e.into())
+            } else if FORWARD_REQUESTS.contains(&method.as_str()) {
+                // If the request should be forwarded, send to both the
+                // default execution client and the builder
+                let builder_req =
+                    HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
+                let builder_method = method.clone();
+                let mut builder_client = service.builder_client.clone();
+                tokio::spawn(async move {
+                    let _ = builder_client.forward(builder_req, builder_method).await;
+                });
 
-                    let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "forward request to rollup-boost server", ?method);
-                    service.l2_client.forward(l2_req, method).await
-                } else {
-                    let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                    service.inner.call(req).await.map_err(|e| e.into())
-                }
+                let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
+                info!(target: "proxy::call", message = "forward request to default execution client", ?method);
+                service.l2_client.forward(l2_req, method).await
             } else {
+                // If the request should not be forwarded, send directly to the
+                // default execution client
                 let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
                 service.l2_client.forward(req, method).await
             }
         };
+
         Box::pin(fut)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::probe::ProbeLayer;
+
     use super::*;
     use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
+    use http::StatusCode;
     use http_body_util::BodyExt;
     use hyper::service::service_fn;
     use hyper_util::client::legacy::Client;
     use hyper_util::client::legacy::connect::HttpConnector;
     use hyper_util::rt::{TokioExecutor, TokioIo};
     use jsonrpsee::server::Server;
+    use jsonrpsee::types::{ErrorCode, ErrorObject};
     use jsonrpsee::{
         RpcModule,
         core::{ClientError, client::ClientT},
         http_client::HttpClient,
         rpc_params,
         server::{ServerBuilder, ServerHandle},
-        types::{ErrorCode, ErrorObject},
     };
     use serde_json::json;
     use std::{
@@ -400,16 +400,8 @@ mod tests {
         let health_check_url = format!("http://{ADDR}:{PORT}/healthz");
         let health_response = client.get(health_check_url.parse::<Uri>().unwrap()).await;
         assert!(health_response.is_ok());
-        let b = health_response
-            .unwrap()
-            .into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes();
-        // Convert the collected bytes to a string
-        let body_string = String::from_utf8(b.to_vec()).unwrap();
-        assert_eq!(body_string, "OK");
+        let status = health_response.unwrap().status();
+        assert_eq!(status, StatusCode::OK);
 
         proxy_server.stop().unwrap();
         proxy_server.stopped().await;
@@ -465,11 +457,17 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
+        let (probe_layer, _probes) = ProbeLayer::new();
+
         let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
 
         // Create a layered server
         let server = ServerBuilder::default()
-            .set_http_middleware(tower::ServiceBuilder::new().layer(proxy_layer))
+            .set_http_middleware(
+                tower::ServiceBuilder::new()
+                    .layer(probe_layer)
+                    .layer(proxy_layer),
+            )
             .build(addr.parse::<SocketAddr>().unwrap())
             .await
             .unwrap();
