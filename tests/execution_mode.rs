@@ -21,7 +21,6 @@ impl ProxyHandler for CounterHandler {
         _params: Value,
         _result: Value,
     ) -> Pin<Box<dyn Future<Output = Option<Value>> + Send>> {
-        println!("CounterHandler::handle");
         *self.counter.lock().unwrap() += 1;
         async move { None }.boxed()
     }
