@@ -345,7 +345,8 @@ impl EngineApiServer for RollupBoostServer {
             }
         } else {
             // If the FCU does not contain payload attributes
-            // forward the fcu to the builder to keep it synced and return the l2 response
+            // forward the fcu to the builder to keep it synced and immediately return the l2
+            // response without awaiting the builder
             let builder_client = self.builder_client.clone();
             tokio::spawn(async move {
                 // It is not critical to wait for the builder response here
