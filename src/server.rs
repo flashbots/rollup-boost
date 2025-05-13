@@ -283,7 +283,7 @@ impl EngineApiServer for RollupBoostServer {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
-        // Send the FCU to the default execution client
+        // Send the FCU to the default l2 client
         let l2_fut = self
             .l2_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
@@ -295,7 +295,7 @@ impl EngineApiServer for RollupBoostServer {
 
         let span = tracing::Span::current();
         // If the fcu contains payload attributes and the tx pool is disabled,
-        // only forward the FCU to the default execution client
+        // only forward the FCU to the default l2 client
         if let Some(attrs) = payload_attributes.as_ref() {
             if attrs.no_tx_pool.unwrap_or_default() {
                 let l2_response = l2_fut.await?;
