@@ -323,12 +323,17 @@ impl EngineApiServer for RollupBoostServer {
                 return Ok(l2_response.await?);
             }
 
-            let builder_response = self
-                .builder_client
-                .fork_choice_updated_v3(fork_choice_state, payload_attributes);
+            let builder_client = self.builder_client.clone();
+            let _ = tokio::spawn(async move {
+                // It is not critical to wait for the builder response here
+                // During moments of high load, Op-node can send hundreds of FCU requests
+                // and we want to ensure that we don't block the main thread in those scenarios
+                builder_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+                    .await
+            });
 
-            let (l2_response, _builder_response) = tokio::join!(l2_response, builder_response);
-            return Ok(l2_response?);
+            return Ok(l2_response.await?);
         };
 
         // At this point, we know this FCU is for a block building request
