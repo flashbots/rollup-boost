@@ -21,6 +21,7 @@ impl ProxyHandler for CounterHandler {
         _params: Value,
         _result: Value,
     ) -> Pin<Box<dyn Future<Output = Option<Value>> + Send>> {
+        println!("CounterHandler::handle");
         *self.counter.lock().unwrap() += 1;
         async move { None }.boxed()
     }
@@ -98,6 +99,8 @@ async fn execution_mode() -> eyre::Result<()> {
 
         // reset the counter in the proxy
         *counter.lock().unwrap() = 0;
+
+        println!("Restarting here");
 
         // create 5 blocks which are processed by the l2 clients
         for _ in 0..5 {

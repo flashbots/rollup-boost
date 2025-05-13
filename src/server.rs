@@ -294,10 +294,13 @@ impl EngineApiServer for RollupBoostServer {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
+        let is_builder_enabled = self.execution_mode().is_enabled();
+
         let should_send_to_builder = if let Some(attr) = payload_attributes.as_ref() {
             info!(
                 message = "received fork_choice_updated_v3 with payload attributes",
-                "use_tx_pool" = !attr.no_tx_pool.unwrap_or_default()
+                "use_tx_pool" = !attr.no_tx_pool.unwrap_or_default(),
+                "builder_enabled" = is_builder_enabled,
             );
 
             // Payload attributes are present, it is a FCU call to start block building.
@@ -305,7 +308,7 @@ impl EngineApiServer for RollupBoostServer {
             // - execution mode is enabled and,
             // - use_tx_pool is true. It means that the CL node wants txs in the block.
             // Otherwise, it is a deterministic block without txs. We let the fallback EL node compute those.
-            self.execution_mode().is_enabled() && !attr.no_tx_pool.unwrap_or_default()
+            is_builder_enabled && !attr.no_tx_pool.unwrap_or_default()
         } else {
             // no payload attributes. It is a FCU call to lock the head block
             // previously synced with the new_payload_v3 call. Send the call to both l2 and builder
@@ -315,6 +318,10 @@ impl EngineApiServer for RollupBoostServer {
             let l2_response = self
                 .l2_client
                 .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
+
+            if !is_builder_enabled {
+                return Ok(l2_response.await?);
+            }
 
             let builder_response = self
                 .builder_client
@@ -351,6 +358,12 @@ impl EngineApiServer for RollupBoostServer {
                 let is_builder_building = builder_response.unwrap_or(None).is_some();
 
                 if let Some(payload_id) = l2_response.payload_id {
+                    info!(
+                        message = "block building started",
+                        "payload_id" = %payload_id,
+                        "builder_building" = is_builder_building,
+                    );
+
                     self.payload_trace_context.store(
                         payload_id,
                         fork_choice_state.head_block_hash,
