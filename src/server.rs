@@ -126,10 +126,6 @@ impl ExecutionMode {
         matches!(self, ExecutionMode::DryRun)
     }
 
-    fn is_enabled(&self) -> bool {
-        matches!(self, ExecutionMode::Enabled)
-    }
-
     fn is_disabled(&self) -> bool {
         matches!(self, ExecutionMode::Disabled)
     }
