@@ -324,7 +324,7 @@ impl EngineApiServer for RollupBoostServer {
             }
 
             let builder_client = self.builder_client.clone();
-            let _ = tokio::spawn(async move {
+            tokio::spawn(async move {
                 // It is not critical to wait for the builder response here
                 // During moments of high load, Op-node can send hundreds of FCU requests
                 // and we want to ensure that we don't block the main thread in those scenarios
