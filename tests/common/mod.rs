@@ -44,6 +44,7 @@ pub static TEST_DATA: LazyLock<String> =
     LazyLock::new(|| format!("{}/tests/common/test_data", env!("CARGO_MANIFEST_DIR")));
 
 pub mod proxy;
+pub mod proxy_delay;
 pub mod services;
 
 pub struct LoggingConsumer {

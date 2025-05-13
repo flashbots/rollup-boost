@@ -1,33 +1,9 @@
 use common::RollupBoostTestHarnessBuilder;
-use common::proxy::ProxyHandler;
-use futures::FutureExt;
-use serde_json::Value;
-use std::pin::Pin;
+use common::proxy_delay::DelayHandler;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 mod common;
-
-// Create a dynamic handler that delays all the calls by 2 seconds
-struct DelayHandler {
-    delay: Arc<Mutex<Duration>>,
-}
-
-impl ProxyHandler for DelayHandler {
-    fn handle(
-        &self,
-        _method: String,
-        _params: Value,
-        _result: Value,
-    ) -> Pin<Box<dyn Future<Output = Option<Value>> + Send>> {
-        let delay = *self.delay.lock().unwrap();
-        async move {
-            tokio::time::sleep(delay).await;
-            None
-        }
-        .boxed()
-    }
-}
 
 #[tokio::test]
 async fn builder_full_delay() -> eyre::Result<()> {
