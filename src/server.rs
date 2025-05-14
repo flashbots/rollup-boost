@@ -664,7 +664,7 @@ impl RollupBoostServer {
     ) -> RpcResult<(OpExecutionPayloadEnvelope, PayloadSource)> {
         // Determine health status based on results
         let l2_healthy = l2_result.is_ok();
-        let builder_healthy = builder_result.as_ref().map_or(false, |r| r.is_some());
+        let builder_healthy = builder_result.as_ref().is_ok_and(|r| r.is_some());
         let in_dry_run_mode = self.execution_mode().is_dry_run();
 
         // Dry mode, we only care about L2 health
