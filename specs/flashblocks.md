@@ -6,13 +6,13 @@
   - [Terminology](#terminology)
   - [Parameters](#parameters)
   - [Data structures](#data-structures)
-    - [**`FlashblocksPayloadV1`**](#flashblockspayloadv1)
-    - [**`ExecutionPayloadFlashblockResultV1`**](#executionpayloadflashblockresultv1)
-    - [**`ExecutionPayloadStaticV1`**](#executionpayloadstaticv1)
-    - [**`Metadata`**](#metadata)
-    - [**`AccountMetadata`**](#accountmetadata)
-    - [**`StorageSlot`**](#storageslot)
-    - [**`TransactionMetadata`**](#transactionmetadata)
+    - [`FlashblocksPayloadV1`](#flashblockspayloadv1)
+    - [`ExecutionPayloadFlashblockResultV1`](#executionpayloadflashblockresultv1)
+    - [`ExecutionPayloadStaticV1`](#executionpayloadstaticv1)
+    - [`Metadata`](#metadata)
+    - [`AccountMetadata`](#accountmetadata)
+    - [`StorageSlot`](#storageslot)
+    - [`TransactionMetadata`](#transactionmetadata)
   - [System architecture](#system-architecture)
   - [Out-of-Protocol Design](#out-of-protocol-design)
     - [In-Protocol vs. Out-of-Protocol](#in-protocol-vs-out-of-protocol)
@@ -20,11 +20,11 @@
     - [Implications for This Specification](#implications-for-this-specification)
   - [Assumptions About Op Stack](#assumptions-about-op-stack)
   - [Flashblock Lifecycle](#flashblock-lifecycle)
-  - [**Flashblock Construction Process**](#flashblock-construction-process)
+  - [Flashblock Construction Process](#flashblock-construction-process)
     - [Handling of Sequencer Transactions](#handling-of-sequencer-transactions)
     - [Transaction Inclusion Heuristics](#transaction-inclusion-heuristics)
     - [Post-block Execution Rules](#post-block-execution-rules)
-    - [**Construction Steps**](#construction-steps)
+    - [Construction Steps](#construction-steps)
   - [Flashblocks Metadata](#flashblocks-metadata)
     - [Alternative Design Consideration](#alternative-design-consideration)
   - [Rationale for Including State Roots in Flashblocks](#rationale-for-including-state-roots-in-flashblocks)
@@ -32,7 +32,7 @@
     - [Builder Availability and System Reliability](#builder-availability-and-system-reliability)
     - [Future Design Considerations](#future-design-considerations)
   - [Builder-to-Rollup-boost Communication Flow](#builder-to-rollup-boost-communication-flow)
-  - [**Flashblock Validity Rules**](#flashblock-validity-rules)
+  - [Flashblock Validity Rules](#flashblock-validity-rules)
   - [Flashblock System Invariants](#flashblock-system-invariants)
   - [Flashblock Propagation](#flashblock-propagation)
     - [Secure propagation](#secure-propagation)
@@ -42,19 +42,19 @@
 - [Reliability and Operational Considerations](#reliability-and-operational-considerations)
   - [Transaction Propagation](#transaction-propagation)
   - [Failover scenarios](#failover-scenarios)
-    - [Block builder goes down](#block-builder-goes-down)
-    - [The Sequencer or Rollup-boost goes down](#the-sequencer-or-rollup-boost-goes-down)
+    - [Block Builder](#block-builder)
+    - [The Sequencer or Rollup-boost](#the-sequencer-or-rollup-boost)
   - [Integration with High Availability Sequencer Setups](#integration-with-high-availability-sequencer-setups)
   - [Faults](#faults)
-    - [**Safety Faults**](#safety-faults)
-    - [**Liveness Faults**](#liveness-faults)
+    - [Safety Faults](#safety-faults)
+    - [Liveness Faults](#liveness-faults)
 - [**Rationale**](#rationale)
     - [Why out-of-protocol](#why-out-of-protocol)
     - [Why not shorter block times](#why-not-shorter-block-times)
 - [Backwards Compatibility](#backwards-compatibility)
   - [End Users](#end-users)
   - [Infrastructure Operators](#infrastructure-operators)
-- [**Implementation**](#implementation)
+- [Implementation](#implementation)
 
 
 # Abstract
@@ -958,7 +958,7 @@ Similar to the design laid out in the [External Block Production](https://github
 
 ## Failover scenarios
 
-### Block builder goes down
+### Block Builder
 
 As per the normal Rollup-boost behavior, if the builder is down, the Rollup-boost picks up the block from the fallback builder. However, since we are dealing with preconfirmations, we must consider the relative value of preserving preconfirmations versus building a potentially more valuable block.
 
@@ -966,7 +966,7 @@ In this design document, we follow the invariant that preserving preconfirmation
 
 We could technically discard the partial flashblocks and use the fallback block entirely, but this would violate the preconfirmations commitment. Our design assumes normal execution conditions. If losing the builder mid-flashblock becomes a common occurrence, this would indicate fundamental architectural issues that require separate improvements beyond the scope of this failover mechanism.
 
-### The Sequencer or Rollup-boost goes down
+### The Sequencer or Rollup-boost
 
 These failure scenarios are addressed as part of the High Availability (HA) sequencer setups. The HA architecture ensures continuity of operations by automatically failing over to standby instances when failures occur.
 
@@ -1022,6 +1022,6 @@ For Sequencer Operators, Flashblocks and Rollup Boost can be enabled and disable
 
 For RPC Operators, Flashblocks will require a modified RPC node that subscribes to the Flashblock stream in addition to maintaining a Preconfirmation cache and responding with the relevant data on request with the `pending` tag.
 
-# **Implementation**
+# Implementation
 
 A feature complete implementation of all components described in this document can be found in the [rollup-boost](https://github.com/flashbots/rollup-boost), [op-rbuilder](https://github.com/flashbots/rbuilder/tree/develop/crates/op-rbuilder), [flashblocks-websocket-proxy](https://github.com/base/flashblocks-websocket-proxy), and [reth-flashblocks](https://github.com/danyalprout/reth-flashblocks).
