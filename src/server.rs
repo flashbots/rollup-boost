@@ -694,13 +694,6 @@ mod tests {
     use std::sync::Arc;
     use tokio::time::sleep;
 
-    const HOST: &str = "0.0.0.0";
-    const L2_PORT: u16 = 8545;
-    const L2_ADDR: &str = "127.0.0.1:8545";
-    const BUILDER_PORT: u16 = 8544;
-    const BUILDER_ADDR: &str = "127.0.0.1:8544";
-    const SERVER_ADDR: &str = "0.0.0.0:8556";
-
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
@@ -765,6 +758,7 @@ mod tests {
         builder_server: ServerHandle,
         builder_mock: MockEngineServer,
         server: ServerHandle,
+        server_addr: SocketAddr,
         rpc_client: HttpClient,
         http_client: reqwest::Client,
     }
@@ -776,12 +770,16 @@ mod tests {
         ) -> Self {
             let jwt_secret = JwtSecret::random();
 
-            let l2_auth_rpc = Uri::from_str(&format!("http://{}:{}", HOST, L2_PORT)).unwrap();
+            let l2_mock = l2_mock.unwrap_or(MockEngineServer::new());
+            let builder_mock = builder_mock.unwrap_or(MockEngineServer::new());
+            let (l2_server, l2_server_addr) = spawn_server(l2_mock.clone()).await;
+            let (builder_server, builder_server_addr) = spawn_server(builder_mock.clone()).await;
+
+            let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
             let l2_client =
                 RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
 
-            let builder_auth_rpc =
-                Uri::from_str(&format!("http://{}:{}", HOST, BUILDER_PORT)).unwrap();
+            let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
             let builder_client = RpcClient::new(
                 builder_auth_rpc.clone(),
                 jwt_secret,
@@ -815,17 +813,16 @@ mod tests {
 
             let server = Server::builder()
                 .set_http_middleware(http_middleware)
-                .build("0.0.0.0:8556".parse::<SocketAddr>().unwrap())
+                .build("127.0.0.1:0".parse::<SocketAddr>().unwrap())
                 .await
-                .unwrap()
-                .start(module);
+                .unwrap();
 
-            let l2_mock = l2_mock.unwrap_or(MockEngineServer::new());
-            let builder_mock = builder_mock.unwrap_or(MockEngineServer::new());
-            let l2_server = spawn_server(l2_mock.clone(), L2_ADDR).await;
-            let builder_server = spawn_server(builder_mock.clone(), BUILDER_ADDR).await;
+            let server_addr = server.local_addr().expect("missing server address");
+
+            let server = server.start(module);
+
             let rpc_client = HttpClient::builder()
-                .build(format!("http://{SERVER_ADDR}"))
+                .build(format!("http://{server_addr}"))
                 .unwrap();
             let http_client = reqwest::Client::new();
 
@@ -835,6 +832,7 @@ mod tests {
                 builder_server,
                 builder_mock,
                 server,
+                server_addr,
                 rpc_client,
                 http_client,
             }
@@ -842,7 +840,7 @@ mod tests {
 
         async fn get(&self, path: &str) -> reqwest::Response {
             self.http_client
-                .get(format!("http://{}/{}", SERVER_ADDR, path))
+                .get(format!("http://{}/{}", self.server_addr, path))
                 .send()
                 .await
                 .unwrap()
@@ -859,14 +857,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_server() {
-        engine_success().await;
-        builder_payload_err().await;
-        test_local_external_payload_ids_same().await;
-        has_builder_payload().await;
-        l2_client_fails_fcu().await;
-    }
-
     async fn engine_success() {
         let test_harness = TestHarness::new(None, None).await;
 
@@ -967,6 +957,7 @@ mod tests {
         test_harness.cleanup().await;
     }
 
+    #[tokio::test]
     async fn builder_payload_err() {
         let mut l2_mock = MockEngineServer::new();
         l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut status| {
@@ -992,8 +983,10 @@ mod tests {
         test_harness.cleanup().await;
     }
 
-    async fn spawn_server(mock_engine_server: MockEngineServer, addr: &str) -> ServerHandle {
-        let server = ServerBuilder::default().build(addr).await.unwrap();
+    async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
+        let server = ServerBuilder::default().build("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().expect("Missing local address");
+
         let mut module: RpcModule<()> = RpcModule::new(());
 
         module
@@ -1033,9 +1026,10 @@ mod tests {
             })
             .unwrap();
 
-        server.start(module)
+        (server.start(module), server_addr)
     }
 
+    #[tokio::test]
     async fn test_local_external_payload_ids_same() {
         let same_id: PayloadId = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 42]);
 
@@ -1093,6 +1087,7 @@ mod tests {
         test_harness.cleanup().await;
     }
 
+    #[tokio::test]
     async fn has_builder_payload() {
         let payload_id: PayloadId = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 42]);
         let mut l2_mock = MockEngineServer::new();
@@ -1155,6 +1150,7 @@ mod tests {
         test_harness.cleanup().await;
     }
 
+    #[tokio::test]
     async fn l2_client_fails_fcu() {
         // If the canonical l2 client fails the FCU call, it does not matter what the builder returns
         // the FCU call should fail
