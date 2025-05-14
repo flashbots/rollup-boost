@@ -1,3 +1,5 @@
+*Authors: [Ferran](https://github.com/ferranbt), [Shana](https://github.com/avalonche), [Dmarz](https://github.com/dmarzzz), [0xkitsune](https://github.com/0xkitsune), [Joshua](https://github.com/trianglesphere)*
+
 **Table of Contents**
 - [Abstract](#abstract)
 - [Prerequisites](#prerequisites)
