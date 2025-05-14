@@ -361,7 +361,7 @@ impl EngineApiServer for RollupBoostServer {
             let trace_id = span.id();
             tokio::spawn(async move {
                 let response = builder_client
-                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes)
                     .await;
                 if let (Err(_), Some(id)) = (response, payload_id) {
                     payload_trace_context.upsert_builder_has_payload(id, trace_id, false);
