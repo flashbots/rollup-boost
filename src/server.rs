@@ -704,14 +704,14 @@ impl RollupBoostServer {
     fn log_and_record_payload(
         &self,
         payload: &OpExecutionPayloadEnvelope,
-        source: PayloadSource,
+        context: PayloadSource,
         payload_id: PayloadId,
     ) {
         // Update tracing span with source info
-        tracing::Span::current().record("payload_source", source.to_string());
+        tracing::Span::current().record("payload_source", context.to_string());
 
         // Record metrics for backwards compatibility
-        counter!("rpc.blocks_created", "source" => source.to_string()).increment(1);
+        counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
 
         // Extract payload details for logging
         let inner_payload = ExecutionPayload::from(payload.clone());
@@ -725,7 +725,7 @@ impl RollupBoostServer {
             message = "returning block",
             "hash" = %block_hash,
             "number" = %block_number,
-            %source,
+            %context,
             %payload_id,
         );
     }
