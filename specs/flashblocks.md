@@ -4,7 +4,7 @@
 - [Motivation](#motivation)
 - [Specification](#specification)
   - [Terminology](#terminology)
-  - [**Parameters**](#parameters)
+  - [Parameters](#parameters)
   - [Data structures](#data-structures)
     - [**`FlashblocksPayloadV1`**](#flashblockspayloadv1)
     - [**`ExecutionPayloadFlashblockResultV1`**](#executionpayloadflashblockresultv1)
@@ -31,15 +31,15 @@
     - [Non-Blocking Block Production](#non-blocking-block-production)
     - [Builder Availability and System Reliability](#builder-availability-and-system-reliability)
     - [Future Design Considerations](#future-design-considerations)
-  - [Builder-to-Rollup-boost communication flow](#builder-to-rollup-boost-communication-flow)
+  - [Builder-to-Rollup-boost Communication Flow](#builder-to-rollup-boost-communication-flow)
   - [**Flashblock Validity Rules**](#flashblock-validity-rules)
   - [Flashblock System Invariants](#flashblock-system-invariants)
   - [Flashblock Propagation](#flashblock-propagation)
     - [Secure propagation](#secure-propagation)
   - [Flashblock JSON-RPC APIs](#flashblock-json-rpc-apis)
-    - [**Ethereum JSON RPC Modifications**](#ethereum-json-rpc-modifications)
-    - [**`op_supportedCapabilities`**](#op_supportedcapabilities)
-- [**Reliability and Operational Considerations**](#reliability-and-operational-considerations)
+    - [Ethereum JSON RPC Modifications](#ethereum-json-rpc-modifications)
+    - [op_supportedCapabilities](#op_supportedcapabilities)
+- [Reliability and Operational Considerations](#reliability-and-operational-considerations)
   - [Transaction Propagation](#transaction-propagation)
   - [Failover scenarios](#failover-scenarios)
     - [Block builder goes down](#block-builder-goes-down)
@@ -95,7 +95,7 @@ Additional terms introduced:
 - **Fallback EL** - The standard Execution Layer of the Sequencer, used by Rollup Boost as a fallback mechanism when it cannot successfully build a block through the External Block Builder. This is an unmodified EL node that maintains the ability to construct valid blocks according to standard OP Stack protocol rules.
 - **RPC Provider** - Ethereum RPC software operator with the purpose of serving Ethereum state.
 
-## **Parameters**
+## Parameters
 
 | **Constant** | **Value** | **Description** |
 | --- | --- | --- |
@@ -440,7 +440,7 @@ sequenceDiagram
     end
 ```
 
-## **Flashblock Construction Process**
+## Flashblock Construction Process
 
 The External Block Builder initiates the construction of Flashblocks upon receiving a fork choice update (`engine_forkchoiceUpdated`) call forwarded by Rollup Boost. The construction of Flashblocks follows a defined sequence of steps repeated every `FLASHBLOCKS_TIME` interval, ensuring consistent, incremental, and ordered propagation of preconfirmed state to end-users. It's important to note that `FLASHBLOCKS_TIME` serves as a target interval rather than a strictly enforced rule in Rollup Boost.
 
@@ -477,7 +477,7 @@ When constructing a flashblock, the builder applies all required post-block oper
 
 However, an important implementation detail is that these post-block changes must be reverted before beginning execution for the next flashblock. This reversion is necessary because the post-block operations should only be applied once per actual L2 block, not cumulatively for each flashblock. Failing to revert these changes would lead to their repeated application across multiple flashblocks, potentially creating invalid cumulative state and ultimately an invalid final block.
 
-### **Construction Steps**
+### Construction Steps
 
 After handling the mandatory sequencer transactions in the initial Flashblock, the External Block Builder proceeds with constructing subsequent Flashblocks by following these steps for each interval:
 
@@ -598,7 +598,7 @@ Without pre-included state roots, a builder failure at the moment of block produ
 
 This approach represents our current understanding of the optimal design given existing constraints. However, as mentioned in the Out-of-Protocol Design section, alternative approaches may be worth exploring as we gain production experience. Future iterations might consider different state root handling approaches, particularly in the context of high-availability sequencer setups and deeper integration with OP Stack components.
 
-## Builder-to-Rollup-boost communication flow
+## Builder-to-Rollup-boost Communication Flow
 
 Rollup Boost maintains an open WebSocket connection with the External Block Builder. Through this persistent connection, the builder pushes the `FlashblocksPayloadV1` payloads as soon as they're constructed, without waiting for requests from Rollup Boost.
 
@@ -615,7 +615,7 @@ This design leverages SSZ's deterministic encoding characteristics, where fixed-
 1. It first reads the initial 4 bytes to determine the message version
 2. Based on the version identifier, it selects the appropriate container structure for deserializing the remainder of the data
 
-## **Flashblock Validity Rules**
+## Flashblock Validity Rules
 
 For a flashblock to be considered valid the following must hold:
 
@@ -691,7 +691,7 @@ flowchart TD
 
 ## Flashblock JSON-RPC APIs
 
-### **Ethereum JSON RPC Modifications**
+### Ethereum JSON RPC Modifications
 
 All modifications done to the existing Ethereum JSON RPC methods are confined to overloading the existing `pending` tag. Originally, this tag was designed to return block data being processed by the node's internal miner. It's fitting that we now use it for a similar purpose: exposing blocks in their preconfirmation stage. When queried with the `pending` tag, the endpoint uses the preconfirmation cache state to construct the response. The response might include not only transactions but also block metadata like state root and receipt root.
 
@@ -707,7 +707,7 @@ We repurpose the `pending` tag in the following RPC calls to enable consuming pr
 - eth_getTransactionCount
 - eth_getStorageAt
 
-### **`op_supportedCapabilities`**
+### op_supportedCapabilities
 
 This endpoint allows clients to discover whether the RPC provider supports certain features, including Flashblocks.
 
@@ -947,7 +947,7 @@ When queried with the "pending" tag, the endpoint returns the transaction count 
 
 When queried with the "pending" tag, the endpoint returns the value from the specified storage slot using the preconfirmation cache state. If the requested account appears in the `AccountMetadata` of a received Flashblock, the RPC provider scans the `storage_slots` list for the requested key and returns the corresponding value directly.
 
-# **Reliability and Operational Considerations**
+# Reliability and Operational Considerations
 
 ## Transaction Propagation
 
