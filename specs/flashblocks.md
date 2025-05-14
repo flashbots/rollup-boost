@@ -48,7 +48,7 @@
   - [Faults](#faults)
     - [Safety Faults](#safety-faults)
     - [Liveness Faults](#liveness-faults)
-- [**Rationale**](#rationale)
+- [Rationale](#rationale)
     - [Why out-of-protocol](#why-out-of-protocol)
     - [Why not shorter block times](#why-not-shorter-block-times)
 - [Backwards Compatibility](#backwards-compatibility)
@@ -994,7 +994,7 @@ In the rollup vocabulary *Liveness implies that “*every honest user can (a) ge
 
 The liveness of a flashblock is therefore directly equivalent to the liveness of L2 blocks as user’s are able to force include via the L1 as normal.
 
-# **Rationale**
+# Rationale
 
 ### Why out-of-protocol
 
