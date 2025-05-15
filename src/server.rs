@@ -565,6 +565,7 @@ impl RollupBoostServer {
         if let Some(causes) = self
             .payload_trace_context
             .trace_ids_from_parent_hash(&parent_hash)
+            .await
         {
             causes.iter().for_each(|cause| {
                 tracing::Span::current().follows_from(cause);
@@ -572,7 +573,8 @@ impl RollupBoostServer {
         }
 
         self.payload_trace_context
-            .remove_by_parent_hash(&parent_hash);
+            .remove_by_parent_hash(&parent_hash)
+            .await;
 
         // async call to builder to sync the builder node
         if !self.execution_mode().is_disabled() {
