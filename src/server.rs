@@ -134,7 +134,7 @@ impl RollupBoostServer {
     pub fn new(
         l2_client: RpcClient,
         builder_client: RpcClient,
-        initial_execution_mode: ExecutionMode,
+        initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         probes: Arc<Probes>,
         health_check_interval: u64,
         max_unsafe_interval: u64,
@@ -151,7 +151,7 @@ impl RollupBoostServer {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
-            execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
+            execution_mode: initial_execution_mode,
             probes,
             health_handle,
         }
@@ -808,12 +808,13 @@ mod tests {
             .unwrap();
 
             let (probe_layer, probes) = ProbeLayer::new();
+            let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
-                ExecutionMode::Enabled,
-                probes,
+                execution_mode.clone(),
+                probes.clone(),
                 60,
                 5,
             );
@@ -828,6 +829,8 @@ mod tests {
                         jwt_secret,
                         builder_auth_rpc,
                         jwt_secret,
+                        probes,
+                        execution_mode.clone(),
                     ));
 
             let server = Server::builder()
