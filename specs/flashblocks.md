@@ -1,4 +1,4 @@
-*Authors: [Ferran](https://github.com/ferranbt), [Shana](https://github.com/avalonche), [Dmarz](https://github.com/dmarzzz), [0xkitsune](https://github.com/0xkitsune), [Joshua](https://github.com/trianglesphere)*
+*Authors: [Ferran](https://github.com/ferranbt), [Shana](https://github.com/avalonche), [Dmarz](https://github.com/dmarzzz), [0xkitsune](https://github.com/0xkitsune), [protolambda](https://github.com/protolambda), [Joshua](https://github.com/trianglesphere)*
 
 **Table of Contents**
 - [Abstract](#abstract)
@@ -8,13 +8,13 @@
   - [Terminology](#terminology)
   - [Parameters](#parameters)
   - [Data structures](#data-structures)
-    - [`FlashblocksPayloadV1`](#flashblockspayloadv1)
-    - [`ExecutionPayloadFlashblockResultV1`](#executionpayloadflashblockresultv1)
-    - [`ExecutionPayloadStaticV1`](#executionpayloadstaticv1)
-    - [`Metadata`](#metadata)
-    - [`AccountMetadata`](#accountmetadata)
-    - [`StorageSlot`](#storageslot)
-    - [`TransactionMetadata`](#transactionmetadata)
+    - [**`FlashblocksPayloadV1`**](#flashblockspayloadv1)
+    - [**`ExecutionPayloadFlashblockResultV1`**](#executionpayloadflashblockresultv1)
+    - [**`ExecutionPayloadStaticV1`**](#executionpayloadstaticv1)
+    - [**`Metadata`**](#metadata)
+    - [**`AccountMetadata`**](#accountmetadata)
+    - [**`StorageSlot`**](#storageslot)
+    - [**`TransactionMetadata`**](#transactionmetadata)
   - [System architecture](#system-architecture)
   - [Out-of-Protocol Design](#out-of-protocol-design)
     - [In-Protocol vs. Out-of-Protocol](#in-protocol-vs-out-of-protocol)
@@ -40,7 +40,7 @@
     - [Secure propagation](#secure-propagation)
   - [Flashblock JSON-RPC APIs](#flashblock-json-rpc-apis)
     - [Ethereum JSON RPC Modifications](#ethereum-json-rpc-modifications)
-    - [op_supportedCapabilities](#op_supportedcapabilities)
+    - [op\_supportedCapabilities](#op_supportedcapabilities)
 - [Reliability and Operational Considerations](#reliability-and-operational-considerations)
   - [Transaction Propagation](#transaction-propagation)
   - [Failover scenarios](#failover-scenarios)
@@ -982,7 +982,7 @@ The integration of Flashblocks with High Availability (HA) Sequencer setups is o
 
 ## Faults
 
-### **Safety Faults**
+### Safety Faults
 
 In the rollup security vocabulary *safety* implies that “**no one can create or withdraw assets they are not entitled to.**” A **safety fault** therefore occurs the moment an **invalid L2 state root** is accepted on Ethereum **and** at least one L2→L1 action (withdrawal, message relay, etc.) that depends on that root is executed **and** the dispute game period has ended. After that point the canonical record on Ethereum says the invalid state is *final* and the rollup’s honesty assumption is broken.
 
@@ -990,7 +990,7 @@ The safety of a flashblock is directly equivalent to the safety of an L2 block. 
 
 The real thing we are interested in regards to safety faults for the Flashblock stream is whether they can be reorged. The answer to this question is that the preconfirmed state can be reorged out if the Sequencer reorgs. Given that the sequencer is the one validating the block builder blocks, then there is no additional risk of reorg from the introduction of the External Block Builder and Flashblocks stream, as in both cases, the reorg is due to Sequencer Operator error.
 
-### **Liveness Faults**
+### Liveness Faults
 
 In the rollup vocabulary *Liveness implies that “*every honest user can (a) get a transaction included within a bounded time and (b) complete a withdrawal within the 7‑day challenge window.” A **liveness fault** is any condition that makes either promise untrue *without violating safety* (no invalid state is accepted).
 
