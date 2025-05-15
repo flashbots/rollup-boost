@@ -170,7 +170,7 @@ where
                         *execution_mode = ExecutionMode::Disabled;
                         // Drop before aquiring health lock
                         drop(execution_mode);
-                        warn!(target: "proxy::call", message = "setting execution mode to Fallback");
+                        warn!(target: "proxy::call", message = "setting execution mode to Disabled");
                         service.probes.set_health(Health::PartialContent);
                     }
                 }
