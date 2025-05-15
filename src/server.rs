@@ -1,32 +1,34 @@
-use crate::HealthHandle;
-use crate::client::rpc::RpcClient;
-use crate::debug_api::DebugServer;
-use crate::probe::{Health, Probes};
+use crate::{
+    HealthHandle,
+    client::rpc::RpcClient,
+    debug_api::DebugServer,
+    probe::{Health, Probes},
+};
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use futures::{StreamExt as _, stream};
 use metrics::counter;
-use moka::sync::Cache;
+use moka::future::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
+use crate::debug_api::ExecutionMode;
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
 };
 use jsonrpsee::RpcModule;
 use jsonrpsee::core::{RegisterMethodError, RpcResult, async_trait};
+use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
-use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tracing::{debug, info, instrument};
-
-use jsonrpsee::proc_macros::rpc;
+use tracing::{info, instrument};
 
 const CACHE_SIZE: u64 = 100;
 
@@ -49,113 +51,79 @@ impl PayloadTraceContext {
         }
     }
 
-    fn store(
+    async fn store(
         &self,
         payload_id: PayloadId,
         parent_hash: B256,
         builder_has_payload: bool,
         trace_id: Option<tracing::Id>,
     ) {
-        self.payload_id.insert(
-            payload_id,
-            PayloadTrace {
-                builder_has_payload,
-                trace_id,
-            },
-        );
+        self.payload_id
+            .insert(
+                payload_id,
+                PayloadTrace {
+                    builder_has_payload,
+                    trace_id,
+                },
+            )
+            .await;
         self.block_hash_to_payload_ids
             .entry(parent_hash)
             .and_upsert_with(|o| match o {
                 Some(e) => {
                     let mut payloads = e.into_value();
                     payloads.push(payload_id);
-                    payloads
+                    std::future::ready(payloads)
                 }
-                None => {
-                    vec![payload_id]
-                }
-            });
+                None => std::future::ready(vec![payload_id]),
+            })
+            .await;
     }
 
-    fn upsert_builder_has_payload(
-        &self,
-        payload_id: PayloadId,
-        trace_id: Option<tracing::Id>,
-        builder_has_payload: bool,
-    ) {
-        self.payload_id
-            .entry(payload_id)
-            .and_upsert_with(|o| match o {
-                Some(e) => {
-                    let mut trace = e.into_value();
-                    trace.builder_has_payload = builder_has_payload;
-                    trace
-                }
-                None => PayloadTrace {
-                    builder_has_payload,
-                    trace_id,
-                },
-            });
-    }
-
-    fn trace_ids_from_parent_hash(&self, parent_hash: &B256) -> Option<Vec<tracing::Id>> {
-        self.block_hash_to_payload_ids
-            .get(parent_hash)
-            .map(|payload_ids| {
-                payload_ids
-                    .iter()
-                    .filter_map(|payload_id| {
-                        self.payload_id.get(payload_id).and_then(|x| x.trace_id)
+    async fn trace_ids_from_parent_hash(&self, parent_hash: &B256) -> Option<Vec<tracing::Id>> {
+        match self.block_hash_to_payload_ids.get(parent_hash).await {
+            Some(payload_ids) => Some(
+                stream::iter(payload_ids.iter())
+                    .filter_map(|payload_id| async {
+                        self.payload_id
+                            .get(payload_id)
+                            .await
+                            .and_then(|x| x.trace_id)
                     })
                     .collect()
-            })
+                    .await,
+            ),
+            None => None,
+        }
     }
 
-    fn trace_id(&self, payload_id: &PayloadId) -> Option<tracing::Id> {
-        self.payload_id.get(payload_id).and_then(|x| x.trace_id)
-    }
-
-    fn has_builder_payload(&self, payload_id: &PayloadId) -> bool {
+    async fn trace_id(&self, payload_id: &PayloadId) -> Option<tracing::Id> {
         self.payload_id
             .get(payload_id)
+            .await
+            .and_then(|x| x.trace_id)
+    }
+
+    async fn has_builder_payload(&self, payload_id: &PayloadId) -> bool {
+        self.payload_id
+            .get(payload_id)
+            .await
             .map(|x| x.builder_has_payload)
             .unwrap_or_default()
     }
 
-    fn remove_by_parent_hash(&self, block_hash: &B256) {
-        if let Some(payload_ids) = self.block_hash_to_payload_ids.remove(block_hash) {
+    async fn remove_by_parent_hash(&self, block_hash: &B256) {
+        if let Some(payload_ids) = self.block_hash_to_payload_ids.remove(block_hash).await {
             for payload_id in payload_ids.iter() {
-                self.payload_id.remove(payload_id);
+                self.payload_id.remove(payload_id).await;
             }
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionMode {
-    // Normal execution, sending all requests
-    Enabled,
-    // Not sending get_payload requests
-    DryRun,
-    // Not sending any requests
-    Disabled,
-}
-
-impl ExecutionMode {
-    fn is_dry_run(&self) -> bool {
-        matches!(self, ExecutionMode::DryRun)
-    }
-
-    fn is_disabled(&self) -> bool {
-        matches!(self, ExecutionMode::Disabled)
     }
 }
 
 pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<RpcClient>,
-    pub boost_sync: bool,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     health_handle: JoinHandle<()>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
@@ -166,7 +134,6 @@ impl RollupBoostServer {
     pub fn new(
         l2_client: RpcClient,
         builder_client: RpcClient,
-        boost_sync: bool,
         initial_execution_mode: ExecutionMode,
         probes: Arc<Probes>,
         health_check_interval: u64,
@@ -183,7 +150,6 @@ impl RollupBoostServer {
         Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
-            boost_sync,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
             probes,
@@ -307,71 +273,85 @@ impl EngineApiServer for RollupBoostServer {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> RpcResult<ForkchoiceUpdated> {
-        if let Some(attr) = payload_attributes.as_ref() {
-            info!(
-                message = "received fork_choice_updated_v3 with payload attributes",
-                "use_tx_pool" = !attr.no_tx_pool.unwrap_or_default()
-            );
-        } else {
-            info!("received fork_choice_updated_v3");
-        }
-
-        // First get the local payload ID from L2 client
-        let l2_response = self
+        // Send the FCU to the default l2 client
+        let l2_fut = self
             .l2_client
-            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-            .await?;
+            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
+
+        // If execution mode is disabled, return the l2 client response immediately
+        if self.execution_mode().is_disabled() {
+            return Ok(l2_fut.await?);
+        }
 
         let span = tracing::Span::current();
-        if let Some(payload_id) = l2_response.payload_id {
-            span.record("payload_id", payload_id.to_string());
-        }
+        // If the fcu contains payload attributes and the tx pool is disabled,
+        // only forward the FCU to the default l2 client
+        if let Some(attrs) = payload_attributes.as_ref() {
+            if attrs.no_tx_pool.unwrap_or_default() {
+                let l2_response = l2_fut.await?;
+                if let Some(payload_id) = l2_response.payload_id {
+                    info!(
+                        message = "block building started",
+                        "payload_id" = %payload_id,
+                        "builder_building" = false,
+                    );
 
-        let (should_send_to_builder, has_attributes, use_tx_pool) =
-            if let Some(attr) = payload_attributes.as_ref() {
-                // payload attributes are present. It is a FCU call to start block building
-                // Do not send to builder if no_tx_pool is set, meaning that the CL node wants
-                // a deterministic block without txs. We let the fallback EL node compute those.
-                let use_tx_pool = !attr.no_tx_pool.unwrap_or_default();
-
-                (use_tx_pool, true, use_tx_pool)
-            } else {
-                // no payload attributes. It is a FCU call to lock the head block
-                // previously synced with the new_payload_v3 call. Only send to builder if boost_sync is enabled
-                (self.boost_sync, false, false)
-            };
-
-        let execution_mode = self.execution_mode();
-        let trace_id = span.id();
-        if let Some(payload_id) = l2_response.payload_id {
-            self.payload_trace_context.store(
-                payload_id,
-                fork_choice_state.head_block_hash,
-                has_attributes && use_tx_pool,
-                trace_id,
-            );
-        }
-
-        if execution_mode.is_disabled() {
-            debug!(message = "execution mode is disabled, skipping FCU call to builder", "head_block_hash" = %fork_choice_state.head_block_hash);
-        } else if should_send_to_builder {
-            let builder_client = self.builder_client.clone();
-            let payload_trace_context = self.payload_trace_context.clone();
-            let payload_id = l2_response.payload_id;
-            let trace_id = span.id();
-            tokio::spawn(async move {
-                let response = builder_client
-                    .fork_choice_updated_v3(fork_choice_state, payload_attributes)
-                    .await;
-                if let (Err(_), Some(id)) = (response, payload_id) {
-                    payload_trace_context.upsert_builder_has_payload(id, trace_id, false);
+                    self.payload_trace_context
+                        .store(
+                            payload_id,
+                            fork_choice_state.head_block_hash,
+                            false,
+                            span.id(),
+                        )
+                        .await;
                 }
-            });
-        } else {
-            info!(message = "no payload attributes provided or no_tx_pool is set", "head_block_hash" = %fork_choice_state.head_block_hash, "payload_id" = %l2_response.payload_id.unwrap_or_default(), "has_attributes" = has_attributes, "use_tx_pool" = use_tx_pool);
-        }
 
-        Ok(l2_response)
+                // We always return the value from the l2 client
+                return Ok(l2_response);
+            } else {
+                // If the tx pool is enabled, forward the fcu
+                // to both the builder and the default l2 client
+                let builder_fut = self
+                    .builder_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes);
+
+                let (l2_result, builder_result) = tokio::join!(l2_fut, builder_fut);
+                let l2_response = l2_result?;
+
+                if let Some(payload_id) = l2_response.payload_id {
+                    info!(
+                        message = "block building started",
+                        "payload_id" = %payload_id,
+                        "builder_building" = builder_result.is_ok(),
+                    );
+
+                    self.payload_trace_context
+                        .store(
+                            payload_id,
+                            fork_choice_state.head_block_hash,
+                            builder_result.is_ok(),
+                            span.id(),
+                        )
+                        .await;
+                }
+
+                return Ok(l2_response);
+            }
+        } else {
+            // If the FCU does not contain payload attributes
+            // forward the fcu to the builder to keep it synced and immediately return the l2
+            // response without awaiting the builder
+            let builder_client = self.builder_client.clone();
+            tokio::spawn(async move {
+                // It is not critical to wait for the builder response here
+                // During moments of high load, Op-node can send hundreds of FCU requests
+                // and we want to ensure that we don't block the main thread in those scenarios
+                builder_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+                    .await
+            });
+            return Ok(l2_fut.await?);
+        }
     }
 
     #[instrument(
@@ -584,10 +564,11 @@ impl RollupBoostServer {
 
         // async call to builder to sync the builder node
         let execution_mode = self.execution_mode();
-        if self.boost_sync && !execution_mode.is_disabled() {
+        if !execution_mode.is_disabled() {
             if let Some(causes) = self
                 .payload_trace_context
                 .trace_ids_from_parent_hash(&parent_hash)
+                .await
             {
                 causes.iter().for_each(|cause| {
                     tracing::Span::current().follows_from(cause);
@@ -595,7 +576,8 @@ impl RollupBoostServer {
             }
 
             self.payload_trace_context
-                .remove_by_parent_hash(&parent_hash);
+                .remove_by_parent_hash(&parent_hash)
+                .await;
 
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
@@ -644,10 +626,14 @@ impl RollupBoostServer {
 
         // Forward the get payload request to the builder
         let builder_fut = async {
-            if let Some(cause) = self.payload_trace_context.trace_id(&payload_id) {
+            if let Some(cause) = self.payload_trace_context.trace_id(&payload_id).await {
                 tracing::Span::current().follows_from(cause);
             }
-            if !self.payload_trace_context.has_builder_payload(&payload_id) {
+            if !self
+                .payload_trace_context
+                .has_builder_payload(&payload_id)
+                .await
+            {
                 info!(message = "builder has no payload, skipping get_payload call to builder");
                 return RpcResult::Ok(None);
             }
@@ -805,7 +791,6 @@ mod tests {
 
     impl TestHarness {
         async fn new(
-            boost_sync: bool,
             l2_mock: Option<MockEngineServer>,
             builder_mock: Option<MockEngineServer>,
         ) -> Self {
@@ -830,7 +815,6 @@ mod tests {
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
-                boost_sync,
                 ExecutionMode::Enabled,
                 probes,
                 60,
@@ -897,14 +881,14 @@ mod tests {
     #[tokio::test]
     async fn test_server() {
         engine_success().await;
-        boost_sync_enabled().await;
         builder_payload_err().await;
         test_local_external_payload_ids_same().await;
         has_builder_payload().await;
+        l2_client_fails_fcu().await;
     }
 
     async fn engine_success() {
-        let test_harness = TestHarness::new(false, None, None).await;
+        let test_harness = TestHarness::new(None, None).await;
 
         // Since no blocks have been created, the service should be unavailable
         let health = test_harness.get("healthz").await;
@@ -927,7 +911,7 @@ mod tests {
             let fcu_requests_builder = test_harness.builder_mock.fcu_requests.clone();
             let fcu_requests_builder_mu = fcu_requests_builder.lock();
             assert_eq!(fcu_requests_mu.len(), 1);
-            assert_eq!(fcu_requests_builder_mu.len(), 0);
+            assert_eq!(fcu_requests_builder_mu.len(), 1);
             let req: &(ForkchoiceState, Option<OpPayloadAttributes>) =
                 fcu_requests_mu.first().unwrap();
             assert_eq!(req.0, fcu);
@@ -957,7 +941,7 @@ mod tests {
                 test_harness.builder_mock.new_payload_requests.clone();
             let new_payload_requests_builder_mu = new_payload_requests_builder.lock();
             assert_eq!(new_payload_requests_mu.len(), 1);
-            assert_eq!(new_payload_requests_builder_mu.len(), 0);
+            assert_eq!(new_payload_requests_builder_mu.len(), 1);
             let req: &(ExecutionPayloadV3, Vec<FixedBytes<32>>, B256) =
                 new_payload_requests_mu.first().unwrap();
             assert_eq!(
@@ -1003,60 +987,6 @@ mod tests {
         test_harness.cleanup().await;
     }
 
-    async fn boost_sync_enabled() {
-        let test_harness = TestHarness::new(true, None, None).await;
-
-        let fcu = ForkchoiceState {
-            head_block_hash: FixedBytes::random(),
-            safe_block_hash: FixedBytes::random(),
-            finalized_block_hash: FixedBytes::random(),
-        };
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(fcu, None)
-            .await;
-        assert!(fcu_response.is_ok());
-
-        sleep(std::time::Duration::from_millis(100)).await;
-
-        let fcu_requests = test_harness.l2_mock.fcu_requests.clone();
-        {
-            let fcu_requests_mu = fcu_requests.lock();
-            let fcu_requests_builder = test_harness.builder_mock.fcu_requests.clone();
-            let fcu_requests_builder_mu = fcu_requests_builder.lock();
-            assert_eq!(fcu_requests_mu.len(), 1);
-            assert_eq!(fcu_requests_builder_mu.len(), 1);
-        }
-
-        // test new_payload_v3 success
-        let new_payload_response = test_harness
-            .rpc_client
-            .new_payload_v3(
-                test_harness
-                    .l2_mock
-                    .get_payload_response
-                    .clone()
-                    .unwrap()
-                    .execution_payload
-                    .clone(),
-                vec![],
-                B256::ZERO,
-            )
-            .await;
-        assert!(new_payload_response.is_ok());
-        let new_payload_requests = test_harness.l2_mock.new_payload_requests.clone();
-        {
-            let new_payload_requests_mu = new_payload_requests.lock();
-            let new_payload_requests_builder =
-                test_harness.builder_mock.new_payload_requests.clone();
-            let new_payload_requests_builder_mu = new_payload_requests_builder.lock();
-            assert_eq!(new_payload_requests_mu.len(), 1);
-            assert_eq!(new_payload_requests_builder_mu.len(), 1);
-        }
-
-        test_harness.cleanup().await;
-    }
-
     async fn builder_payload_err() {
         let mut l2_mock = MockEngineServer::new();
         l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut status| {
@@ -1069,7 +999,7 @@ mod tests {
             payload.block_value = U256::from(10);
             payload
         });
-        let test_harness = TestHarness::new(true, Some(l2_mock), None).await;
+        let test_harness = TestHarness::new(Some(l2_mock), None).await;
 
         // test get_payload_v3 return l2 payload if builder payload is invalid
         let get_payload_response = test_harness
@@ -1139,7 +1069,7 @@ mod tests {
         builder_mock.override_payload_id = Some(same_id);
 
         let test_harness =
-            TestHarness::new(true, Some(l2_mock.clone()), Some(builder_mock.clone())).await;
+            TestHarness::new(Some(l2_mock.clone()), Some(builder_mock.clone())).await;
 
         // Test FCU call
         let fcu = ForkchoiceState {
@@ -1209,7 +1139,7 @@ mod tests {
                     payload
                 });
 
-        let test_harness = TestHarness::new(true, Some(l2_mock), Some(builder_mock)).await;
+        let test_harness = TestHarness::new(Some(l2_mock), Some(builder_mock)).await;
         let fcu = ForkchoiceState {
             head_block_hash: FixedBytes::random(),
             safe_block_hash: FixedBytes::random(),
@@ -1243,5 +1173,39 @@ mod tests {
         assert_eq!(get_payload_response.unwrap().block_value, U256::from(10));
 
         test_harness.cleanup().await;
+    }
+
+    async fn l2_client_fails_fcu() {
+        // If the canonical l2 client fails the FCU call, it does not matter what the builder returns
+        // the FCU call should fail
+        let mut l2_mock = MockEngineServer::new();
+        l2_mock.fcu_response = Err(ErrorObject::owned(
+            INVALID_REQUEST_CODE,
+            "Payload version 4 not supported",
+            None::<String>,
+        ));
+
+        let test_harness = TestHarness::new(Some(l2_mock), None).await;
+
+        let fcu = ForkchoiceState {
+            head_block_hash: FixedBytes::random(),
+            safe_block_hash: FixedBytes::random(),
+            finalized_block_hash: FixedBytes::random(),
+        };
+        let fcu_response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, None)
+            .await;
+        assert!(fcu_response.is_err());
+
+        let payload_attributes = OpPayloadAttributes {
+            gas_limit: Some(1000000),
+            ..Default::default()
+        };
+        let fcu_response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, Some(payload_attributes))
+            .await;
+        assert!(fcu_response.is_err());
     }
 }

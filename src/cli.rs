@@ -10,9 +10,9 @@ use tracing::{Level, info};
 use crate::{
     DebugClient, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
+    debug_api::ExecutionMode,
     init_metrics, init_tracing,
     probe::ProbeLayer,
-    server::ExecutionMode,
 };
 
 #[derive(Clone, Parser, Debug)]
@@ -34,10 +34,6 @@ pub struct Args {
     /// Max duration in seconds between the unsafe head block of the builder and the current time
     #[arg(long, env, default_value = "5")]
     pub max_unsafe_interval: u64,
-
-    /// Disable using the proposer to sync the builder node
-    #[arg(long, env, default_value = "false")]
-    pub no_boost_sync: bool,
 
     /// Host to run the server on
     #[arg(long, env, default_value = "0.0.0.0")]
@@ -159,17 +155,11 @@ impl Args {
             PayloadSource::Builder,
         )?;
 
-        let boost_sync_enabled = !self.no_boost_sync;
-        if boost_sync_enabled {
-            info!("Boost sync enabled");
-        }
-
         let (probe_layer, probes) = ProbeLayer::new();
 
         let rollup_boost = RollupBoostServer::new(
             l2_client,
             builder_client,
-            boost_sync_enabled,
             self.execution_mode,
             probes,
             self.health_check_interval,
