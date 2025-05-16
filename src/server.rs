@@ -80,6 +80,138 @@ impl RollupBoostServer {
     pub fn health_handle(&self) -> &JoinHandle<()> {
         &self.health_handle
     }
+
+    async fn new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
+        let execution_payload = ExecutionPayload::from(new_payload.clone());
+        let block_hash = execution_payload.block_hash();
+        let parent_hash = execution_payload.parent_hash();
+        info!(message = "received new_payload", "block_hash" = %block_hash, "version" = new_payload.version().as_str());
+
+        if let Some(causes) = self
+            .payload_trace_context
+            .trace_ids_from_parent_hash(&parent_hash)
+            .await
+        {
+            causes.iter().for_each(|cause| {
+                tracing::Span::current().follows_from(cause);
+            });
+        }
+
+        self.payload_trace_context
+            .remove_by_parent_hash(&parent_hash)
+            .await;
+
+        // async call to builder to sync the builder node
+        if !self.execution_mode().is_disabled() {
+            let builder = self.builder_client.clone();
+            let new_payload_clone = new_payload.clone();
+            tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
+        }
+        Ok(self.l2_client.new_payload(new_payload).await?)
+    }
+
+    async fn get_payload(
+        &self,
+        payload_id: PayloadId,
+        version: PayloadVersion,
+    ) -> RpcResult<OpExecutionPayloadEnvelope> {
+        let l2_fut = self.l2_client.get_payload(payload_id, version);
+
+        // If execution mode is disabled, return the l2 payload without sending
+        // the request to the builder
+        if self.execution_mode().is_disabled() {
+            return match l2_fut.await {
+                Ok(payload) => {
+                    self.probes.set_health(Health::Healthy);
+                    let context = PayloadSource::L2;
+                    tracing::Span::current().record("payload_source", context.to_string());
+                    counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
+
+                    let execution_payload = ExecutionPayload::from(payload.clone());
+                    info!(
+                        message = "returning block",
+                        "hash" = %execution_payload.block_hash(),
+                        "number" = %execution_payload.block_number(),
+                        %context,
+                        %payload_id,
+                    );
+
+                    Ok(payload)
+                }
+
+                Err(e) => {
+                    self.probes.set_health(Health::ServiceUnavailable);
+                    Err(e.into())
+                }
+            };
+        }
+
+        // Forward the get payload request to the builder
+        let builder_fut = async {
+            if let Some(cause) = self.payload_trace_context.trace_id(&payload_id).await {
+                tracing::Span::current().follows_from(cause);
+            }
+            if !self
+                .payload_trace_context
+                .has_builder_payload(&payload_id)
+                .await
+            {
+                info!(message = "builder has no payload, skipping get_payload call to builder");
+                return RpcResult::Ok(None);
+            }
+
+            // Get payload and validate with the local l2 client
+            let payload = self.builder_client.get_payload(payload_id, version).await?;
+            let _ = self
+                .l2_client
+                .new_payload(NewPayload::from(payload.clone()))
+                .await?;
+
+            Ok(Some(payload))
+        };
+
+        let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
+
+        // Evaluate the builder and l2 response and select the final payload
+        let (payload, context) = {
+            let l2_payload =
+                l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
+            self.probes.set_health(Health::Healthy);
+
+            if let Ok(Some(payload)) = builder_payload {
+                if self.execution_mode().is_dry_run() {
+                    (l2_payload, PayloadSource::L2)
+                } else {
+                    // NOTE: block selection policy
+                    (payload, PayloadSource::Builder)
+                }
+            } else {
+                self.probes.set_health(Health::PartialContent);
+                (l2_payload, PayloadSource::L2)
+            }
+        };
+
+        tracing::Span::current().record("payload_source", context.to_string());
+        // To maintain backwards compatibility with old metrics, we need to record blocks built
+        // This is temporary until we migrate to the new metrics
+        counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
+
+        let inner_payload = ExecutionPayload::from(payload.clone());
+        let block_hash = inner_payload.block_hash();
+        let block_number = inner_payload.block_number();
+
+        // Note: This log message is used by integration tests to track payload context.
+        // While not ideal to rely on log parsing, it provides a reliable way to verify behavior.
+        // Happy to consider an alternative approach later on.
+        info!(
+            message = "returning block",
+            "hash" = %block_hash,
+            "number" = %block_number,
+            %context,
+            %payload_id,
+        );
+        Ok(payload)
+    }
 }
 
 impl TryInto<RpcModule<()>> for RollupBoostServer {
@@ -296,140 +428,6 @@ impl EngineApiServer for RollupBoostServer {
 
     async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block> {
         Ok(self.l2_client.get_block_by_number(number, full).await?)
-    }
-}
-
-impl RollupBoostServer {
-    async fn new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
-        let execution_payload = ExecutionPayload::from(new_payload.clone());
-        let block_hash = execution_payload.block_hash();
-        let parent_hash = execution_payload.parent_hash();
-        info!(message = "received new_payload", "block_hash" = %block_hash, "version" = new_payload.version().as_str());
-
-        if let Some(causes) = self
-            .payload_trace_context
-            .trace_ids_from_parent_hash(&parent_hash)
-            .await
-        {
-            causes.iter().for_each(|cause| {
-                tracing::Span::current().follows_from(cause);
-            });
-        }
-
-        self.payload_trace_context
-            .remove_by_parent_hash(&parent_hash)
-            .await;
-
-        // async call to builder to sync the builder node
-        if !self.execution_mode().is_disabled() {
-            let builder = self.builder_client.clone();
-            let new_payload_clone = new_payload.clone();
-            tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
-        }
-        Ok(self.l2_client.new_payload(new_payload).await?)
-    }
-
-    async fn get_payload(
-        &self,
-        payload_id: PayloadId,
-        version: PayloadVersion,
-    ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        let l2_fut = self.l2_client.get_payload(payload_id, version);
-
-        // If execution mode is disabled, return the l2 payload without sending
-        // the request to the builder
-        if self.execution_mode().is_disabled() {
-            return match l2_fut.await {
-                Ok(payload) => {
-                    self.probes.set_health(Health::Healthy);
-                    let context = PayloadSource::L2;
-                    tracing::Span::current().record("payload_source", context.to_string());
-                    counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
-
-                    let execution_payload = ExecutionPayload::from(payload.clone());
-                    info!(
-                        message = "returning block",
-                        "hash" = %execution_payload.block_hash(),
-                        "number" = %execution_payload.block_number(),
-                        %context,
-                        %payload_id,
-                    );
-
-                    Ok(payload)
-                }
-
-                Err(e) => {
-                    self.probes.set_health(Health::ServiceUnavailable);
-                    Err(e.into())
-                }
-            };
-        }
-
-        // Forward the get payload request to the builder
-        let builder_fut = async {
-            if let Some(cause) = self.payload_trace_context.trace_id(&payload_id).await {
-                tracing::Span::current().follows_from(cause);
-            }
-            if !self
-                .payload_trace_context
-                .has_builder_payload(&payload_id)
-                .await
-            {
-                info!(message = "builder has no payload, skipping get_payload call to builder");
-                return RpcResult::Ok(None);
-            }
-
-            // Get payload and validate with the local l2 client
-            let payload = self.builder_client.get_payload(payload_id, version).await?;
-            let _ = self
-                .l2_client
-                .new_payload(NewPayload::from(payload.clone()))
-                .await?;
-
-            Ok(Some(payload))
-        };
-
-        let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
-
-        // Evaluate the builder and l2 response and select the final payload
-        let (payload, context) = {
-            let l2_payload =
-                l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
-            self.probes.set_health(Health::Healthy);
-
-            if let Ok(Some(payload)) = builder_payload {
-                if self.execution_mode().is_dry_run() {
-                    (l2_payload, PayloadSource::L2)
-                } else {
-                    // NOTE: block selection policy
-                    (payload, PayloadSource::Builder)
-                }
-            } else {
-                self.probes.set_health(Health::PartialContent);
-                (l2_payload, PayloadSource::L2)
-            }
-        };
-
-        tracing::Span::current().record("payload_source", context.to_string());
-        // To maintain backwards compatibility with old metrics, we need to record blocks built
-        // This is temporary until we migrate to the new metrics
-        counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
-
-        let inner_payload = ExecutionPayload::from(payload.clone());
-        let block_hash = inner_payload.block_hash();
-        let block_number = inner_payload.block_number();
-
-        // Note: This log message is used by integration tests to track payload context.
-        // While not ideal to rely on log parsing, it provides a reliable way to verify behavior.
-        // Happy to consider an alternative approach later on.
-        info!(
-            message = "returning block",
-            "hash" = %block_hash,
-            "number" = %block_number,
-            %context,
-            %payload_id,
-        );
-        Ok(payload)
     }
 }
 
