@@ -440,10 +440,10 @@ impl RollupBoostServer {
 #[cfg(test)]
 #[allow(clippy::complexity)]
 mod tests {
+    use super::*;
+    use crate::engine::EngineApiClient;
     use crate::probe::ProbeLayer;
     use crate::proxy::ProxyLayer;
-
-    use super::*;
     use alloy_primitives::hex;
     use alloy_primitives::{FixedBytes, U256};
     use alloy_rpc_types_engine::JwtSecret;
