@@ -2,9 +2,7 @@ use alloy_primitives::{B256, Bytes};
 use futures::{StreamExt as _, stream};
 use moka::future::Cache;
 
-use alloy_rpc_types_engine::{
-    ExecutionPayload, ExecutionPayloadV3, PayloadId,
-};
+use alloy_rpc_types_engine::{ExecutionPayload, ExecutionPayloadV3, PayloadId};
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
 };
