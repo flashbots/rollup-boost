@@ -16,7 +16,7 @@ tracing-subscriber = { version = "0.3.11", features = ["env-filter", "json"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2.0.12"
 clap = { version = "4", features = ["derive", "env"] }
-jsonrpsee = { version = "0.24", features = ["server", "http-client", "macros"] }
+jsonrpsee = { version = "0.25.1", features = ["server", "http-client", "macros"] }
 moka = { version = "0.12.10", features = ["sync"] }
 http = "1.1.0"
 dotenv = "0.15.0"
