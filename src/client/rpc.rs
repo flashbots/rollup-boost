@@ -1,7 +1,6 @@
 use crate::client::auth::AuthLayer;
-use crate::engine::EngineApiClient;
 use crate::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
-
+use crate::server::EngineApiClient;
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,

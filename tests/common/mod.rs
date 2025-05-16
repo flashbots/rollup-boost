@@ -17,7 +17,7 @@ use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
 use proxy::{ProxyHandler, start_proxy_server};
 use rollup_boost::DebugClient;
-use rollup_boost::engine::EngineApiClient;
+use rollup_boost::EngineApiClient;
 use rollup_boost::payload::{
     NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion,
 };
