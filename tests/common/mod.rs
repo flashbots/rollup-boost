@@ -18,10 +18,8 @@ use parking_lot::Mutex;
 use proxy::{ProxyHandler, start_proxy_server};
 use rollup_boost::DebugClient;
 use rollup_boost::EngineApiClient;
-use rollup_boost::payload::{
-    NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion,
-};
 use rollup_boost::{AuthLayer, AuthService};
+use rollup_boost::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
