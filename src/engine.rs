@@ -1,11 +1,8 @@
 use alloy_primitives::{B256, Bytes};
-use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use futures::StreamExt as _;
-
 use alloy_rpc_types_engine::{
-    ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
-    PayloadStatus,
+    ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus,
 };
+use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
 use op_alloy_rpc_types_engine::{
