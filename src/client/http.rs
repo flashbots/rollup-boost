@@ -1,3 +1,5 @@
+use std::future;
+
 use crate::client::auth::AuthLayer;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
@@ -10,13 +12,17 @@ use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::http_client::HttpBody;
 use opentelemetry::trace::SpanKind;
-use tower::{Service as _, ServiceBuilder, ServiceExt};
+use tower::{
+    Service as _, ServiceBuilder, ServiceExt,
+    retry::{Retry, RetryLayer},
+};
 use tower_http::decompression::{Decompression, DecompressionLayer};
 use tracing::{debug, error, instrument};
 
 use super::auth::Auth;
 
-pub type HttpClientService = Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>;
+pub type HttpClientService =
+    Retry<Attempts, Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>>;
 
 #[derive(Clone, Debug)]
 pub struct HttpClient {
@@ -38,6 +44,7 @@ impl HttpClient {
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
         let client = ServiceBuilder::new()
+            .layer(RetryLayer::new(Attempts(5)))
             .layer(DecompressionLayer::new())
             .layer(AuthLayer::new(secret))
             .service(client);
@@ -82,6 +89,43 @@ impl HttpClient {
             parts,
             HttpBody::from(body_bytes),
         ))
+    }
+}
+
+use tower::retry::Policy;
+
+type Req = String;
+type Res = String;
+
+#[derive(Clone, Debug)]
+struct Attempts(usize);
+
+impl<E> Policy<Req, Res, E> for Attempts {
+    type Future = future::Ready<Self>;
+
+    fn retry(&self, req: &Req, result: Result<&Res, &E>) -> Option<Self::Future> {
+        match result {
+            Ok(_) => {
+                // Treat all `Response`s as success,
+                // so don't retry...
+                None
+            }
+            Err(_) => {
+                // Treat all errors as failures...
+                // But we limit the number of attempts...
+                if self.0 > 0 {
+                    // Try again!
+                    Some(future::ready(Attempts(self.0 - 1)))
+                } else {
+                    // Used all our attempts, no retry...
+                    None
+                }
+            }
+        }
+    }
+
+    fn clone_request(&self, req: &Req) -> Option<Req> {
+        Some(req.clone())
     }
 }
 

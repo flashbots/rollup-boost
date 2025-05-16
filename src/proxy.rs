@@ -171,6 +171,8 @@ where
                         // Drop before aquiring health lock
                         drop(execution_mode);
                         warn!(target: "proxy::call", message = "setting execution mode to Disabled");
+                        // This health status will likely be later set back to healthy
+                        // but this should be enough to trigger a new leader election.
                         service.probes.set_health(Health::PartialContent);
                     }
                 }
