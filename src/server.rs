@@ -1,3 +1,4 @@
+use crate::debug_api::ExecutionMode;
 use crate::{
     HealthHandle,
     client::rpc::RpcClient,
@@ -10,28 +11,23 @@ use crate::{
     probe::{Health, Probes},
 };
 use alloy_primitives::{B256, Bytes};
-use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use futures::{StreamExt as _, stream};
-use metrics::counter;
-use moka::future::Cache;
-use opentelemetry::trace::SpanKind;
-use parking_lot::Mutex;
-use std::sync::Arc;
-
-use crate::debug_api::ExecutionMode;
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
 };
+use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use jsonrpsee::RpcModule;
 use jsonrpsee::core::{RegisterMethodError, RpcResult, async_trait};
-use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
+use metrics::counter;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
+use opentelemetry::trace::SpanKind;
+use parking_lot::Mutex;
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::{info, instrument};
 

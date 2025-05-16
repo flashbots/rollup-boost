@@ -1,35 +1,13 @@
-use crate::{
-    HealthHandle,
-    client::rpc::RpcClient,
-    debug_api::DebugServer,
-    engine::EngineApiServer,
-    probe::{Health, Probes},
-};
 use alloy_primitives::{B256, Bytes};
-use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use futures::{StreamExt as _, stream};
-use metrics::counter;
 use moka::future::Cache;
-use opentelemetry::trace::SpanKind;
-use parking_lot::Mutex;
-use std::sync::Arc;
 
-use crate::debug_api::ExecutionMode;
 use alloy_rpc_types_engine::{
-    ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
-    PayloadStatus,
+    ExecutionPayload, ExecutionPayloadV3, PayloadId,
 };
-use jsonrpsee::RpcModule;
-use jsonrpsee::core::{RegisterMethodError, RpcResult, async_trait};
-use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::types::ErrorObject;
-use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
-    OpPayloadAttributes,
 };
-use tokio::task::JoinHandle;
-use tracing::{info, instrument};
 
 const CACHE_SIZE: u64 = 100;
 
@@ -166,6 +144,12 @@ pub struct PayloadTrace {
 pub struct PayloadTraceContext {
     block_hash_to_payload_ids: Cache<B256, Vec<PayloadId>>,
     payload_id: Cache<PayloadId, PayloadTrace>,
+}
+
+impl Default for PayloadTraceContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PayloadTraceContext {
