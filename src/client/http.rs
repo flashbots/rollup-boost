@@ -1,8 +1,7 @@
-use std::future;
-
 use crate::client::auth::AuthLayer;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
+use futures::FutureExt;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper_rustls::HttpsConnector;
@@ -12,6 +11,10 @@ use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::http_client::HttpBody;
 use opentelemetry::trace::SpanKind;
+use std::future;
+use std::pin::Pin;
+use std::time::Duration;
+use tower::retry::Policy;
 use tower::{
     Service as _, ServiceBuilder, ServiceExt,
     retry::{Retry, RetryLayer},
@@ -22,7 +25,7 @@ use tracing::{debug, error, instrument};
 use super::auth::Auth;
 
 pub type HttpClientService =
-    Retry<Attempts, Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>>;
+    Retry<Delay, Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>>;
 
 #[derive(Clone, Debug)]
 pub struct HttpClient {
@@ -44,7 +47,10 @@ impl HttpClient {
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
         let client = ServiceBuilder::new()
-            .layer(RetryLayer::new(Attempts(5)))
+            .layer(RetryLayer::new(Delay {
+                delay: Duration::from_millis(200),
+                attempts: 10,
+            }))
             .layer(DecompressionLayer::new())
             .layer(AuthLayer::new(secret))
             .service(client);
@@ -92,40 +98,40 @@ impl HttpClient {
     }
 }
 
-use tower::retry::Policy;
-
-type Req = String;
-type Res = String;
-
 #[derive(Clone, Debug)]
-struct Attempts(usize);
+pub struct Delay {
+    delay: Duration,
+    attempts: u64,
+}
 
-impl<E> Policy<Req, Res, E> for Attempts {
-    type Future = future::Ready<Self>;
+impl<Req, Res, E> Policy<Req, Res, E> for Delay {
+    type Future = Pin<Box<dyn Future<Output = Self> + Send + 'static>>;
 
     fn retry(&self, req: &Req, result: Result<&Res, &E>) -> Option<Self::Future> {
         match result {
-            Ok(_) => {
-                // Treat all `Response`s as success,
-                // so don't retry...
-                None
-            }
+            Ok(_) => None,
             Err(_) => {
-                // Treat all errors as failures...
-                // But we limit the number of attempts...
-                if self.0 > 0 {
-                    // Try again!
-                    Some(future::ready(Attempts(self.0 - 1)))
+                if self.attempts > 0 {
+                    let clone = self.clone();
+                    Some(
+                        async move {
+                            tokio::time::sleep(clone.delay).await;
+                            Delay {
+                                delay: clone.delay,
+                                attempts: clone.attempts - 1,
+                            }
+                        }
+                        .boxed(),
+                    )
                 } else {
-                    // Used all our attempts, no retry...
                     None
                 }
             }
         }
     }
 
-    fn clone_request(&self, req: &Req) -> Option<Req> {
-        Some(req.clone())
+    fn clone_request(&self, _req: &Req) -> Option<Req> {
+        None
     }
 }
 
