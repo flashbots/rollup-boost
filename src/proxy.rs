@@ -15,19 +15,16 @@ use tracing::{error, info, warn};
 const ENGINE_METHOD: &str = "engine_";
 
 /// Requests that should be forwarded to both the builder and default execution client
-const FORWARD_REQUESTS: [&str; 2] = [
+const FORWARD_REQUESTS: [&str; 6] = [
     "eth_sendRawTransaction",
     "eth_sendRawTransactionConditional",
-];
-
-/// Handle these similar to FORWARD_REQUESTS, but enforce consistant responses
-/// between the builder and default execution client.
-const MINER_REQUESTS: [&str; 4] = [
     "miner_setExtra",
     "miner_setGasPrice",
     "miner_setGasLimit",
     "miner_setMaxDASize",
 ];
+
+const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
@@ -144,39 +141,39 @@ where
                     HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
                 let builder_method = method.clone();
                 let mut builder_client = service.builder_client.clone();
-                tokio::spawn(async move {
-                    let _ = builder_client.forward(builder_req, builder_method).await;
-                });
 
                 let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                service.l2_client.forward(l2_req, method).await
-            } else if MINER_REQUESTS.contains(&method.as_str()) {
-                // miner api, send to both the
-                // default execution client and the builder
-                let builder_req =
-                    HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
-                let builder_method = method.clone();
-                let mut builder_client = service.builder_client.clone();
 
-                let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                let (builder_res, l2_res) = tokio::join!(
-                    builder_client.forward(builder_req, builder_method),
-                    service.l2_client.forward(l2_req, method)
-                );
-                if builder_res.is_ok() != l2_res.is_ok() {
-                    error!(target: "proxy::call", message = "inconsistent miner api responses from builder and L2");
-                    let mut execution_mode = service.execution_mode.lock();
-                    if *execution_mode == ExecutionMode::Enabled {
-                        *execution_mode = ExecutionMode::Disabled;
-                        // Drop before aquiring health lock
-                        drop(execution_mode);
-                        warn!(target: "proxy::call", message = "setting execution mode to Disabled");
-                        // This health status will likely be later set back to healthy
-                        // but this should be enough to trigger a new leader election.
-                        service.probes.set_health(Health::PartialContent);
+                if method == MINER_SET_MAX_DA_SIZE {
+                    // join requests and ensure responses are consistent
+                    let (builder_res, l2_res) = tokio::join!(
+                        builder_client.forward(builder_req, builder_method),
+                        service.l2_client.forward(l2_req, method)
+                    );
+                    if builder_res.is_ok() != l2_res.is_ok() {
+                        // This state is unrecoverable. Messages have already been retried at this
+                        // point and the only way forward is to manually restart the builder.
+                        error!(target: "proxy::call", message = "inconsistent miner api responses from builder and L2");
+                        let mut execution_mode = service.execution_mode.lock();
+                        if *execution_mode == ExecutionMode::Enabled {
+                            *execution_mode = ExecutionMode::Disabled;
+                            // Drop before aquiring health lock
+                            drop(execution_mode);
+                            warn!(target: "proxy::call", message = "setting execution mode to Disabled");
+                            // This health status will likely be later set back to healthy
+                            // but this should be enough to trigger a new leader election.
+                            service.probes.set_health(Health::PartialContent);
+                        }
                     }
+                    l2_res
+                } else {
+                    // Fire and forget the builder request
+                    tokio::spawn(async move {
+                        let _ = builder_client.forward(builder_req, builder_method).await;
+                    });
+                    // Return the response from the L2 client
+                    service.l2_client.forward(l2_req, method).await
                 }
-                l2_res
             } else {
                 // If the request should not be forwarded, send directly to the
                 // default execution client
