@@ -11,7 +11,6 @@ use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::http_client::HttpBody;
 use opentelemetry::trace::SpanKind;
-use std::future;
 use std::pin::Pin;
 use std::time::Duration;
 use tower::retry::Policy;
@@ -107,8 +106,8 @@ pub struct Delay {
 impl<Req, Res, E> Policy<Req, Res, E> for Delay {
     type Future = Pin<Box<dyn Future<Output = Self> + Send + 'static>>;
 
-    fn retry(&self, req: &Req, result: Result<&Res, &E>) -> Option<Self::Future> {
-        match result {
+    fn retry(&self, _req: &Req, res: Result<&Res, &E>) -> Option<Self::Future> {
+        match res {
             Ok(_) => None,
             Err(_) => {
                 if self.attempts > 0 {
