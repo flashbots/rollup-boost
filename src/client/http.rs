@@ -48,7 +48,7 @@ impl HttpClient {
         let client = ServiceBuilder::new()
             .layer(RetryLayer::new(Delay {
                 delay: Duration::from_millis(200),
-                attempts: 10,
+                retries: 10,
             }))
             .layer(DecompressionLayer::new())
             .layer(AuthLayer::new(secret))
@@ -100,7 +100,7 @@ impl HttpClient {
 #[derive(Clone, Debug)]
 pub struct Delay {
     delay: Duration,
-    attempts: u64,
+    retries: u64,
 }
 
 impl<Req, Res, E> Policy<Req, Res, E> for Delay {
@@ -110,14 +110,14 @@ impl<Req, Res, E> Policy<Req, Res, E> for Delay {
         match res {
             Ok(_) => None,
             Err(_) => {
-                if self.attempts > 0 {
+                if self.retries > 0 {
                     let clone = self.clone();
                     Some(
                         async move {
                             tokio::time::sleep(clone.delay).await;
                             Delay {
                                 delay: clone.delay,
-                                attempts: clone.attempts - 1,
+                                retries: clone.retries - 1,
                             }
                         }
                         .boxed(),
