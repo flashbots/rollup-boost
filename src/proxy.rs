@@ -1,13 +1,16 @@
 use crate::client::http::HttpClient;
 use crate::server::PayloadSource;
+use crate::{ExecutionMode, Health, Probes};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
+use parking_lot::Mutex;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
-use tracing::info;
+use tracing::{error, info, warn};
 
 const ENGINE_METHOD: &str = "engine_";
 
@@ -21,12 +24,16 @@ const FORWARD_REQUESTS: [&str; 6] = [
     "miner_setMaxDASize",
 ];
 
+const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
+
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
     l2_auth_rpc: Uri,
     l2_auth_secret: JwtSecret,
     builder_auth_rpc: Uri,
     builder_auth_secret: JwtSecret,
+    probes: Arc<Probes>,
+    execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 impl ProxyLayer {
@@ -35,12 +42,16 @@ impl ProxyLayer {
         l2_auth_secret: JwtSecret,
         builder_auth_rpc: Uri,
         builder_auth_secret: JwtSecret,
+        probes: Arc<Probes>,
+        execution_mode: Arc<Mutex<ExecutionMode>>,
     ) -> Self {
         ProxyLayer {
             l2_auth_rpc,
             l2_auth_secret,
             builder_auth_rpc,
             builder_auth_secret,
+            probes,
+            execution_mode,
         }
     }
 }
@@ -65,6 +76,8 @@ impl<S> Layer<S> for ProxyLayer {
             inner,
             l2_client,
             builder_client,
+            probes: self.probes.clone(),
+            execution_mode: self.execution_mode.clone(),
         }
     }
 }
@@ -74,6 +87,8 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
+    probes: Arc<Probes>,
+    execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
@@ -126,13 +141,39 @@ where
                     HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
                 let builder_method = method.clone();
                 let mut builder_client = service.builder_client.clone();
-                tokio::spawn(async move {
-                    let _ = builder_client.forward(builder_req, builder_method).await;
-                });
 
                 let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                info!(target: "proxy::call", message = "forward request to default execution client", ?method);
-                service.l2_client.forward(l2_req, method).await
+
+                if method == MINER_SET_MAX_DA_SIZE {
+                    // join requests and ensure responses are consistent
+                    let (builder_res, l2_res) = tokio::join!(
+                        builder_client.forward(builder_req, builder_method),
+                        service.l2_client.forward(l2_req, method)
+                    );
+                    if builder_res.is_ok() != l2_res.is_ok() {
+                        // This state is unrecoverable. Messages have already been retried at this
+                        // point and the only way forward is to manually restart the builder.
+                        error!(target: "proxy::call", message = "inconsistent miner api responses from builder and L2");
+                        let mut execution_mode = service.execution_mode.lock();
+                        if *execution_mode == ExecutionMode::Enabled {
+                            *execution_mode = ExecutionMode::Disabled;
+                            // Drop before aquiring health lock
+                            drop(execution_mode);
+                            warn!(target: "proxy::call", message = "setting execution mode to Disabled");
+                            // This health status will likely be later set back to healthy
+                            // but this should be enough to trigger a new leader election.
+                            service.probes.set_health(Health::PartialContent);
+                        }
+                    }
+                    l2_res
+                } else {
+                    // Fire and forget the builder request
+                    tokio::spawn(async move {
+                        let _ = builder_client.forward(builder_req, builder_method).await;
+                    });
+                    // Return the response from the L2 client
+                    service.l2_client.forward(l2_req, method).await
+                }
             } else {
                 // If the request should not be forwarded, send directly to the
                 // default execution client
@@ -172,7 +213,7 @@ mod tests {
     use std::{
         net::{IpAddr, SocketAddr},
         str::FromStr,
-        sync::{Arc, Mutex},
+        sync::Arc,
     };
     use tokio::net::TcpListener;
     use tokio::task::JoinHandle;
@@ -198,12 +239,15 @@ mod tests {
         async fn new() -> eyre::Result<Self> {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
+            let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
+            let probes = Arc::new(Probes::default());
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
-                // None,
+                probes.clone(),
+                execution_mode.clone(),
             ));
 
             let temp_listener = TcpListener::bind("0.0.0.0:0").await?;
@@ -313,7 +357,7 @@ mod tests {
                 }
             };
 
-            requests.lock().unwrap().push(request_body.clone());
+            requests.lock().push(request_body.clone());
 
             let method = request_body["method"].as_str().unwrap_or_default();
 
@@ -391,7 +435,8 @@ mod tests {
     }
 
     async fn health_check() {
-        let proxy_server = spawn_proxy_server().await;
+        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
+        let proxy_server = spawn_proxy_server(execution_mode).await;
         // Create a new HTTP client
         let client: Client<HttpConnector, HttpBody> =
             Client::builder(TokioExecutor::new()).build_http();
@@ -408,8 +453,9 @@ mod tests {
     }
 
     async fn send_request(method: &str) -> Result<String, ClientError> {
+        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
         let server = spawn_server().await;
-        let proxy_server = spawn_proxy_server().await;
+        let proxy_server = spawn_proxy_server(execution_mode).await;
         let proxy_client = HttpClient::builder()
             .build(format!("http://{ADDR}:{PORT}"))
             .unwrap();
@@ -446,7 +492,7 @@ mod tests {
     }
 
     /// Spawn a new RPC server with a proxy layer.
-    async fn spawn_proxy_server() -> ServerHandle {
+    async fn spawn_proxy_server(execution_mode: Arc<Mutex<ExecutionMode>>) -> ServerHandle {
         let addr = format!("{ADDR}:{PORT}");
 
         let jwt = JwtSecret::random();
@@ -457,9 +503,16 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let (probe_layer, _probes) = ProbeLayer::new();
+        let (probe_layer, probes) = ProbeLayer::new();
 
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
+        let proxy_layer = ProxyLayer::new(
+            l2_auth_uri.clone(),
+            jwt,
+            l2_auth_uri,
+            jwt,
+            probes,
+            execution_mode,
+        );
 
         // Create a layered server
         let server = ServerBuilder::default()
@@ -509,7 +562,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
+        let builder_requests = builder.requests.lock();
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -518,7 +571,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
+        let l2_requests = l2.requests.lock();
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -545,7 +598,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
+        let builder_requests = builder.requests.lock();
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -553,7 +606,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
+        let l2_requests = l2.requests.lock();
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -582,7 +635,7 @@ mod tests {
         let expected_conditionals = json!(transact_conditionals);
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
+        let builder_requests = builder.requests.lock();
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -591,7 +644,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
+        let l2_requests = l2.requests.lock();
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -618,7 +671,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
+        let builder_requests = builder.requests.lock();
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -626,7 +679,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
+        let l2_requests = l2.requests.lock();
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -652,7 +705,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
+        let builder_requests = builder.requests.lock();
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -660,7 +713,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
+        let l2_requests = l2.requests.lock();
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -687,7 +740,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
+        let builder_requests = builder.requests.lock();
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -695,7 +748,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
+        let l2_requests = l2.requests.lock();
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -721,12 +774,12 @@ mod tests {
 
         // Assert the builder has not received the payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
+        let builder_requests = builder.requests.lock();
         assert_eq!(builder_requests.len(), 0);
 
         // Assert the l2 auth received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
+        let l2_requests = l2.requests.lock();
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
