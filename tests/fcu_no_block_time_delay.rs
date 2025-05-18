@@ -36,12 +36,12 @@ impl ProxyHandler for DelayHandler {
 }
 
 #[tokio::test]
-async fn fcu_avalanche_with_delay() -> eyre::Result<()> {
+async fn fcu_no_block_time_delay() -> eyre::Result<()> {
     // This test ensures that even with delay in between RB and the external builder (50ms) the
-    // builder can still build the block
+    // builder can still build the block if there is an avalanche of FCUs without block time delay
     let delay = DelayHandler::new(Duration::from_millis(50));
 
-    let harness = RollupBoostTestHarnessBuilder::new("fcu_avalanche_with_delay")
+    let harness = RollupBoostTestHarnessBuilder::new("fcu_no_block_time_delay")
         .proxy_handler(Arc::new(delay))
         .build()
         .await?;
