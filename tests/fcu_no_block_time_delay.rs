@@ -8,7 +8,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-// Create a dynamic handler that delays all the calls by 2 seconds
+// TODO: Use the same implementation as in builder_full_delay.rs
 struct DelayHandler {
     delay: Duration,
 }
