@@ -171,8 +171,6 @@ pub struct Genesis {
 
 impl Genesis {
     fn to_string(&self) -> eyre::Result<String> {
-        println!("test data: {}", *TEST_DATA);
-
         let file = File::open(PathBuf::from(format!("{}/genesis.json", *TEST_DATA))).unwrap();
         let reader = BufReader::new(file);
         let mut genesis: Value = serde_json::from_reader(reader).unwrap();
