@@ -6,8 +6,6 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-mod common;
-
 // Create a dynamic handler that delays all the calls by 2 seconds
 struct DelayHandler {
     delay: Arc<Mutex<Duration>>,

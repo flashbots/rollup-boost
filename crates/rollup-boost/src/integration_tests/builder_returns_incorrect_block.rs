@@ -7,8 +7,6 @@ use serde_json::Value;
 
 use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
 
-mod common;
-
 struct Handler;
 
 impl ProxyHandler for Handler {

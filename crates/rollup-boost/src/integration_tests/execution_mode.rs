@@ -6,8 +6,6 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-mod common;
-
 use crate::common::RollupBoostTestHarnessBuilder;
 
 struct CounterHandler {
