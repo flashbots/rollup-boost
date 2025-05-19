@@ -1,5 +1,5 @@
-use common::RollupBoostTestHarnessBuilder;
-use common::proxy::ProxyHandler;
+use super::common::RollupBoostTestHarnessBuilder;
+use super::common::proxy::ProxyHandler;
 use futures::FutureExt;
 use serde_json::Value;
 use std::pin::Pin;

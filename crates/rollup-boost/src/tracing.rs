@@ -5,6 +5,7 @@ use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::trace::SpanProcessor;
 use opentelemetry_sdk::{Resource, propagation::TraceContextPropagator};
+use tracing::dispatcher::has_been_set;
 use tracing::level_filters::LevelFilter;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::Layer;
@@ -71,6 +72,12 @@ impl SpanProcessor for MetricsSpanProcessor {
 }
 
 pub fn init_tracing(args: &Args) -> eyre::Result<()> {
+    if has_been_set() {
+        // This happens when running the integration tests
+        tracing::info!("Tracing already initialized");
+        return Ok(());
+    }
+
     // Be cautious with snake_case and kebab-case here
     let filter_name = "rollup_boost".to_string();
 

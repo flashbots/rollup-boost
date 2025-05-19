@@ -28,4 +28,5 @@ pub use probe::*;
 mod health;
 pub use health::*;
 
-mod integration_tests;
+#[cfg(test)]
+pub mod tests;

@@ -1,10 +1,10 @@
 use std::time::Duration;
 
+use crate::Args;
 use clap::Parser;
-use rollup_boost::Args;
 use tokio::task::JoinHandle;
 
-use crate::common::{TEST_DATA, get_available_port};
+use crate::tests::common::{TEST_DATA, get_available_port};
 
 #[derive(Debug)]
 pub struct RollupBoost {

@@ -1,12 +1,11 @@
-use common::proxy::ProxyHandler;
+use super::common::RollupBoostTestHarnessBuilder;
+use super::common::proxy::ProxyHandler;
+use crate::ExecutionMode;
 use futures::FutureExt as _;
-use rollup_boost::ExecutionMode;
 use serde_json::Value;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-use crate::common::RollupBoostTestHarnessBuilder;
 
 struct CounterHandler {
     counter: Arc<Mutex<u32>>,

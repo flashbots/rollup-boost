@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+use crate::DebugClient;
+use crate::{AuthLayer, AuthService};
+use crate::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
+use crate::{NewPayload, PayloadSource};
 use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
 use alloy_rpc_types_engine::{ExecutionPayload, JwtSecret};
@@ -16,10 +20,6 @@ use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
 use proxy::{ProxyHandler, start_proxy_server};
-use rollup_boost::DebugClient;
-use rollup_boost::{AuthLayer, AuthService};
-use rollup_boost::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
-use rollup_boost::{NewPayload, PayloadSource};
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
@@ -44,7 +44,7 @@ use tower_http::sensitive_headers::SetSensitiveRequestHeaders;
 pub const JWT_SECRET: &str = "688f5d737bad920bdfb2fc2f488d6b6209eebda1dae949a8de91398d932c517a";
 pub const L2_P2P_ENODE: &str = "3479db4d9217fb5d7a8ed4d61ac36e120b05d36c2eefb795dc42ff2e971f251a2315f5649ea1833271e020b9adc98d5db9973c7ed92d6b2f1f2223088c3d852f";
 pub static TEST_DATA: LazyLock<String> =
-    LazyLock::new(|| format!("{}/tests/common/test_data", env!("CARGO_MANIFEST_DIR")));
+    LazyLock::new(|| format!("{}/src/tests/common/test_data", env!("CARGO_MANIFEST_DIR")));
 
 pub mod proxy;
 pub mod services;
@@ -171,6 +171,8 @@ pub struct Genesis {
 
 impl Genesis {
     fn to_string(&self) -> eyre::Result<String> {
+        println!("test data: {}", *TEST_DATA);
+
         let file = File::open(PathBuf::from(format!("{}/genesis.json", *TEST_DATA))).unwrap();
         let reader = BufReader::new(file);
         let mut genesis: Value = serde_json::from_reader(reader).unwrap();

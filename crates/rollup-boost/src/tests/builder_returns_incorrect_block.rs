@@ -1,7 +1,7 @@
 use std::{pin::Pin, sync::Arc};
 
+use super::common::{RollupBoostTestHarnessBuilder, proxy::ProxyHandler};
 use alloy_primitives::B256;
-use common::{RollupBoostTestHarnessBuilder, proxy::ProxyHandler};
 use futures::FutureExt as _;
 use serde_json::Value;
 
