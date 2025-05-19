@@ -11,7 +11,7 @@ use crate::{
     DebugClient, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
-    init_metrics, init_tracing,
+    init_metrics,
     probe::ProbeLayer,
 };
 
@@ -117,7 +117,6 @@ impl Args {
             };
         }
 
-        init_tracing(&self)?;
         init_metrics(&self)?;
 
         let l2_client_args = self.l2_client;

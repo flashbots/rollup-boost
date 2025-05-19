@@ -244,7 +244,7 @@ impl RollupBoostTestHarnessBuilder {
         let timestamp = dt.format(&format)?;
 
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("integration_logs")
+            .join("../../integration_logs")
             .join(self.test_name.clone())
             .join(timestamp);
         std::fs::create_dir_all(&dir)?;
