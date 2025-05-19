@@ -670,3 +670,96 @@ To establish trust in expected measurements, the TEE block builder must be built
 4. **Verification**: Independent parties can follow the build process and verify that it produces the same measurements
 
 This allows anyone to verify that the expected measurements correspond to the published source code.
+
+## Block Builder TEE Proofs
+
+The Flashtestations protocol can be extended to provide cryptographic guarantees that blocks were constructed by an authorized TEE-based block builder. This section describes how block builders running in a TEE can prove block authenticity through an onchain verification mechanism.
+
+### Core Mechanism
+
+The block builder TEE proof system works through a final transaction appended to each block. This transaction:
+
+1. Calls a designated smart contract method that accepts a block content hash
+2. Verifies the caller's authorization using `isAllowedPolicy(block_builder_policy_id, msg.sender)`
+3. Provides cryptographic evidence that the block was constructed by a valid TEE-based block builder
+
+The key insight is that the required private key to sign this transaction is protected within the TEE environment. Thus, only a genuine TEE-based block builder with the proper attestation can successfully execute this transaction.
+
+### Block Building Process
+
+When building a block, the TEE block builder:
+
+1. Produces a block according to the L2 protocol rules
+2. Computes the block content hash using the `ComputeBlockContentHash` function:
+
+```solidity
+function ComputeBlockContentHash(block, transactions) {
+    // Create ordered list of all transaction hashes
+    transactionHashes = []
+    for each tx in transactions:
+        txHash = keccak256(rlp_encode(tx))
+        transactionHashes.append(txHash)
+    
+    // Compute a single hash over block data and transaction hashes
+    // This ensures the hash covers the exact transaction set and order
+    return keccak256(abi.encode(
+        block.parentHash,
+        block.number,
+        block.timestamp,
+        transactionHashes
+    ))
+}
+```
+
+3. Computes `blockContentHash = ComputeBlockContentHash(block, block.transactions)`
+
+This block content hash formulation provides a balance between rollup compatibility and verification strength:
+- Contains the minimal set of elements needed to uniquely identify a block's contents
+- Compatible with data available on L1 for most optimistic and ZK rollup implementations
+- Enables signature verification without requiring state root dependencies
+- Supports future L1 verification of block authenticity across different rollup designs
+
+### Verification Contract
+
+The smart contract that verifies block builder TEE proofs would implement:
+
+```solidity
+// Block builder verification contract
+function verifyBlockBuilderProof(bytes32 blockContentHash) external {
+    // Check if the caller is an authorized TEE block builder
+    require(
+        IAllowlist(ALLOWLIST_CONTRACT).isAllowedPolicy(BLOCK_BUILDER_POLICY_ID, msg.sender),
+        "Unauthorized block builder"
+    );
+    
+    // At this point, we know:
+    // 1. The caller is a registered address from an attested TEE
+    // 2. The TEE is running an approved block builder workload (via policy)
+    
+    // Additional validation can be performed on the blockContentHash
+    
+    emit BlockBuilderProofVerified(
+        msg.sender,
+        block.number,
+        blockContentHash
+    );
+}
+```
+
+### Security Properties
+
+This mechanism provides several important security guarantees:
+
+1. **Block Authenticity**: Each block contains cryptographic proof that it was produced by an authorized TEE block builder
+2. **Non-Transferability**: The proof cannot be stolen or reused by unauthorized parties due to TEE protection of signing keys
+3. **Policy Flexibility**: The system can adapt to new block builder implementations by updating the policy without contract changes
+4. **Auditability**: All proofs are recorded onchain for transparency and verification
+
+### Integration with Rollup Systems
+
+For rollup systems, this proof mechanism:
+
+1. Can be included as the final transaction in each block
+2. Enables L1 contracts to verify that blocks were built by authorized TEEs
+3. Provides a foundation for stronger security guarantees in optimistic rollups
+4. Supports cross-chain verification of block authenticity
