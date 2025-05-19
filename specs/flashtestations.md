@@ -99,7 +99,7 @@ The Flashtestations protocol consists of four key components that work together 
                                          │ ┌─────────────────┐ │
 ┌─────────────────────┐                  │ │ Intel           │ │
 │ Consumer Contract   │                  │ │ Endorsements    │ │
-│                     │                  │ │ (tcbHash)       │ │
+│                     │                  │ │                 │ │
 │ ┌─────────────────┐ │                  │ └────────┬────────┘ │
 │ │ Operation       │ │                  │          │          │
 │ │ Authorization   │ │                  │          ▼          │
@@ -161,7 +161,7 @@ The terms in this section are used consistently throughout the specification doc
 
 **`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived as keccak256(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID).
 
-**`tcbHash`**: A 32-byte hash representing a specific Intel DCAP endorsements bundle at a point in time. This is a Flashtestations-calculated keccak256 hash of the endorsements components obtained from Automata's onchain PCCS, not a value provided directly by Intel.
+**`Endorsement Version`**: The specific version of Intel DCAP endorsements at a point in time. Endorsements change periodically as Intel releases updates or discovers vulnerabilities in hardware or firmware.
 
 **Allowlist Registry**: The onchain data structure that tracks which Ethereum addresses have been validated for specific workloads based on successful attestation. Implemented as the TdxAllowlist contract.
 
@@ -181,9 +181,9 @@ The terms in this section are used consistently throughout the specification doc
 
 **Registration**: The process of adding an Ethereum address to the allowlist after successful attestation verification.
 
-**Endorsement Revocation**: The process of marking a specific `tcbHash` as insecure and removing corresponding addresses from the allowlist when Intel updates its security requirements.
+**Endorsement Revocation**: The process of marking attestations as outdated when Intel updates its security requirements.
 
-**Housekeeping**: The maintenance process of removing addresses from the allowlist when their validating endorsements become stale or insecure. Activated when governance calls `removeEndorsement(workloadId, tcbHash)`.
+**Housekeeping**: The maintenance process of verifying and updating attestation status when endorsements change. This can be done on-demand via the attestation verification endpoint.
 
 **TCB Recovery**: The process that occurs when Intel releases updates to address security vulnerabilities in the TCB components. This typically requires updating the list of secure endorsements.
 
@@ -297,7 +297,7 @@ The attestation process follows these steps:
 
 ### Onchain DCAP Attestation
 
-The following code sample illustrates how DCAP attestation verification is performed onchain, and how the key components (workloadId, tcbHash, and Ethereum address) are extracted and registered in the Flashtestations allowlist:
+The following code sample illustrates how DCAP attestation verification is performed onchain, and how the key components (workloadId, quote, and Ethereum address) are extracted and registered in the Flashtestations allowlist:
 
 ```solidity
 // Sample interaction with Automata DCAP Attestation
@@ -312,15 +312,11 @@ function registerTEEService(bytes calldata rawQuote) {
     
     // Extract workload identity from quote measurements
     bytes32 workloadId = extractWorkloadIdFromQuote(rawQuote);
-
-    // Get the current endorsement hash (tcbHash) that was used for verification
-    // This represents the specific Intel endorsements bundle that validated this quote
-    bytes32 tcbHash = IDCAPAttestation(DCAP_ATTESTATION_CONTRACT).getCurrentEndorsementHash();
     
-    // Register the address in the allowlist
-    IAllowlist(ALLOWLIST_CONTRACT).addAddress(workloadId, tcbHash, ethAddress);
+    // Register the address in the allowlist with the raw quote for future verification
+    IAllowlist(ALLOWLIST_CONTRACT).addAddress(workloadId, ethAddress, rawQuote);
     
-    emit TEEServiceRegistered(workloadId, tcbHash, ethAddress);
+    emit TEEServiceRegistered(workloadId, ethAddress, rawQuote);
 }
 ```
 
@@ -328,8 +324,7 @@ This implementation highlights several key aspects:
 1. The DCAP attestation is verified using Automata's onchain verifier
 2. The workloadId is derived from the quote's measurement registers
 3. The Ethereum address is extracted from the quote's report data
-4. The tcbHash representing the current Intel endorsements is obtained
-5. The extracted information is registered in the allowlist
+4. The extracted information and raw quote are registered in the allowlist
 
 ### Workload Identity Derivation
 
@@ -359,37 +354,26 @@ At its most abstract level, the Allowlist Registry is responsible for:
 
 1. **Storing addresses** that have been validated through attestation
 2. **Associating addresses** with their specific workload identity
-3. **Tracking which endorsement bundle** validated each address
+3. **Storing attestation quotes** for future verification
 4. **Providing efficient lookup** capabilities to verify if an address is authorized
 
 The registry operates on these key abstractions:
 
 1. **Workload Identity (`workloadId`)**: A 32-byte hash derived from TDX measurement registers (as defined in [Workload Identity Derivation](#workload-identity-derivation)) that uniquely identifies a specific piece of code running in a TDX environment. This serves as the primary namespace under which addresses are stored.
 
-2. **Intel Endorsements (`tcbHash`)**: A unique identifier representing Intel's opinion at a specific point in time about which hardware and firmware configurations are secure. Conceptually, the `tcbHash` is a keccak256 hash derived from the endorsements:
-
-   ```
-   tcbHash = keccak256(DCAPEndorsements)
-   ```
-
-   These endorsements (described in [DCAP Attestation Endorsements](#dcap-attestation-endorsements)) change periodically as Intel releases updates or discovers vulnerabilities. 
-   
-   **Note:** This is an abstract representation - the actual implementation will need to adhere to the way Automata's onchain PCCS system describes and updates endorsements/endorsements, which involves more complex data structures and lifecycle management.
-   
-   **Note 2:** Another thing which isn't addressed yet is how we can remove tcbhash entries from the allow list. They will need to be removed if the actual endorsements gets stale. The remove method needs to check this, so we need a tcbHash -> endorsements mapping. This will likely be to expensive to maintain onchain, but keeping the offchain mapping and passing it to the remove method should be possible.
+2. **Attestation Quote**: The raw attestation data provided during registration that contains the cryptographic proof of the TEE's state. This quote is stored alongside the address for later verification.
 
 3. **Ethereum Address**: The public key extracted from the attestation's report data field ([TDReport.ReportData](#tdreport)), which will be used to interact with onchain contracts.
 
 ### Key Relationship Model
 
-The Allowlist Registry maintains a strict relationship between these entities:
+The Allowlist Registry maintains a straightforward relationship between these entities:
 
-1. For each `(address, workloadId)` pair, there is exactly **one** associated `tcbHash`
-2. Each address can be registered for multiple different workloads
-3. Many addresses can share the same workloadId
-4. Many addresses can be validated against the same tcbHash
+1. Each Ethereum address can be registered for multiple different workloads
+2. Each address has exactly one attestation quote stored for each workloadId it's registered under
+3. The registry tracks whether each (address, workloadId) pair is currently valid or has been marked as outdated
 
-This means each entry in the allowlist is a unique combination of `(address, workloadId, tcbHash)`. If an address re-registers for the same workloadId with a newer endorsement, the old entry is replaced rather than maintaining multiple entries.
+This simplified model focuses on tracking the direct relationship between addresses and workloads without the complexity of tracking endorsement bundles.
 
 ### Fundamental Operations
 
@@ -403,34 +387,34 @@ The most frequent operation is checking if an address is valid for a specific wo
 function isAllowedWorkload(workloadId, address) → boolean
 ```
 
-This simply checks if the address is currently associated with the specified workload. This operation must be highly gas-efficient as it may run on every block.
+This simply checks if the address is currently associated with the specified workload and has not been marked as outdated. This operation must be highly gas-efficient as it may run on every block.
 
 #### 2. Registration
 
 When an attestation successfully passes verification:
 
 ```
-function addAddress(workloadId, tcbHash, address, quote)
+function addAddress(workloadId, address, quote)
 ```
 
 This operation:
 1. Records that this address has been validated for this workload
-2. Associates it with the specific endorsement bundle (`tcbHash`) that validated it
-3. Stores the raw attestation quote for future reference and verification
-3. If the address was previously registered for this workloadId with a different tcbHash, the old entry is replaced
+2. Stores the raw attestation quote for future reference and verification
+3. If the address was previously registered for this workloadId, the old entry is replaced
 
-#### 3. Endorsement Management
+#### 3. Attestation Verification
 
-When Intel endorsements become stale or insecure:
+To verify if an attestation is still valid against current endorsements:
 
 ```
-function removeEndorsement(tcbHash, endorsement)
+function verifyAttestation(address) → boolean
 ```
 
-This operation handles the case where a specific endorsement bundle is no longer considered secure:
-1. All addresses registered under this specific tcbHash combination are removed completely
-2. This ensures only addresses with current, valid endorsements remain in the allowlist
-3. We're passing in the endorsement for verifcation purposes, i.e. map the endorsement to the tcbHash, check if the endorsement has been marked insecure, and only then proceed.
+This operation:
+1. Retrieves the stored attestation quote for the address
+2. Verifies it against current Intel endorsements
+3. If verification fails, marks the address as outdated in the registry
+4. Returns the verification result
 
 #### 4. Quote Retrieval
 
@@ -444,11 +428,33 @@ This operation returns the raw attestation quote that was used to register the a
 
 ### Key Requirements
 
-1. **Single Current Endorsement**: An address has exactly one current endorsement bundle for each workloadId it's registered under.
-2. **Complete Revocation**: When an endorsement bundle becomes invalid, all addresses registered with that specific (workloadId, tcbHash) combination are removed completely - there is no partial revocation.
-3. **Quote Storage**: The system maintains a copy of the most recent attestation quote used to register each address, supporting external verification and auditability.
+1. **Simple Storage Model**: The registry maintains a simple mapping between addresses, workloadIds, and their attestation quotes without tracking complex endorsement relationships.
+
+2. **Individual Verification**: Instead of batch removal based on endorsement bundles, attestations are verified individually when needed, allowing for more granular management.
+
+3. **Quote Storage**: The system maintains a copy of the attestation quote used to register each address, supporting external verification and auditability.
 
 4. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1)) regardless of the number of addresses stored.
+
+### Attestation Verification Endpoint
+
+The attestation verification endpoint provides a mechanism to validate stored attestations against current Intel endorsements:
+
+1. **On-demand Verification**: Verification happens only when needed, rather than requiring constant maintenance.
+
+2. **Simple Management**: When Intel updates its endorsements, the system automatically adapts during verification.
+
+3. **Smooth Transitions**: Addresses are marked as outdated only when their verification actually fails.
+
+The verification process works as follows:
+
+1. The endpoint accepts an address as input
+2. It retrieves the stored attestation quote for that address
+3. It runs the verification against current Intel endorsements
+4. If verification fails, it marks the address as outdated in the registry
+5. The address remains in the registry but will fail the `isAllowedWorkload` check
+
+This approach provides a clean, straightforward way to manage attestation validity over time.
 
 ## Policy Layer: Flexible Authorization
 
@@ -510,7 +516,7 @@ The complete verification flow connects attestation, the allowlist, and the poli
 
 3. **Allowlist Registration**: Upon successful verification, the address is registered
    ```
-   allowlist.addAddress(derivedWorkloadId, currentTcbHash, extractedAddress)
+   allowlist.addAddress(derivedWorkloadId, extractedAddress, rawQuote)
    ```
    - If the address was previously registered for this workloadId, the old entry is replaced
 
@@ -525,27 +531,33 @@ When a contract needs to verify if an operation is authorized:
    }
    ```
 
-2. This policy check determines if the address is allowed for any workload in the policy.
+2. This policy check determines if the address is allowed for any workload in the policy and has not been marked as outdated.
 
 ### Maintenance: Handling Changing Endorsements
 
 Intel endorsements change over time, requiring a maintenance process:
 
-1. **New Endorsements**: When Intel publishes new endorsements:
-   - These are represented by a new `tcbHash`
-   - Future attestations are verified against these endorsements
-   - Addresses that re-attest will have their allowlist entries updated with the new tcbHash
+1. **Passive Verification**: When addresses are verified using the `verifyAttestation` function, the system checks if their attestation is still valid against current endorsements.
 
-2. **Stale Endorsements**: When Intel marks certain configurations as insecure:
-   - The system must remove all addresses registered under the stale (workloadId, tcbHash) combinations
-   - This maintenance operation keeps the allowlist in sync with Intel's current security opinions
+2. **Marking as Outdated**: If verification fails due to outdated endorsements, the address is automatically marked as outdated.
 
-3. **Housekeeping Challenge**: 
-   - The system must efficiently track which (workloadId, tcbHash) combinations are no longer valid
-   - When endorsements change, it must remove all addresses associated with those specific combinations
-   - This avoids the expensive approach of re-verifying all attestations
+3. **Re-attestation**: Addresses marked as outdated must re-attest using current endorsements to regain valid status.
 
-This maintenance process ensures that at any point in time, the allowlist only contains addresses that would pass attestation against currently valid Intel endorsements.
+This approach ensures that addresses naturally transition from valid to outdated as Intel's security requirements evolve, without requiring manual tracking of endorsement changes or complex batch operations.
+
+The maintenance process keeps the allowlist in sync with Intel's current security opinions while allowing for graceful transitions when endorsements change.
+
+### Gas Cost Considerations and Future Optimizations
+
+The individual attestation verification approach prioritizes simplicity but may incur higher gas costs compared to bulk operations. Each verification requires running the complete attestation verification process against current endorsements.
+
+Future optimizations could include:
+
+1. **Tracking Endorsement References**: Store a reference to which endorsement version validated each attestation. When endorsements become outdated, all attestations linked to that specific endorsement could be marked invalid in a single operation.
+
+2. **Validation on Access**: Alternatively, the system could verify the endorsement status upon each call to `isValidWorkload`, checking if the original validating endorsement is still considered secure without re-running the full attestation verification.
+
+These optimizations would maintain the design's simplicity while providing more gas-efficient ways to handle endorsement changes, especially as the number of registered addresses grows.
 
 ## Offchain TEE Address Verification
 
@@ -594,22 +606,20 @@ The transparency log is implemented through a combination of blockchain events a
 event AttestationSubmitted(
     bytes indexed rawQuote,
     bytes32 indexed workloadId,
-    bytes32 indexed tcbHash,
     address ethAddress,
     bool success
 );
 
 event EndorsementUpdated(
-    bytes32 indexed tcbHash,
     bytes rawEndorsementData,
     bool isValid
 );
 
 event AllowlistUpdated(
     bytes32 indexed workloadId,
-    bytes32 indexed tcbHash,
     address indexed ethAddress,
-    bool isAdded
+    bool isAdded,
+    bool isValid
 );
 
 event QuoteStored(
