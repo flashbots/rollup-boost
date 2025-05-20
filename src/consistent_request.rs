@@ -1,6 +1,7 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use http::{request, response};
+use http_body_util::BodyExt;
 use jsonrpsee::{
     core::{BoxError, http_helpers},
     http_client::{HttpBody, HttpRequest, HttpResponse},
@@ -85,12 +86,9 @@ impl ConsistentRequest {
         &mut self,
         parts: request::Parts,
         body_bytes: Vec<u8>,
-    ) -> eyre::Result<HttpResponse> {
-        self.req_tx.send(Some((
-            parts.clone(),
-            body_bytes.clone(),
-            self.method.clone(),
-        )))?;
+    ) -> Result<HttpResponse, BoxError> {
+        self.req_tx
+            .send(Some((parts.clone(), body_bytes.clone())))?;
 
         self.res_rx.changed().await?;
         let res = self.res_rx.borrow_and_update();
@@ -99,7 +97,7 @@ impl ConsistentRequest {
                 parts.to_owned(),
                 HttpBody::from(body.to_owned()),
             )),
-            Err(e) => eyre::bail!("error sending consistent request: {}", e),
+            Err(e) => Err(format!("error sending consistent request: {}", e).into()),
         }
     }
 
@@ -122,7 +120,7 @@ impl ConsistentRequest {
         });
 
         // Await the l2 request
-        let l2_res = self.l2_client.forward(l2_req, self.method).await;
+        let l2_res = self.l2_client.forward(l2_req, self.method.clone()).await;
 
         // Return the l2 response asap
         let l2_res_parts = match l2_res {

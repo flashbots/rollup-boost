@@ -151,18 +151,20 @@ where
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
                 service.inner.call(req).await.map_err(|e| e.into())
             } else if FORWARD_REQUESTS.contains(&method.as_str()) {
-                // If the request should be forwarded, send to both the
-                // default execution client and the builder
-                let builder_req =
-                    HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
-                let builder_method = method.clone();
-                let mut builder_client = service.builder_client.clone();
-
-                let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-
                 if method == MINER_SET_MAX_DA_SIZE {
-                    self.set_max_da_size_manager.send(parts, body_bytes).await?;
+                    service
+                        .set_max_da_size_manager
+                        .send(parts.clone(), body_bytes.clone())
+                        .await
                 } else {
+                    // If the request should be forwarded, send to both the
+                    // default execution client and the builder
+                    let builder_req =
+                        HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
+                    let builder_method = method.clone();
+                    let mut builder_client = service.builder_client.clone();
+
+                    let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
                     // Fire and forget the builder request
                     tokio::spawn(async move {
                         let _ = builder_client.forward(builder_req, builder_method).await;
