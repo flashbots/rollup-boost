@@ -1,5 +1,5 @@
 use crate::{
-    HealthHandle,
+    ClientResult, HealthHandle, RpcClientError,
     client::rpc::RpcClient,
     debug_api::DebugServer,
     probe::{Health, Probes},
@@ -121,19 +121,22 @@ impl PayloadTraceContext {
     }
 }
 
-pub struct RollupBoostServer {
+pub struct RollupBoostServer<BuilderClient> {
     pub l2_client: Arc<RpcClient>,
-    pub builder_client: Arc<RpcClient>,
+    pub builder_client: Arc<BuilderClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     health_handle: JoinHandle<()>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
 }
 
-impl RollupBoostServer {
+impl<BuilderClient> RollupBoostServer<BuilderClient>
+where
+    BuilderClient: Clone,
+{
     pub fn new(
         l2_client: RpcClient,
-        builder_client: RpcClient,
+        builder_client: BuilderClient,
         initial_execution_mode: ExecutionMode,
         probes: Arc<Probes>,
         health_check_interval: u64,
@@ -172,7 +175,10 @@ impl RollupBoostServer {
     }
 }
 
-impl TryInto<RpcModule<()>> for RollupBoostServer {
+impl<BuilderClient> TryInto<RpcModule<()>> for RollupBoostServer<BuilderClient>
+where
+    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
+{
     type Error = RegisterMethodError;
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
@@ -256,7 +262,53 @@ pub trait EngineApi {
 }
 
 #[async_trait]
-impl EngineApiServer for RollupBoostServer {
+pub trait EngineApiExt: EngineApiClient {
+    async fn new_payload(&self, new_payload: NewPayload) -> ClientResult<PayloadStatus> {
+        match new_payload {
+            NewPayload::V3(new_payload) => self
+                .new_payload_v3(
+                    new_payload.payload,
+                    new_payload.versioned_hashes,
+                    new_payload.parent_beacon_block_root,
+                )
+                .await
+                .map_err(|e| RpcClientError::from(e)),
+            NewPayload::V4(new_payload) => self
+                .new_payload_v4(
+                    new_payload.payload,
+                    new_payload.versioned_hashes,
+                    new_payload.parent_beacon_block_root,
+                    new_payload.execution_requests,
+                )
+                .await
+                .map_err(|e| RpcClientError::from(e)),
+        }
+    }
+
+    async fn get_payload(
+        &self,
+        payload_id: PayloadId,
+        version: Version,
+    ) -> ClientResult<OpExecutionPayloadEnvelope> {
+        match version {
+            Version::V3 => Ok(OpExecutionPayloadEnvelope::V3(
+                self.get_payload_v3(payload_id).await?,
+            )),
+            Version::V4 => Ok(OpExecutionPayloadEnvelope::V4(
+                self.get_payload_v4(payload_id).await?,
+            )),
+        }
+    }
+}
+
+// Automatically implement the extension trait for any type that implements EngineApi
+impl<T: EngineApiClient + ?Sized> EngineApiExt for T {}
+
+#[async_trait]
+impl<BuilderClient> EngineApiServer for RollupBoostServer<BuilderClient>
+where
+    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
+{
     #[instrument(
         skip_all,
         err,
@@ -555,7 +607,10 @@ impl Version {
     }
 }
 
-impl RollupBoostServer {
+impl<BuilderClient> RollupBoostServer<BuilderClient>
+where
+    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
+{
     async fn new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
         let execution_payload = ExecutionPayload::from(new_payload.clone());
         let block_hash = execution_payload.block_hash();

@@ -11,6 +11,7 @@ use alloy_rpc_types_engine::{
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use clap::{Parser, arg};
 use http::Uri;
+use jsonrpsee::core::async_trait;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorObjectOwned;
@@ -334,6 +335,17 @@ impl RpcClient {
             .get_block_by_number(number, full)
             .await
             .set_code()?)
+    }
+}
+
+#[async_trait]
+impl EngineApiClient for RpcClient {
+    async fn get_block_by_number(
+        &self,
+        number: BlockNumberOrTag,
+        full: bool,
+    ) -> ClientResult<Block> {
+        self.get_block_by_number(number, full).await
     }
 }
 
