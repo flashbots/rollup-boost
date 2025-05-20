@@ -26,8 +26,9 @@ pub struct ExecutionPayloadFlashblockDeltaV1 {
     pub transactions: Vec<Bytes>,
     /// Array of [`Withdrawal`] enabled with V2
     pub withdrawals: Vec<Withdrawal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     /// The withdrawals root of the block.
-    pub withdrawals_root: B256,
+    pub withdrawals_root: Option<B256>,
 }
 
 /// Represents the base configuration of an execution payload that remains constant
