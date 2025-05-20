@@ -1,12 +1,10 @@
-use common::RollupBoostTestHarnessBuilder;
-use common::proxy::ProxyHandler;
+use super::common::RollupBoostTestHarnessBuilder;
+use super::common::proxy::ProxyHandler;
 use futures::FutureExt;
 use serde_json::Value;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-mod common;
 
 // Create a dynamic handler that delays all the calls by 2 seconds
 struct DelayHandler {
