@@ -8,7 +8,7 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    DebugClient, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
+    DebugClient, Flashblocks, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     init_metrics, init_tracing,
@@ -86,6 +86,25 @@ pub struct Args {
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     pub execution_mode: ExecutionMode,
+
+    /// Enable Flashblocks client
+    #[clap(flatten)]
+    pub flashblocks: FlashblocksArgs,
+}
+
+#[derive(Parser, Clone, Debug)]
+pub struct FlashblocksArgs {
+    /// Enable Flashblocks client
+    #[arg(long, env, default_value = "false")]
+    pub flashblocks: bool,
+
+    /// Flashblocks WebSocket URL
+    #[arg(long, env, default_value = "ws://localhost:1111")]
+    pub flashblocks_url: String,
+
+    /// Flashblocks outbound WebSocket URL
+    #[arg(long, env, default_value = "127.0.0.1:1112")]
+    pub flashblocks_outbound_url: String,
 }
 
 impl Args {
@@ -157,6 +176,15 @@ impl Args {
 
         let (probe_layer, probes) = ProbeLayer::new();
 
+        let flashblocks_client = if self.flashblocks.flashblocks {
+            let inbound_url = self.flashblocks.flashblocks_url;
+            let outbound_url = self.flashblocks.flashblocks_outbound_url;
+
+            Some(Flashblocks::run(inbound_url, outbound_url).unwrap())
+        } else {
+            None
+        };
+
         let rollup_boost = RollupBoostServer::new(
             l2_client,
             builder_client,
@@ -164,6 +192,7 @@ impl Args {
             probes,
             self.health_check_interval,
             self.max_unsafe_interval,
+            flashblocks_client,
         );
 
         // Spawn the debug server

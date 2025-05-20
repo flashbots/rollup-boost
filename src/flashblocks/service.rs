@@ -1,3 +1,5 @@
+use crate::{OpExecutionPayloadEnvelope, Version};
+
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
@@ -6,7 +8,9 @@ use alloy_rpc_types_engine::PayloadId;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
 };
-use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV3;
+use op_alloy_rpc_types_engine::{
+    OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
@@ -79,7 +83,10 @@ impl FlashblockBuilder {
         Ok(())
     }
 
-    pub fn into_envelope(self) -> Result<OpExecutionPayloadEnvelopeV3, FlashblocksError> {
+    pub fn into_envelope(
+        self,
+        version: Version,
+    ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
         let base = self.base.ok_or(FlashblocksError::MissingPayload)?;
 
         // There must be at least one delta
@@ -100,39 +107,64 @@ impl FlashblockBuilder {
             .flat_map(|diff| diff.withdrawals.clone())
             .collect();
 
-        Ok(OpExecutionPayloadEnvelopeV3 {
-            parent_beacon_block_root: base.parent_beacon_block_root,
-            block_value: U256::ZERO,
-            blobs_bundle: BlobsBundleV1 {
-                commitments: Vec::new(),
-                proofs: Vec::new(),
-                blobs: Vec::new(),
-            },
-            should_override_builder: false,
-            execution_payload: ExecutionPayloadV3 {
-                blob_gas_used: 0,
-                excess_blob_gas: 0,
-                payload_inner: ExecutionPayloadV2 {
-                    withdrawals,
-                    payload_inner: ExecutionPayloadV1 {
-                        parent_hash: base.parent_hash,
-                        fee_recipient: base.fee_recipient,
-                        state_root: diff.state_root,
-                        receipts_root: diff.receipts_root,
-                        logs_bloom: diff.logs_bloom,
-                        prev_randao: base.prev_randao,
-                        block_number: base.block_number,
-                        gas_limit: base.gas_limit,
-                        gas_used: diff.gas_used,
-                        timestamp: base.timestamp,
-                        extra_data: base.extra_data,
-                        base_fee_per_gas: base.base_fee_per_gas,
-                        block_hash: diff.block_hash,
-                        transactions,
-                    },
+        let withdrawals_root = diff.withdrawals_root;
+
+        let execution_payload = ExecutionPayloadV3 {
+            blob_gas_used: 0,
+            excess_blob_gas: 0,
+            payload_inner: ExecutionPayloadV2 {
+                withdrawals,
+                payload_inner: ExecutionPayloadV1 {
+                    parent_hash: base.parent_hash,
+                    fee_recipient: base.fee_recipient,
+                    state_root: diff.state_root,
+                    receipts_root: diff.receipts_root,
+                    logs_bloom: diff.logs_bloom,
+                    prev_randao: base.prev_randao,
+                    block_number: base.block_number,
+                    gas_limit: base.gas_limit,
+                    gas_used: diff.gas_used,
+                    timestamp: base.timestamp,
+                    extra_data: base.extra_data,
+                    base_fee_per_gas: base.base_fee_per_gas,
+                    block_hash: diff.block_hash,
+                    transactions,
                 },
             },
-        })
+        };
+
+        match version {
+            Version::V3 => Ok(OpExecutionPayloadEnvelope::V3(
+                OpExecutionPayloadEnvelopeV3 {
+                    parent_beacon_block_root: base.parent_beacon_block_root,
+                    block_value: U256::ZERO,
+                    blobs_bundle: BlobsBundleV1 {
+                        commitments: Vec::new(),
+                        proofs: Vec::new(),
+                        blobs: Vec::new(),
+                    },
+                    should_override_builder: false,
+                    execution_payload,
+                },
+            )),
+            Version::V4 => Ok(OpExecutionPayloadEnvelope::V4(
+                OpExecutionPayloadEnvelopeV4 {
+                    parent_beacon_block_root: base.parent_beacon_block_root,
+                    block_value: U256::ZERO,
+                    blobs_bundle: BlobsBundleV1 {
+                        commitments: Vec::new(),
+                        proofs: Vec::new(),
+                        blobs: Vec::new(),
+                    },
+                    should_override_builder: false,
+                    execution_payload: OpExecutionPayloadV4 {
+                        withdrawals_root,
+                        payload_inner: execution_payload,
+                    },
+                    execution_requests: vec![],
+                },
+            )),
+        }
     }
 }
 
@@ -159,11 +191,12 @@ impl FlashblocksService {
 
     pub async fn get_best_payload(
         &self,
-    ) -> Result<Option<OpExecutionPayloadEnvelopeV3>, FlashblocksError> {
+        version: Version,
+    ) -> Result<Option<OpExecutionPayloadEnvelope>, FlashblocksError> {
         // consume the best payload and reset the builder
         let payload = {
             let mut builder = self.best_payload.write().await;
-            std::mem::take(&mut *builder).into_envelope()?
+            std::mem::take(&mut *builder).into_envelope(version)?
         };
         *self.best_payload.write().await = FlashblockBuilder::new();
 

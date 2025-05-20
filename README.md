@@ -98,6 +98,22 @@ By default, `rollup-boost` will proxy all RPC calls from the proposer `op-node` 
 - `miner_*`: this allows the builder to be aware of changes in effective gas price, extra data, and [DA throttling requests](https://docs.optimism.io/builders/chain-operators/configuration/batcher) from the batcher.
 - `eth_sendRawTransaction*`: this forwards transactions the proposer receives to the builder for block building. This call may not come from the proposer `op-node`, but directly from the rollup's rpc engine.
 
+## Flashblocks
+
+Flashblocks is an extension to rollup-boost that enables partial blocks of up to 200ms block times.
+
+### Commandline Options
+
+- `--flashblocks`: Enables flashblocks for rollup-boost with a flashblocks compatible builder
+- `--flashblocks-url <URL>`: URL for rollup-boost to receive flashblocks from the builder
+- `--flashblocks-outbound-url <URL>`: URL for the websocket server on rollup-boost to stream flashblocks to clients
+
+#### Example
+
+```
+cargo run --l2-jwt-token your_jwt_token --l2-url http://localhost:8545 --builder-jwt-token your_jwt_token --builder-url http://localhost:8546 --flashblocks
+```
+
 ## Debug API
 
 The Debug API is a JSON-RPC API that can be used to configure rollup-boost's execution mode. The execution mode determines how rollup-boost makes requests to the builder:

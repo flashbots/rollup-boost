@@ -164,7 +164,10 @@ impl RpcClient {
         }
 
         if res.is_invalid() {
-            error!("Invalid payload ({}): {:?}", self.payload_source, res);
+            error!(
+                "Invalid payload on fork_choice_updated_v3 ({}): {:?}",
+                self.payload_source, res
+            );
             return Err(RpcClientError::InvalidPayload(
                 res.payload_status.status.to_string(),
             ))
@@ -225,7 +228,10 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
-            error!("Invalid payload ({}): {:?}", self.payload_source, res);
+            error!(
+                "Invalid payload new_payload_v3 ({}): {:?}",
+                self.payload_source, res
+            );
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
@@ -305,7 +311,10 @@ impl RpcClient {
             .set_code()?;
 
         if res.is_invalid() {
-            error!("Invalid payload ({}): {:?}", self.payload_source, res);
+            error!(
+                "Invalid payload new_payload_v4 ({}): {:?}",
+                self.payload_source, res
+            );
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
         }
 
@@ -404,7 +413,7 @@ pub mod tests {
 
     use super::*;
 
-    const AUTH_ADDR: &str = "0.0.0.0";
+    const AUTH_ADDR: &str = "127.0.0.1";
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
 
     pub fn get_available_port() -> u16 {
