@@ -1,47 +1,53 @@
  Flashtestations: Transparent Onchain TEE Verification and Curated Allowlist Protocol
 
 ## Table of Contents
-- [Introduction](#introduction)
-- [Design Goals](#design-goals)
-- [System Architecture](#system-architecture)
-- [Terminology](#terminology)
-  - [Intel TDX Primitives](#intel-tdx-primitives)
-  - [Flashtestations Protocol Components](#flashtestations-protocol-components)
-  - [Operational Terms](#operational-terms)
-- [Data Structures](#data-structures)
-  - [TDXQuote](#tdxquote)
-  - [TDReport](#tdreport)
-  - [DCAPEndorsements](#dcapendorsements)
-  - [TDXMeasurements](#tdxmeasurements)
-- [TEE Attestation Mechanism](#tee-attestation-mechanism)
-  - [Intel TDX DCAP Attestation](#intel-tdx-dcap-attestation)
-  - [Onchain DCAP Attestation](#onchain-dcap-attestation)
-  - [Workload Identity Derivation](#workload-identity-derivation)
-- [Allowlist Registry](#allowlist-registry)
-  - [Core Concepts](#core-concepts)
-  - [Key Relationship Model](#key-relationship-model)
-  - [Fundamental Operations](#fundamental-operations)
-  - [Key Requirements](#key-requirements)
-- [Policy Layer: Flexible Authorization](#policy-layer-flexible-authorization)
-  - [Policy Abstraction](#policy-abstraction)
-  - [Policy Operations](#policy-operations)
-- [End-to-End Flow](#end-to-end-flow)
-  - [Attestation and Registration](#attestation-and-registration)
-  - [Runtime Authorization](#runtime-authorization)
-  - [Maintenance: Handling Changing Endorsements](#maintenance-handling-changing-endorsements)
-- [Offchain TEE Address Verification](#offchain-tee-address-verification)
-- [Transparency Log](#transparency-log)
-  - [Purpose and Benefits](#purpose-and-benefits)
-  - [Logged Information](#logged-information)
-  - [Implementation Approach](#implementation-approach)
-  - [Relationship with Allowlist](#relationship-with-allowlist)
-- [Design Considerations](#design-considerations)
+- [Abstract](#abstract)
+- [Prerequisites](#prerequisites)
+- [Motivation](#motivation)
+- [Specification](#specification)
+  - [Terminology](#terminology)
+    - [Intel TDX Primitives](#intel-tdx-primitives)
+    - [Flashtestations Protocol Components](#flashtestations-protocol-components)
+    - [Operational Terms](#operational-terms)
+  - [Data Structures](#data-structures)
+    - [TDXQuote](#tdxquote)
+    - [TDReport](#tdreport)
+    - [DCAPEndorsements](#dcapendorsements)
+    - [TDXMeasurements](#tdxmeasurements)
+  - [System Architecture](#system-architecture)
+  - [TEE Attestation Mechanism](#tee-attestation-mechanism)
+    - [Intel TDX DCAP Attestation](#intel-tdx-dcap-attestation)
+    - [Onchain DCAP Attestation](#onchain-dcap-attestation)
+    - [Workload Identity Derivation](#workload-identity-derivation)
+  - [Allowlist Registry](#allowlist-registry)
+    - [Core Concepts](#core-concepts)
+    - [Key Relationship Model](#key-relationship-model)
+    - [Fundamental Operations](#fundamental-operations)
+    - [Key Requirements](#key-requirements)
+    - [Attestation Verification Endpoint](#attestation-verification-endpoint)
+  - [Policy Layer: Flexible Authorization](#policy-layer-flexible-authorization)
+    - [Policy Abstraction](#policy-abstraction)
+    - [Policy Operations](#policy-operations)
+  - [End-to-End Flow](#end-to-end-flow)
+    - [Attestation and Registration](#attestation-and-registration)
+    - [Runtime Authorization](#runtime-authorization)
+    - [Maintenance: Handling Changing Endorsements](#maintenance-handling-changing-endorsements)
+    - [Gas Cost Considerations and Future Optimizations](#gas-cost-considerations-and-future-optimizations)
+  - [Offchain TEE Address Verification](#offchain-tee-address-verification)
+    - [Example Verification Flow](#example-verification-flow)
+  - [Transparency Log](#transparency-log)
+    - [Purpose and Benefits](#purpose-and-benefits)
+    - [Logged Information](#logged-information)
+    - [Implementation Approach](#implementation-approach)
+    - [Relationship with Allowlist](#relationship-with-allowlist)
+- [Rationale](#rationale)
   - [Replacement Model](#replacement-model)
   - [Gas Optimization](#gas-optimization)
   - [Separation of Concerns](#separation-of-concerns)
-- [Reproducible Builds](#reproducible-builds)
+- [Implementation](#implementation)
+  - [Reproducible Builds](#reproducible-builds)
 
-## Introduction
+## Abstract
 
 Trusted Execution Environments (TEEs) offer a promising approach for running confidential workloads with hardware-enforced security guarantees. However, integrating TEEs with blockchain applications presents significant challenges: How can smart contracts verify that they're interacting with authentic TEE services running expected code? How can this verification scale efficiently onchain? How can we maintain an up-to-date registry of validated services as hardware security requirements evolve?
 
@@ -65,7 +71,7 @@ This document assumes familiarity with the following background material, specif
 4. **On‑Chain Endorsement Storage (PCCS)** — Automata’s Solidity implementation that mirrors Intel collateral on Ethereum, enabling fully reproducible verification.
    • [Automata On‑chain PCCS](https://github.com/automata-network/automata-on-chain-pccs)
 
-## Design Goals
+## Motivation
 
 Flashtestations is designed to achieve the following objectives:
 
@@ -81,7 +87,9 @@ Flashtestations is designed to achieve the following objectives:
 
 6. **Separation of Concerns**: Clearly separate allowlist mechanics from policy governance, enabling independent evolution of these components.
 
-## System Architecture
+## Specification
+
+### System Architecture
 
 The Flashtestations protocol consists of four key components that work together to provide secure onchain TEE verification:
 
@@ -125,7 +133,7 @@ The Flashtestations protocol consists of four key components that work together 
 3. **Policy Registry**: Defines which workloads are acceptable for specific onchain interactions
 4. **Transparency Log**: Records all attestations and endorsement changes (implemented via events)
 
-## Terminology
+### Terminology
 
 The terms in this section are used consistently throughout the specification documents. When a term is first mentioned elsewhere, it links back here.
 
@@ -189,7 +197,7 @@ The terms in this section are used consistently throughout the specification doc
 
 **Reproducible Build**: A deterministic build process that ensures anyone building the same source code will produce identical binary outputs, enabling verification of expected TEE measurements.
 
-## Data Structures
+### Data Structures
 
 The protocol defines several key data structures:
 
@@ -281,7 +289,7 @@ class TDXMeasurements():
 - `MRCONFIGID`: Hash of service configuration stored onchain and fetched on boot.
 - `MROWNERCONFIG`: Contains unique instance ID chosen by the operator.
 
-## TEE Attestation Mechanism
+### TEE Attestation Mechanism
 
 Attestation is the process by which a TEE proves its identity and integrity. The protocol uses Intel TDX with DCAP (Data Center Attestation Primitives) attestation.
 
@@ -344,7 +352,7 @@ These measurement registers serve specific purposes in the permissioned attestat
 
 All of these values are captured in the workload identity hash, ensuring that any change to the code, configuration, or operator results in a different identity that must be explicitly authorized through governance.
 
-## Allowlist Registry
+### Allowlist Registry
 
 The Allowlist Registry is a core component of Flashtestations that acts as a bookkeeper for tracking which Ethereum addresses have successfully passed attestation within a Trusted Execution Environment (TEE).
 
@@ -456,7 +464,7 @@ The verification process works as follows:
 
 This approach provides a clean, straightforward way to manage attestation validity over time.
 
-## Policy Layer: Flexible Authorization
+### Policy Layer: Flexible Authorization
 
 The Policy layer sits above the Allowlist Registry and provides a more flexible authorization mechanism.
 
@@ -499,7 +507,7 @@ function isAllowedPolicy(policyId, address) {
 }
 ```
 
-## End-to-End Flow
+### End-to-End Flow
 
 The complete verification flow connects attestation, the allowlist, and the policy layer:
 
@@ -559,7 +567,7 @@ Future optimizations could include:
 
 These optimizations would maintain the design's simplicity while providing more gas-efficient ways to handle endorsement changes, especially as the number of registered addresses grows.
 
-## Offchain TEE Address Verification
+### Offchain TEE Address Verification
 
 The Flashtestations protocol enables comprehensive offchain verification of TEE service addresses through its quote storage mechanism. Applications can retrieve the original attestation quote for any registered address via the getQuoteForAddress(address) function, allowing for complete independent verification without incurring gas costs. This approach permits offchain entities to perform the same cryptographic validation as the original onchain verifier, including measurement verification and endorsement checks against the Intel PCS.
 
@@ -576,7 +584,7 @@ async function verifyTEEAddressOffchain(serviceAddress) {
 }
 ```
 
-## Transparency Log
+### Transparency Log
 
 The L2 blockchain functions as a transparency log within Flashtestations, maintaining a permanent record of attestation events and their verification. This log provides auditability, verifiability, and transparency for the entire TEE attestation ecosystem.
 
@@ -639,7 +647,7 @@ While the allowlist registry maintains the current authorized state (which addre
 
 This dual approach enables efficient onchain operations while maintaining complete transparency and auditability.
 
-## Design Considerations
+## Rationale
 
 ### Replacement Model
 
@@ -670,7 +678,9 @@ This separation enables each component to evolve independently, with governance 
 
 The Allowlist Registry also provides direct access to stored attestation quotes, allowing external systems to perform their own verification or analysis without requiring additional onchain transactions.
 
-## Reproducible Builds
+## Implementation
+
+### Reproducible Builds
 
 To establish trust in expected measurements, the TEE block builder must be built using a reproducible build process:
 
