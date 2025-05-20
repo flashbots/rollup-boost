@@ -1,7 +1,7 @@
+use crate::EngineApiExt;
 use crate::client::auth::AuthLayer;
-use crate::server::{
-    EngineApiClient, NewPayload, OpExecutionPayloadEnvelope, PayloadSource, Version,
-};
+use crate::engine_api::EngineApiClient;
+use crate::server::PayloadSource;
 
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
@@ -130,7 +130,10 @@ impl RpcClient {
             payload_source,
         })
     }
+}
 
+#[async_trait]
+impl EngineApiExt for RpcClient {
     #[instrument(
         skip_all,
         err,
@@ -143,7 +146,7 @@ impl RpcClient {
             payload_id
         )
     )]
-    pub async fn fork_choice_updated_v3(
+    async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
@@ -179,7 +182,7 @@ impl RpcClient {
             %payload_id,
         )
     )]
-    pub async fn get_payload_v3(
+    async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV3> {
@@ -202,7 +205,7 @@ impl RpcClient {
             code,
         )
     )]
-    pub async fn new_payload_v3(
+    async fn new_payload_v3(
         &self,
         payload: ExecutionPayloadV3,
         versioned_hashes: Vec<B256>,
@@ -235,7 +238,7 @@ impl RpcClient {
             %payload_id,
         )
     )]
-    pub async fn get_payload_v4(
+    async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV4> {
@@ -245,21 +248,6 @@ impl RpcClient {
             .get_payload_v4(payload_id)
             .await
             .set_code()?)
-    }
-
-    pub async fn get_payload(
-        &self,
-        payload_id: PayloadId,
-        version: Version,
-    ) -> ClientResult<OpExecutionPayloadEnvelope> {
-        match version {
-            Version::V3 => Ok(OpExecutionPayloadEnvelope::V3(
-                self.get_payload_v3(payload_id).await.set_code()?,
-            )),
-            Version::V4 => Ok(OpExecutionPayloadEnvelope::V4(
-                self.get_payload_v4(payload_id).await.set_code()?,
-            )),
-        }
     }
 
     #[instrument(
@@ -303,29 +291,7 @@ impl RpcClient {
         Ok(res)
     }
 
-    pub async fn new_payload(&self, new_payload: NewPayload) -> ClientResult<PayloadStatus> {
-        match new_payload {
-            NewPayload::V3(new_payload) => {
-                self.new_payload_v3(
-                    new_payload.payload,
-                    new_payload.versioned_hashes,
-                    new_payload.parent_beacon_block_root,
-                )
-                .await
-            }
-            NewPayload::V4(new_payload) => {
-                self.new_payload_v4(
-                    new_payload.payload,
-                    new_payload.versioned_hashes,
-                    new_payload.parent_beacon_block_root,
-                    new_payload.execution_requests,
-                )
-                .await
-            }
-        }
-    }
-
-    pub async fn get_block_by_number(
+    async fn get_block_by_number(
         &self,
         number: BlockNumberOrTag,
         full: bool,
@@ -335,17 +301,6 @@ impl RpcClient {
             .get_block_by_number(number, full)
             .await
             .set_code()?)
-    }
-}
-
-#[async_trait]
-impl EngineApiClient for RpcClient {
-    async fn get_block_by_number(
-        &self,
-        number: BlockNumberOrTag,
-        full: bool,
-    ) -> ClientResult<Block> {
-        self.get_block_by_number(number, full).await
     }
 }
 
