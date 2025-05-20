@@ -2,13 +2,17 @@ use crate::client::http::HttpClient;
 use crate::server::PayloadSource;
 use crate::{ExecutionMode, Health, Probes};
 use alloy_rpc_types_engine::JwtSecret;
-use http::Uri;
+use http::request::{self};
+use http::{Uri, response};
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
 use tower::{Layer, Service};
 use tracing::{error, info, warn};
 
@@ -56,7 +60,10 @@ impl ProxyLayer {
     }
 }
 
-impl<S> Layer<S> for ProxyLayer {
+impl<S> Layer<S> for ProxyLayer
+where
+    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
+{
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
@@ -72,13 +79,25 @@ impl<S> Layer<S> for ProxyLayer {
             PayloadSource::Builder,
         );
 
-        ProxyService {
+        let (req_sender, mut req_receiver) = watch::channel(None);
+        let (res_sender, mut res_receiver) = watch::channel(None);
+        req_receiver.mark_unchanged();
+        res_receiver.mark_unchanged();
+
+        let service = ProxyService {
             inner,
             l2_client,
             builder_client,
+            has_disabled_execution_mode: Arc::new(AtomicBool::new(false)),
+            set_max_da_size_req: req_sender,
+            set_max_da_size_res: res_receiver,
             probes: self.probes.clone(),
             execution_mode: self.execution_mode.clone(),
-        }
+        };
+
+        service.handle_set_max_da_size(req_receiver, res_sender);
+
+        service
     }
 }
 
@@ -87,12 +106,15 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
+    has_disabled_execution_mode: Arc<AtomicBool>,
+    set_max_da_size_req: watch::Sender<Option<(request::Parts, Vec<u8>, String)>>,
+    set_max_da_size_res: watch::Receiver<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
     probes: Arc<Probes>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
-impl<S> Service<HttpRequest<HttpBody>> for ProxyService<S>
+impl<S> Service<HttpRequest> for ProxyService<S>
 where
     S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
     S::Response: 'static,
@@ -108,7 +130,7 @@ where
         self.inner.poll_ready(cx).map_err(Into::into)
     }
 
-    fn call(&mut self, req: HttpRequest<HttpBody>) -> Self::Future {
+    fn call(&mut self, req: HttpRequest) -> Self::Future {
         #[derive(serde::Deserialize, Debug)]
         struct RpcRequest<'a> {
             #[serde(borrow)]
@@ -145,27 +167,25 @@ where
                 let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
 
                 if method == MINER_SET_MAX_DA_SIZE {
-                    // join requests and ensure responses are consistent
-                    let (builder_res, l2_res) = tokio::join!(
-                        builder_client.forward(builder_req, builder_method),
-                        service.l2_client.forward(l2_req, method)
-                    );
-                    if builder_res.is_ok() != l2_res.is_ok() {
-                        // This state is unrecoverable. Messages have already been retried at this
-                        // point and the only way forward is to manually restart the builder.
-                        error!(target: "proxy::call", message = "inconsistent miner api responses from builder and L2");
-                        let mut execution_mode = service.execution_mode.lock();
-                        if *execution_mode == ExecutionMode::Enabled {
-                            *execution_mode = ExecutionMode::Disabled;
-                            // Drop before aquiring health lock
-                            drop(execution_mode);
-                            warn!(target: "proxy::call", message = "setting execution mode to Disabled");
-                            // This health status will likely be later set back to healthy
-                            // but this should be enough to trigger a new leader election.
-                            service.probes.set_health(Health::PartialContent);
+                    // If the request is for miner_setMaxDASize, send it to the builder
+                    // and wait for the response
+                    let (parts, body) = l2_req.into_parts();
+                    let (body_bytes, _) =
+                        http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+                    service
+                        .set_max_da_size_req
+                        .send(Some((parts, body_bytes)))?;
+                    service.set_max_da_size_res.changed().await?;
+                    let res = service.set_max_da_size_res.borrow_and_update();
+                    if let Some(res) = res {
+                        if let Some(Ok((parts, body))) = res {
+                            Ok(HttpResponse::from_parts(parts, HttpBody::from(body)))
+                        } else {
+                            Err(res.unwrap_err().into())
                         }
+                    } else {
+                        Err("Failed to get response from set_max_da_size".into())
                     }
-                    l2_res
                 } else {
                     // Fire and forget the builder request
                     tokio::spawn(async move {
@@ -185,6 +205,110 @@ where
         Box::pin(fut)
     }
 }
+
+impl<S> ProxyService<S>
+where
+    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
+    // S::Response: 'static,
+    // S::Error: Into<BoxError> + 'static,
+    // S::Future: Send + 'static,
+{
+    fn handle_set_max_da_size(
+        &self,
+        mut req_receiver: watch::Receiver<Option<(request::Parts, Vec<u8>, String)>>,
+        mut res_sender: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
+    ) {
+        let service = self.clone();
+        tokio::spawn(async move {
+            // Error represents that the sender was dropped
+            // No need to handle
+            let mut last_attempt: Option<JoinHandle<()>> = None;
+            while let Ok(_) = req_receiver.changed().await {
+                // None only occurs during startup
+                if let Some((parts, body, method)) = req_receiver.borrow_and_update().as_ref() {
+                    let mut service = service.clone();
+                    let parts = parts.clone();
+                    let body = body.clone();
+                    let method = method.clone();
+                    let res_sender = res_sender.clone();
+                    if let Some(handle) = last_attempt {
+                        if !handle.is_finished() {
+                            // If the last attempt is not finished, cancel it
+                            error!(target: "proxy::call", message = "aborting previous attempt to set max DA size");
+                            handle.abort();
+                        }
+                    }
+                    last_attempt = Some(tokio::spawn(async move {
+                        service
+                            .try_set_max_da_size(parts, body, method, res_sender)
+                            .await;
+                    }));
+                }
+            }
+        });
+    }
+
+    async fn try_set_max_da_size(
+        &mut self,
+        parts: request::Parts,
+        body: Vec<u8>,
+        method: String,
+        mut res_sender: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
+    ) -> eyre::Result<()> {
+        let mut service = self.clone();
+        let l2_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
+        let builder_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
+        let builder_method = method.clone();
+
+        // Send the request to the builder immediately
+        let builder_handle = tokio::spawn(async move {
+            service
+                .builder_client
+                .forward(builder_req, builder_method)
+                .await
+        });
+
+        // Await the l2 request
+        let l2_res = self.l2_client.forward(l2_req, method).await;
+
+        // Return the l2 response asap
+        let l2_res_parts = match l2_res {
+            Ok(t) => {
+                let (parts, body) = t.into_parts();
+                let (body_bytes, _) =
+                    http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+                Ok((parts, body_bytes))
+            }
+            Err(e) => Err(e),
+        };
+
+        let l2_res_is_ok = l2_res_parts.is_ok();
+        res_sender.send(Some(l2_res_parts))?;
+
+        // Await the builder request
+        let builder_res = builder_handle.await?;
+
+        if builder_res.is_ok() != l2_res_is_ok {
+            // This state is unrecoverable. Messages have already been retried at this
+            // point and the only way forward is to manually restart the builder.
+            error!(target: "proxy::call", message = "inconsistent miner api responses from builder and L2");
+            let mut execution_mode = service.execution_mode.lock();
+            if *execution_mode == ExecutionMode::Enabled {
+                *execution_mode = ExecutionMode::Disabled;
+                // Drop before aquiring health lock
+                drop(execution_mode);
+                warn!(target: "proxy::call", message = "setting execution mode to Disabled");
+                // This health status will likely be later set back to healthy
+                // but this should be enough to trigger a new leader election.
+                service.probes.set_health(Health::PartialContent);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn set_max_da_size() {}
 
 #[cfg(test)]
 mod tests {
