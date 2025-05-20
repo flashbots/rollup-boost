@@ -46,10 +46,10 @@ impl FlashblocksReceiverService {
             let msg = msg?;
             match msg {
                 Message::Text(text) => {
-                    if let Ok(flashblocks_msg) = serde_json::from_str::<FlashblocksPayloadV1>(&text)
-                    // TODO: Version this
-                    {
-                        self.sender.send(flashblocks_msg).await?;
+                    match serde_json::from_str::<FlashblocksPayloadV1>(&text) {
+                        // TODO: Version this
+                        Ok(flashblocks_msg) => self.sender.send(flashblocks_msg).await?,
+                        Err(e) => error!("Failed to parse inbound flashblock: {}", e),
                     }
                 }
                 _ => continue,

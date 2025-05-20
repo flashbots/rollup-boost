@@ -17,6 +17,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::error;
+
 #[derive(Debug, Error)]
 pub enum FlashblocksError {
     #[error("Missing base payload for initial flashblock")]
@@ -29,6 +30,8 @@ pub enum FlashblocksError {
     InvalidIndex,
     #[error("Missing payload")]
     MissingPayload,
+    #[error("Malformed flashblock")]
+    MalformedFlashblock,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -158,7 +161,9 @@ impl FlashblockBuilder {
                     },
                     should_override_builder: false,
                     execution_payload: OpExecutionPayloadV4 {
-                        withdrawals_root,
+                        // In version 4 withdrawals_root should be present
+                        withdrawals_root: withdrawals_root
+                            .ok_or(FlashblocksError::MalformedFlashblock)?,
                         payload_inner: execution_payload,
                     },
                     execution_requests: vec![],
