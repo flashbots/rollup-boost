@@ -1,6 +1,8 @@
  Flashtestations: Transparent Onchain TEE Verification and Curated Allowlist Protocol
 
-## Table of Contents
+*Authors: [fnerdman](https://github.com/fnerdman), [Melville](https://github.com/Melvillian), [dmarz](https://github.com/dmarzzz), [Ruteri](https://github.com/Ruteri)*
+
+**Table of Contents**
 - [Abstract](#abstract)
 - [Prerequisites](#prerequisites)
 - [Motivation](#motivation)
@@ -44,8 +46,6 @@
   - [Replacement Model](#replacement-model)
   - [Gas Optimization](#gas-optimization)
   - [Separation of Concerns](#separation-of-concerns)
-- [Implementation](#implementation)
-  - [Reproducible Builds](#reproducible-builds)
 
 ## Abstract
 
@@ -351,6 +351,8 @@ These measurement registers serve specific purposes in the permissioned attestat
 - **MRCONFIGID**: Contains a hash of the actual service configuration that is stored onchain and fetched during boot
 
 All of these values are captured in the workload identity hash, ensuring that any change to the code, configuration, or operator results in a different identity that must be explicitly authorized through governance.
+
+**Note on Reproducible Builds**: To establish trust in expected measurements, TEE workloads must use reproducible build processes where source code, build environment, and instructions are published, allowing independent verification that expected measurements correspond to the published source code.
 
 ### Allowlist Registry
 
@@ -678,15 +680,3 @@ This separation enables each component to evolve independently, with governance 
 
 The Allowlist Registry also provides direct access to stored attestation quotes, allowing external systems to perform their own verification or analysis without requiring additional onchain transactions.
 
-## Implementation
-
-### Reproducible Builds
-
-To establish trust in expected measurements, the TEE block builder must be built using a reproducible build process:
-
-1. **Source Code Publication**: The full source code is published with a specific commit hash
-2. **Build Environment**: A deterministic build environment is defined (specific compiler versions, dependencies, etc.)
-3. **Build Instructions**: Step-by-step instructions to reproduce the build are published
-4. **Verification**: Independent parties can follow the build process and verify that it produces the same measurements
-
-This allows anyone to verify that the expected measurements correspond to the published source code.
