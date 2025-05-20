@@ -12,10 +12,10 @@
     - [Flashtestations Protocol Components](#flashtestations-protocol-components)
     - [Operational Terms](#operational-terms)
   - [Data Structures](#data-structures)
-    - [TDXQuote](#tdxquote)
-    - [TDReport](#tdreport)
-    - [DCAPEndorsements](#dcapendorsements)
-    - [TDXMeasurements](#tdxmeasurements)
+    - [**`TDXQuote`**](#tdxquote)
+    - [**`TDReport`**](#tdreport)
+    - [**`DCAPEndorsements`**](#dcapendorsements)
+    - [**`TDXMeasurements`**](#tdxmeasurements)
   - [System Architecture](#system-architecture)
   - [TEE Attestation Mechanism](#tee-attestation-mechanism)
     - [Intel TDX DCAP Attestation](#intel-tdx-dcap-attestation)
@@ -47,7 +47,7 @@
   - [Gas Optimization](#gas-optimization)
   - [Separation of Concerns](#separation-of-concerns)
 
-## Abstract
+# Abstract
 
 Trusted Execution Environments (TEEs) offer a promising approach for running confidential workloads with hardware-enforced security guarantees. However, integrating TEEs with blockchain applications presents significant challenges: How can smart contracts verify that they're interacting with authentic TEE services running expected code? How can this verification scale efficiently onchain? How can we maintain an up-to-date registry of validated services as hardware security requirements evolve?
 
@@ -58,7 +58,7 @@ Flashtestations addresses these challenges by providing a comprehensive onchain 
 3. Policy-based authorization for smart contracts to securely interact with TEE services
 4. Transparent logging of all attestation events and endorsement changes
 
-## Prerequisites
+# Prerequisites
 
 This document assumes familiarity with the following background material, specifications, and tooling. Items are arranged in the rough order they become relevant while reading this spec:
 
@@ -71,7 +71,7 @@ This document assumes familiarity with the following background material, specif
 4. **On‑Chain Endorsement Storage (PCCS)** — Automata’s Solidity implementation that mirrors Intel collateral on Ethereum, enabling fully reproducible verification.
    • [Automata On‑chain PCCS](https://github.com/automata-network/automata-on-chain-pccs)
 
-## Motivation
+# Motivation
 
 Flashtestations is designed to achieve the following objectives:
 
@@ -87,11 +87,11 @@ Flashtestations is designed to achieve the following objectives:
 
 6. **Separation of Concerns**: Clearly separate allowlist mechanics from policy governance, enabling independent evolution of these components.
 
-## Specification
+# Specification
 
-### System Architecture
+## System Architecture
 
-The Flashtestations protocol consists of four key components that work together to provide secure onchain TEE verification:
+Within the Flashtestations specification, the protocol architecture consists of four key components that work together to provide secure onchain TEE verification:
 
 ```
 ┌─────────────────────┐                  ┌─────────────────────┐
@@ -133,7 +133,7 @@ The Flashtestations protocol consists of four key components that work together 
 3. **Policy Registry**: Defines which workloads are acceptable for specific onchain interactions
 4. **Transparency Log**: Records all attestations and endorsement changes (implemented via events)
 
-### Terminology
+## Terminology
 
 The terms in this section are used consistently throughout the specification documents. When a term is first mentioned elsewhere, it links back here.
 
@@ -197,11 +197,11 @@ The terms in this section are used consistently throughout the specification doc
 
 **Reproducible Build**: A deterministic build process that ensures anyone building the same source code will produce identical binary outputs, enabling verification of expected TEE measurements.
 
-### Data Structures
+## Data Structures
 
 The protocol defines several key data structures:
 
-### `TDXQuote`
+### **`TDXQuote`**
 
 The output of the Intel TDX attestation process.
 
@@ -228,7 +228,7 @@ class TDXQuote():
 - `UserData`: User-defined data included in the quote (e.g., public key).
 - `Signature`: ECDSA signature over the Quote.
 
-### `TDReport`
+### **`TDReport`**
 
 Contains the measurement registers and report data from the TEE.
 
@@ -251,7 +251,7 @@ class TDReport():
 - `MROWNER_CONFIG`: Owner-defined configuration.
 - `ReportData`: User-defined data included in the report (e.g., public key hash).
 
-### `DCAPEndorsements`
+### **`DCAPEndorsements`**
 
 Data provided by Intel to verify the authenticity of a TDX Quote.
 
@@ -268,7 +268,7 @@ class DCAPEndorsements():
 - `TCBInfo`: Trusted Computing Base information.
 - `QECertificationData`: Certification data for the attestation key.
 
-### `TDXMeasurements`
+### **`TDXMeasurements`**
 
 A structured representation of the TDX measurement registers.
 
@@ -289,9 +289,9 @@ class TDXMeasurements():
 - `MRCONFIGID`: Hash of service configuration stored onchain and fetched on boot.
 - `MROWNERCONFIG`: Contains unique instance ID chosen by the operator.
 
-### TEE Attestation Mechanism
+## TEE Attestation Mechanism
 
-Attestation is the process by which a TEE proves its identity and integrity. The protocol uses Intel TDX with DCAP (Data Center Attestation Primitives) attestation.
+Attestation is the process by which a TEE proves its identity and integrity. This section of the specification defines how the protocol uses Intel TDX with DCAP (Data Center Attestation Primitives) attestation.
 
 ### Intel TDX DCAP Attestation
 
@@ -354,13 +354,13 @@ All of these values are captured in the workload identity hash, ensuring that an
 
 **Note on Reproducible Builds**: To establish trust in expected measurements, TEE workloads must use reproducible build processes where source code, build environment, and instructions are published, allowing independent verification that expected measurements correspond to the published source code.
 
-### Allowlist Registry
+## Allowlist Registry
 
 The Allowlist Registry is a core component of Flashtestations that acts as a bookkeeper for tracking which Ethereum addresses have successfully passed attestation within a Trusted Execution Environment (TEE).
 
 ### Core Concepts
 
-At its most abstract level, the Allowlist Registry is responsible for:
+At its most abstract level within this specification, the Allowlist Registry is responsible for:
 
 1. **Storing addresses** that have been validated through attestation
 2. **Associating addresses** with their specific workload identity
@@ -466,7 +466,7 @@ The verification process works as follows:
 
 This approach provides a clean, straightforward way to manage attestation validity over time.
 
-### Policy Layer: Flexible Authorization
+## Policy Layer: Flexible Authorization
 
 The Policy layer sits above the Allowlist Registry and provides a more flexible authorization mechanism.
 
@@ -509,7 +509,7 @@ function isAllowedPolicy(policyId, address) {
 }
 ```
 
-### End-to-End Flow
+## End-to-End Flow
 
 The complete verification flow connects attestation, the allowlist, and the policy layer:
 
@@ -569,7 +569,7 @@ Future optimizations could include:
 
 These optimizations would maintain the design's simplicity while providing more gas-efficient ways to handle endorsement changes, especially as the number of registered addresses grows.
 
-### Offchain TEE Address Verification
+## Offchain TEE Address Verification
 
 The Flashtestations protocol enables comprehensive offchain verification of TEE service addresses through its quote storage mechanism. Applications can retrieve the original attestation quote for any registered address via the getQuoteForAddress(address) function, allowing for complete independent verification without incurring gas costs. This approach permits offchain entities to perform the same cryptographic validation as the original onchain verifier, including measurement verification and endorsement checks against the Intel PCS.
 
@@ -586,7 +586,7 @@ async function verifyTEEAddressOffchain(serviceAddress) {
 }
 ```
 
-### Transparency Log
+## Transparency Log
 
 The L2 blockchain functions as a transparency log within Flashtestations, maintaining a permanent record of attestation events and their verification. This log provides auditability, verifiability, and transparency for the entire TEE attestation ecosystem.
 
@@ -600,7 +600,7 @@ The transparency log serves several critical functions:
 
 ### Logged Information
 
-The transparency log captures raw attestation data along with verification results:
+As specified in this protocol, the transparency log captures raw attestation data along with verification results:
 
 1. **Raw Attestation Quotes**: The complete DCAP quotes submitted for verification
 2. **Intel Endorsements**: The actual endorsement data (endorsements) used to validate attestations
@@ -647,13 +647,15 @@ While the allowlist registry maintains the current authorized state (which addre
 1. **Allowlist**: Optimized for efficient runtime checks and state updates
 2. **Transparency Log**: Optimized for auditability and historical verification
 
-This dual approach enables efficient onchain operations while maintaining complete transparency and auditability.
+This dual approach specified in the protocol enables efficient onchain operations while maintaining complete transparency and auditability.
 
-## Rationale
+# Rationale
+
+The following explains the reasoning behind key design decisions in the Flashtestations protocol:
 
 ### Replacement Model
 
-The conceptual model uses a direct replacement approach:
+The protocol uses a direct replacement approach for attestations:
 
 - When an address re-attests for a workloadId, its old entry is replaced with the new one
 - This keeps the model simpler by ensuring each address has exactly one current endorsement per workloadId
@@ -661,7 +663,7 @@ The conceptual model uses a direct replacement approach:
 
 ### Gas Optimization
 
-The system must optimize for gas efficiency, particularly for the lookup operations:
+The rationale for gas optimization in the protocol design is that the system must prioritize efficiency, particularly for the lookup operations:
 
 - Lookups should be O(1) regardless of the number of addresses
 - Storage slots should be fully cleared when no longer needed (to receive gas refunds)
@@ -669,7 +671,7 @@ The system must optimize for gas efficiency, particularly for the lookup operati
 
 ### Separation of Concerns
 
-The design maintains clear separation between:
+A key design rationale is maintaining clear separation between:
 
 1. **Allowlist Registry**: Tracks which addresses have attestations validated by current endorsements
 2. **Policy Registry**: Defines which workloads are acceptable for specific onchain operations
