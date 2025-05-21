@@ -1,20 +1,26 @@
-use op_alloy_rpc_types_engine::OpExecutionPayloadV4;
+use crate::{OpExecutionPayloadEnvelope, PayloadSource};
 
 pub enum BlockSelectionPolicy {
-    GasUsed(u64),
+    GasUsed { threshold: f64 },
 }
 
 impl BlockSelectionPolicy {
-    fn select_block(
+    pub fn select_block(
         &self,
-        builder_payload: OpExecutionPayloadV4,
-        l2_payload: OpExecutionPayloadV4,
-    ) -> OpExecutionPayloadV4 {
+        builder_payload: OpExecutionPayloadEnvelope,
+        l2_payload: OpExecutionPayloadEnvelope,
+    ) -> (OpExecutionPayloadEnvelope, PayloadSource) {
         match self {
-            BlockSelectionPolicy::GasUsed(threshold) => {
-                todo!()
+            BlockSelectionPolicy::GasUsed { threshold } => {
+                let builder_gas = builder_payload.gas_used() as f64;
+                let l2_gas = l2_payload.gas_used() as f64;
+
+                if l2_gas > *threshold * builder_gas {
+                    (l2_payload, PayloadSource::L2)
+                } else {
+                    (builder_payload, PayloadSource::Builder)
+                }
             }
         }
     }
 }
-
