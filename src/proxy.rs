@@ -548,6 +548,8 @@ mod tests {
             .request::<serde_json::Value, _>("miner_setMaxDASize", (max_tx_size, max_block_size))
             .await?;
 
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
         let expected_method = "miner_setMaxDASize";
         let expected_tx_size = json!(max_tx_size);
         let expected_block_size = json!(max_block_size);
