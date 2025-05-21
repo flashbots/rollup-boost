@@ -40,8 +40,7 @@ impl BlockSelectionPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
-    
+
     use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV4;
 
     #[test]
