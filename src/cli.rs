@@ -165,8 +165,7 @@ impl Args {
             l2_client,
             builder_client,
             self.execution_mode,
-            // TODO: update this
-            None,
+            self.block_selection_policy,
             probes,
             self.health_check_interval,
             self.max_unsafe_interval,
