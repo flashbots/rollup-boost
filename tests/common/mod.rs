@@ -346,6 +346,8 @@ impl RollupBoostTestHarnessBuilder {
         rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
         rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
+        let debug_jwt = JwtSecret::from_hex(JWT_SECRET).unwrap();
+        rollup_boost.args.debug_jwt_token = Some(debug_jwt);
         let rollup_boost = rollup_boost.start().await;
         println!("rollup-boost authrpc: {}", rollup_boost.rpc_endpoint());
         println!("rollup-boost metrics: {}", rollup_boost.metrics_endpoint());
@@ -373,7 +375,8 @@ impl RollupBoostTestHarness {
     }
 
     pub async fn debug_client(&self) -> DebugClient {
-        DebugClient::new(&self.rollup_boost.debug_endpoint()).unwrap()
+        let jwt_secret = JwtSecret::from_hex(JWT_SECRET).unwrap();
+        DebugClient::new(&self.rollup_boost.debug_endpoint(), jwt_secret).unwrap()
     }
 }
 

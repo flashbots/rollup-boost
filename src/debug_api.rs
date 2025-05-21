@@ -1,11 +1,14 @@
 use jsonrpsee::core::{RpcResult, async_trait};
-use jsonrpsee::http_client::HttpClient;
+use jsonrpsee::http_client::transport::HttpBackend;
+use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::server::Server;
 use parking_lot::Mutex;
-use reth_rpc_layer::{AuthLayer, JwtAuthValidator, JwtSecret};
+use reth_rpc_layer::{JwtAuthValidator, JwtSecret};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+use crate::{Auth, AuthLayer};
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
@@ -65,7 +68,7 @@ impl DebugServer {
     }
 
     pub async fn run(self, debug_addr: &str, jwt_secret: JwtSecret) -> eyre::Result<()> {
-        let auth_layer = AuthLayer::new(JwtAuthValidator::new(jwt_secret));
+        let auth_layer = reth_rpc_layer::AuthLayer::new(JwtAuthValidator::new(jwt_secret));
         let http_middleware = tower::ServiceBuilder::new().layer(auth_layer);
 
         let server = Server::builder()
@@ -116,12 +119,15 @@ impl DebugApiServer for DebugServer {
 }
 
 pub struct DebugClient {
-    client: HttpClient,
+    client: HttpClient<Auth<HttpBackend>>,
 }
 
 impl DebugClient {
-    pub fn new(url: &str) -> eyre::Result<Self> {
-        let client = HttpClient::builder().build(url)?;
+    pub fn new(url: &str, jwt_secret: JwtSecret) -> eyre::Result<Self> {
+        let auth_layer = AuthLayer::new(jwt_secret);
+        let client = HttpClientBuilder::new()
+            .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
+            .build(url)?;
 
         Ok(Self { client })
     }
@@ -160,7 +166,8 @@ mod tests {
 
         server.run(DEFAULT_ADDR, jwt_secret).await.unwrap();
 
-        let client = DebugClient::new(format!("http://{}", DEFAULT_ADDR).as_str()).unwrap();
+        let client =
+            DebugClient::new(format!("http://{}", DEFAULT_ADDR).as_str(), jwt_secret).unwrap();
 
         // Test setting execution mode to Disabled
         let result = client

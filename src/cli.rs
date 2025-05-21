@@ -2,7 +2,7 @@ use std::{net::SocketAddr, path::PathBuf};
 
 use alloy_rpc_types_engine::JwtSecret;
 use clap::{Parser, Subcommand};
-use eyre::bail;
+use eyre::{Context, bail};
 use jsonrpsee::{RpcModule, server::Server};
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
@@ -102,6 +102,7 @@ impl Args {
             .install_default()
             .expect("Failed to install TLS ring CryptoProvider");
 
+        let debug_jwt = self.debug_jwt()?;
         let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
 
         // Handle commands if present
@@ -110,14 +111,14 @@ impl Args {
             return match cmd {
                 Commands::Debug { command } => match command {
                     DebugCommands::SetExecutionMode { execution_mode } => {
-                        let client = DebugClient::new(debug_addr.as_str())?;
+                        let client = DebugClient::new(debug_addr.as_str(), debug_jwt)?;
                         let result = client.set_execution_mode(execution_mode).await.unwrap();
                         println!("Response: {:?}", result.execution_mode);
 
                         Ok(())
                     }
                     DebugCommands::ExecutionMode {} => {
-                        let client = DebugClient::new(debug_addr.as_str())?;
+                        let client = DebugClient::new(debug_addr.as_str(), debug_jwt)?;
                         let result = client.get_execution_mode().await?;
                         println!("Execution mode: {:?}", result.execution_mode);
 
@@ -230,6 +231,16 @@ impl Args {
         }
 
         Ok(())
+    }
+
+    fn debug_jwt(&self) -> eyre::Result<JwtSecret> {
+        if let Some(secret) = self.debug_jwt_token {
+            Ok(secret)
+        } else if let Some(path) = self.debug_jwt_path.as_ref() {
+            JwtSecret::from_file(path).context("Loading debug JWT")
+        } else {
+            bail!("Missing Debug Server JWT secret");
+        }
     }
 }
 
