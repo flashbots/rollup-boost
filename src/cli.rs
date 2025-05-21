@@ -176,16 +176,8 @@ impl Args {
         );
 
         // Spawn the debug server
-        let debug_auth_jwt = if let Some(secret) = self.debug_jwt_token {
-            secret
-        } else if let Some(path) = self.debug_jwt_path.as_ref() {
-            JwtSecret::from_file(path)?
-        } else {
-            bail!("Missing Debug Server JWT secret");
-        };
-
         rollup_boost
-            .start_debug_server(debug_addr.as_str(), debug_auth_jwt)
+            .start_debug_server(debug_addr.as_str(), debug_jwt)
             .await?;
 
         let module: RpcModule<()> = rollup_boost.try_into()?;
