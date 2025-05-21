@@ -5,16 +5,12 @@ use std::{
 
 use eyre::bail;
 use http::{request, response};
-use http_body_util::BodyExt;
 use jsonrpsee::{
     core::{BoxError, http_helpers},
     http_client::{HttpBody, HttpRequest, HttpResponse},
 };
 use parking_lot::Mutex;
-use tokio::{
-    sync::{oneshot, watch},
-    task::JoinHandle,
-};
+use tokio::sync::watch;
 use tracing::{error, info, warn};
 
 use crate::{ExecutionMode, Health, HttpClient, Probes};
@@ -87,7 +83,7 @@ impl ConsistentRequest {
                             .expect("value should always be Some")
                             .clone()
                     };
-                    failed = clone.retry_builder(parts.clone(), body.clone(), res_tx.clone()).await.is_err();
+                    failed = clone.send_to_builder(parts.clone(), body.clone(), ).await.is_err();
                     }
                 }
             }
@@ -127,6 +123,10 @@ impl ConsistentRequest {
             return Ok(());
         }
 
+        self.send_to_builder(parts, body).await
+    }
+
+    async fn send_to_builder(&mut self, parts: request::Parts, body: Vec<u8>) -> eyre::Result<()> {
         let builder_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
         let builder_res = self
             .builder_client
@@ -135,7 +135,18 @@ impl ConsistentRequest {
 
         match builder_res {
             Ok(_) => {
-                self.reset_execution_mode();
+                if self
+                    .has_disabled_execution_mode
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    let mut execution_mode = self.execution_mode.lock();
+                    *execution_mode = ExecutionMode::Enabled;
+                    // Drop before aquiring health lock
+                    drop(execution_mode);
+                    self.has_disabled_execution_mode
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
+                    info!(target: "proxy::call", message = "setting execution mode to Enabled");
+                }
                 Ok(())
             }
             Err(e) => {
@@ -158,44 +169,6 @@ impl ConsistentRequest {
 
                 bail!("failed to send request to builder: {e}");
             }
-        }
-    }
-
-    async fn retry_builder(
-        &mut self,
-        parts: request::Parts,
-        body: Vec<u8>,
-        res_sender: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
-    ) -> eyre::Result<()> {
-        let builder_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
-        let builder_res = self
-            .builder_client
-            .forward(builder_req, self.method.clone())
-            .await;
-
-        match builder_res {
-            Ok(_) => {
-                self.reset_execution_mode();
-                Ok(())
-            }
-            Err(e) => {
-                bail!("failed to retry request to builder: {e}");
-            }
-        }
-    }
-
-    fn reset_execution_mode(&mut self) {
-        if self
-            .has_disabled_execution_mode
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            let mut execution_mode = self.execution_mode.lock();
-            *execution_mode = ExecutionMode::Enabled;
-            // Drop before aquiring health lock
-            drop(execution_mode);
-            self.has_disabled_execution_mode
-                .store(false, std::sync::atomic::Ordering::SeqCst);
-            info!(target: "proxy::call", message = "setting execution mode to Enabled");
         }
     }
 
