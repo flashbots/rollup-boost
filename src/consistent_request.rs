@@ -100,7 +100,7 @@ impl ConsistentRequest {
         res_tx: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
     ) -> eyre::Result<()> {
         // We send the l2 request first, because we need to avoid the situation where the
-        // l2 fails and the builder succeeds. If this were to happen, it would bee too dangerous to
+        // l2 fails and the builder succeeds. If this were to happen, it would be too dangerous to
         // return the l2 error response back to the caller, since the builder would now have an
         // invalid state. We can return early if the l2 request fails.
         let mut manager = self.clone();
