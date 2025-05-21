@@ -11,6 +11,7 @@ use metrics::counter;
 use moka::future::Cache;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use reth_rpc_layer::JwtSecret;
 use std::sync::Arc;
 
 use crate::debug_api::ExecutionMode;
@@ -157,9 +158,13 @@ impl RollupBoostServer {
         }
     }
 
-    pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
+    pub async fn start_debug_server(
+        &self,
+        debug_addr: &str,
+        jwt_secret: JwtSecret,
+    ) -> eyre::Result<()> {
         let server = DebugServer::new(self.execution_mode.clone());
-        server.run(debug_addr).await?;
+        server.run(debug_addr, jwt_secret).await?;
         Ok(())
     }
 

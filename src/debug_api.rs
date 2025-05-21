@@ -3,6 +3,7 @@ use jsonrpsee::http_client::HttpClient;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::server::Server;
 use parking_lot::Mutex;
+use reth_rpc_layer::{AuthLayer, JwtAuthValidator, JwtSecret};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -63,8 +64,14 @@ impl DebugServer {
         Self { execution_mode }
     }
 
-    pub async fn run(self, debug_addr: &str) -> eyre::Result<()> {
-        let server = Server::builder().build(debug_addr).await?;
+    pub async fn run(self, debug_addr: &str, jwt_secret: JwtSecret) -> eyre::Result<()> {
+        let auth_layer = AuthLayer::new(JwtAuthValidator::new(jwt_secret));
+        let http_middleware = tower::ServiceBuilder::new().layer(auth_layer);
+
+        let server = Server::builder()
+            .set_http_middleware(http_middleware)
+            .build(debug_addr)
+            .await?;
 
         let handle = server.start(self.into_rpc());
 
@@ -140,13 +147,18 @@ mod tests {
 
     const DEFAULT_ADDR: &str = "127.0.0.1:5555";
 
+    const DEFAULT_AUTH_SECRET: &str =
+        "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
+
     #[tokio::test]
     async fn test_debug_client() {
         // spawn the server and try to modify it with the client
         let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
         let server = DebugServer::new(execution_mode.clone());
-        server.run(DEFAULT_ADDR).await.unwrap();
+        let jwt_secret = JwtSecret::from_hex(DEFAULT_AUTH_SECRET).unwrap();
+
+        server.run(DEFAULT_ADDR, jwt_secret).await.unwrap();
 
         let client = DebugClient::new(format!("http://{}", DEFAULT_ADDR).as_str()).unwrap();
 

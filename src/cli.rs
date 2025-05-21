@@ -83,6 +83,14 @@ pub struct Args {
     #[arg(long, env, default_value = "5555")]
     pub debug_server_port: u16,
 
+    /// Hex encoded JWT secret
+    #[arg(long, env, value_name = "HEX")]
+    pub debug_jwt_token: Option<JwtSecret>,
+
+    /// Path to a JWT secret to use for the authenticated engine-API RPC server.
+    #[arg(long, env, value_name = "PATH")]
+    pub debug_jwt_path: Option<PathBuf>,
+
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     pub execution_mode: ExecutionMode,
@@ -167,7 +175,17 @@ impl Args {
         );
 
         // Spawn the debug server
-        rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+        let debug_auth_jwt = if let Some(secret) = self.debug_jwt_token {
+            secret
+        } else if let Some(path) = self.debug_jwt_path.as_ref() {
+            JwtSecret::from_file(path)?
+        } else {
+            bail!("Missing Debug Server JWT secret");
+        };
+
+        rollup_boost
+            .start_debug_server(debug_addr.as_str(), debug_auth_jwt)
+            .await?;
 
         let module: RpcModule<()> = rollup_boost.try_into()?;
 
