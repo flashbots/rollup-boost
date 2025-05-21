@@ -1,7 +1,8 @@
 use crate::{OpExecutionPayloadEnvelope, PayloadSource};
 
+#[derive(Debug, Clone, Copy)]
 pub enum BlockSelectionPolicy {
-    GasUsed { threshold: f64 },
+    GasUsed { threshold: u8 },
 }
 
 impl BlockSelectionPolicy {
@@ -15,7 +16,8 @@ impl BlockSelectionPolicy {
                 let builder_gas = builder_payload.gas_used() as f64;
                 let l2_gas = l2_payload.gas_used() as f64;
 
-                if l2_gas > *threshold * builder_gas {
+                // TODO: if builder gas is x% less than l2 gas, select l2 payload
+                if builder_gas < (1.0 - *threshold as f64 / 100_f64) * l2_gas {
                     (l2_payload, PayloadSource::L2)
                 } else {
                     (builder_payload, PayloadSource::Builder)

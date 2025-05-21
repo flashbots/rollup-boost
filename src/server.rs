@@ -47,6 +47,7 @@ impl RollupBoostServer {
         l2_client: RpcClient,
         builder_client: RpcClient,
         initial_execution_mode: ExecutionMode,
+        block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
         health_check_interval: u64,
         max_unsafe_interval: u64,
@@ -62,8 +63,7 @@ impl RollupBoostServer {
         Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
-            // TODO: update this
-            block_selection_policy: None,
+            block_selection_policy,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
             probes,
@@ -600,6 +600,7 @@ mod tests {
                 l2_client,
                 builder_client,
                 ExecutionMode::Enabled,
+                None,
                 probes,
                 60,
                 5,
