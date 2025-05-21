@@ -1,4 +1,7 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::{
+    sync::{Arc, atomic::AtomicBool},
+    time::Duration,
+};
 
 use http::{request, response};
 use http_body_util::BodyExt;
@@ -7,8 +10,11 @@ use jsonrpsee::{
     http_client::{HttpBody, HttpRequest, HttpResponse},
 };
 use parking_lot::Mutex;
-use tokio::{sync::watch, task::JoinHandle};
-use tracing::{error, warn};
+use tokio::{
+    sync::{oneshot, watch},
+    task::JoinHandle,
+};
+use tracing::{error, info, warn};
 
 use crate::{ExecutionMode, Health, HttpClient, Probes};
 
@@ -53,28 +59,35 @@ impl ConsistentRequest {
             execution_mode,
         };
 
-        let clone = manager.clone();
+        let mut clone = manager.clone();
         tokio::spawn(async move {
-            // Error represents that the sender was dropped
-            // No need to handle
-            let mut last_attempt: Option<JoinHandle<()>> = None;
-            while let Ok(_) = req_rx.changed().await {
-                // None only occurs during startup
-                if let Some((parts, body)) = req_rx.borrow_and_update().as_ref() {
-                    let mut service = clone.clone();
-                    let parts = parts.clone();
-                    let body = body.clone();
-                    let res_sender = res_tx.clone();
-                    if let Some(handle) = last_attempt {
-                        if !handle.is_finished() {
-                            // If the last attempt is not finished, cancel it
-                            error!(target: "proxy::call", message = "aborting previous attempt to set max DA size");
-                            handle.abort();
+            let mut failed = false;
+            loop {
+                tokio::select! {
+                _ = req_rx.changed() => {
+                    let (parts, body) = {
+                        req_rx.borrow_and_update()
+                            .as_ref()
+                            .expect("value should always be Some")
+                            .clone()
+                    };
+                    failed = clone.try_send(parts.clone(), body.clone(), res_tx.clone()).await.is_err();
+                }
+                _ = async {
+                        if failed {
+                            tokio::time::sleep(Duration::from_millis(200)).await
+                        } else {
+                            std::future::pending::<()>().await
                         }
+                    } => {
+                    let (parts, body) = {
+                        req_rx.borrow_and_update()
+                            .as_ref()
+                            .expect("value should always be Some")
+                            .clone()
+                    };
+                    failed = clone.retry(parts.clone(), body.clone(), res_tx.clone()).await.is_err();
                     }
-                    last_attempt = Some(tokio::spawn(async move {
-                        service.try_send(parts, body, res_sender).await;
-                    }));
                 }
             }
         });
@@ -82,6 +95,99 @@ impl ConsistentRequest {
         manager
     }
 
+    async fn try_send(
+        &mut self,
+        parts: request::Parts,
+        body: Vec<u8>,
+        res_sender: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
+    ) -> eyre::Result<()> {
+        // We send the l2 request first, because we need to avoid the situation where the
+        // l2 fails and the builder succeeds. If this were to happen, it would bee too dangerous to
+        // return the l2 error response back to the caller, since the builder would now have an
+        // invalid state.
+        let l2_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
+        let l2_res = self.l2_client.forward(l2_req, self.method.clone()).await;
+
+        // Return the l2 response asap
+        let l2_res_parts = match l2_res {
+            Ok(t) => {
+                let (parts, body) = t.into_parts();
+                let (body_bytes, _) =
+                    http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+                Ok((parts, body_bytes))
+            }
+            Err(e) => Err(e),
+        };
+        let l2_res_is_ok = l2_res_parts.is_ok();
+        res_sender.send(Some(l2_res_parts))?;
+
+        if !l2_res_is_ok {
+            // If the l2 request failed, we don't need to send the builder request
+            return Ok(());
+        }
+
+        let builder_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
+        let builder_res = self
+            .builder_client
+            .forward(builder_req, self.method.clone())
+            .await;
+
+        if builder_res.is_err() {
+            // l2 request succeeded, but builder request failed
+            // This state can only be recovered from if either the builder is restarted
+            // or if a retry eventually goes through.
+            error!(target: "proxy::call", method = self.method, message = "inconsistent responses from builder and L2");
+            let mut execution_mode = self.execution_mode.lock();
+            if *execution_mode == ExecutionMode::Enabled {
+                *execution_mode = ExecutionMode::Disabled;
+                // Drop before aquiring health lock
+                drop(execution_mode);
+                self.has_disabled_execution_mode
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+                warn!(target: "proxy::call", message = "setting execution mode to Disabled");
+                // This health status will likely be later set back to healthy
+                // but this should be enough to trigger a new leader election.
+                self.probes.set_health(Health::PartialContent);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn retry(
+        &mut self,
+        parts: request::Parts,
+        body: Vec<u8>,
+        res_sender: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
+    ) -> eyre::Result<()> {
+        let builder_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
+        let builder_res = self
+            .builder_client
+            .forward(builder_req, self.method.clone())
+            .await;
+        if builder_res.is_ok()
+            && self
+                .has_disabled_execution_mode
+                .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            {
+                let mut execution_mode = self.execution_mode.lock();
+                *execution_mode = ExecutionMode::Enabled;
+                // Drop before aquiring health lock
+                drop(execution_mode);
+                self.has_disabled_execution_mode
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+                info!(target: "proxy::call", message = "setting execution mode to Enabled");
+
+                // TODO: do we need to set the health status back to healthy?
+                self.probes.set_health(Health::Healthy);
+            }
+        }
+
+        Ok(())
+    }
+
+    // Send a request, ensuring consistent responses from both the builder and l2 client.
     pub async fn send(
         &mut self,
         parts: request::Parts,
@@ -97,64 +203,7 @@ impl ConsistentRequest {
                 parts.to_owned(),
                 HttpBody::from(body.to_owned()),
             )),
-            Err(e) => Err(format!("error sending consistent request: {}", e).into()),
+            Err(e) => Err(format!("error sending consistent request: {e}").into()),
         }
-    }
-
-    async fn try_send(
-        &mut self,
-        parts: request::Parts,
-        body: Vec<u8>,
-        mut res_sender: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
-    ) -> eyre::Result<()> {
-        let mut manager = self.clone();
-        let l2_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
-        let builder_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
-
-        // Send the request to the builder immediately
-        let builder_handle = tokio::spawn(async move {
-            manager
-                .builder_client
-                .forward(builder_req, manager.method)
-                .await
-        });
-
-        // Await the l2 request
-        let l2_res = self.l2_client.forward(l2_req, self.method.clone()).await;
-
-        // Return the l2 response asap
-        let l2_res_parts = match l2_res {
-            Ok(t) => {
-                let (parts, body) = t.into_parts();
-                let (body_bytes, _) =
-                    http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
-                Ok((parts, body_bytes))
-            }
-            Err(e) => Err(e),
-        };
-
-        let l2_res_is_ok = l2_res_parts.is_ok();
-        res_sender.send(Some(l2_res_parts))?;
-
-        // Await the builder request
-        let builder_res = builder_handle.await?;
-
-        if builder_res.is_ok() != l2_res_is_ok {
-            // This state is unrecoverable. Messages have already been retried at this
-            // point and the only way forward is to manually restart the builder.
-            error!(target: "proxy::call", message = "inconsistent miner api responses from builder and L2");
-            let mut execution_mode = manager.execution_mode.lock();
-            if *execution_mode == ExecutionMode::Enabled {
-                *execution_mode = ExecutionMode::Disabled;
-                // Drop before aquiring health lock
-                drop(execution_mode);
-                warn!(target: "proxy::call", message = "setting execution mode to Disabled");
-                // This health status will likely be later set back to healthy
-                // but this should be enough to trigger a new leader election.
-                manager.probes.set_health(Health::PartialContent);
-            }
-        }
-
-        Ok(())
     }
 }
