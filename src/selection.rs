@@ -40,9 +40,9 @@ impl BlockSelectionPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_eips::eip4844::builder;
-    use alloy_rpc_types_engine::ExecutionPayloadV1;
-    use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4};
+    
+    
+    use op_alloy_rpc_types_engine::OpExecutionPayloadEnvelopeV4;
 
     #[test]
     fn test_gas_used_policy_select_l2_block() -> eyre::Result<()> {
