@@ -101,7 +101,7 @@ impl Args {
                 Commands::Debug { command } => match command {
                     DebugCommands::SetExecutionMode { execution_mode } => {
                         let client = DebugClient::new(debug_addr.as_str())?;
-                        let result = client.set_execution_mode(execution_mode).await.unwrap();
+                        let result = client.set_execution_mode(execution_mode).await?;
                         println!("Response: {:?}", result.execution_mode);
 
                         Ok(())
