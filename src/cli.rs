@@ -87,8 +87,9 @@ pub struct Args {
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     pub execution_mode: ExecutionMode,
-    //
-    // TODO: gas selection policy args
+
+    #[arg(long, env)]
+    pub block_selection_policy: Option<BlockSelectionPolicy>,
 }
 
 impl Args {

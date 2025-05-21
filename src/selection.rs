@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{OpExecutionPayloadEnvelope, PayloadSource};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
 pub enum BlockSelectionPolicy {
-    GasUsed { threshold: u8 },
+    GasUsed,
 }
 
 impl BlockSelectionPolicy {
@@ -12,12 +14,12 @@ impl BlockSelectionPolicy {
         l2_payload: OpExecutionPayloadEnvelope,
     ) -> (OpExecutionPayloadEnvelope, PayloadSource) {
         match self {
-            BlockSelectionPolicy::GasUsed { threshold } => {
+            BlockSelectionPolicy::GasUsed => {
                 let builder_gas = builder_payload.gas_used() as f64;
                 let l2_gas = l2_payload.gas_used() as f64;
 
-                // TODO: if builder gas is x% less than l2 gas, select l2 payload
-                if builder_gas < (1.0 - *threshold as f64 / 100_f64) * l2_gas {
+                // If the builder gas
+                if builder_gas < l2_gas * 0.5 {
                     (l2_payload, PayloadSource::L2)
                 } else {
                     (builder_payload, PayloadSource::Builder)
