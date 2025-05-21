@@ -77,13 +77,13 @@ impl ConsistentRequest {
                             std::future::pending::<()>().await
                         }
                     } => {
-                    let (parts, body) = {
-                        req_rx.borrow_and_update()
-                            .as_ref()
-                            .expect("value should always be Some")
-                            .clone()
-                    };
-                    failed = clone.send_to_builder(parts.clone(), body.clone(), ).await.is_err();
+                        let (parts, body) = {
+                            req_rx.borrow()
+                                .as_ref()
+                                .expect("value should always be Some")
+                                .clone()
+                        };
+                        failed = clone.send_to_builder(parts.clone(), body.clone()).await.is_err();
                     }
                 }
             }
