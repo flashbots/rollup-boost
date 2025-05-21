@@ -90,9 +90,7 @@ pub struct Args {
 
 impl Args {
     pub async fn run(self) -> eyre::Result<()> {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .expect("Failed to install TLS ring CryptoProvider");
+        let _ = rustls::crypto::ring::default_provider().install_default();
 
         let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
 
