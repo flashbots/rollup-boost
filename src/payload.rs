@@ -128,7 +128,7 @@ impl PayloadVersion {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayloadSource {
     L2,
     Builder,
