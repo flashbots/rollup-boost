@@ -1,7 +1,6 @@
 use crate::client::auth::AuthLayer;
 use crate::server::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
-use futures::FutureExt;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper_rustls::HttpsConnector;
@@ -11,20 +10,13 @@ use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::http_client::HttpBody;
 use opentelemetry::trace::SpanKind;
-use std::pin::Pin;
-use std::time::Duration;
-use tower::retry::Policy;
-use tower::{
-    Service as _, ServiceBuilder, ServiceExt,
-    retry::{Retry, RetryLayer},
-};
+use tower::{Service as _, ServiceBuilder, ServiceExt};
 use tower_http::decompression::{Decompression, DecompressionLayer};
 use tracing::{debug, error, instrument};
 
 use super::auth::Auth;
 
-pub type HttpClientService =
-    Retry<Delay, Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>>;
+pub type HttpClientService = Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>;
 
 #[derive(Clone, Debug)]
 pub struct HttpClient {
@@ -46,10 +38,6 @@ impl HttpClient {
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
         let client = ServiceBuilder::new()
-            .layer(RetryLayer::new(Delay {
-                delay: Duration::from_millis(200),
-                retries: 10,
-            }))
             .layer(DecompressionLayer::new())
             .layer(AuthLayer::new(secret))
             .service(client);
@@ -94,43 +82,6 @@ impl HttpClient {
             parts,
             HttpBody::from(body_bytes),
         ))
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Delay {
-    delay: Duration,
-    retries: u64,
-}
-
-impl<Req, Res, E> Policy<Req, Res, E> for Delay {
-    type Future = Pin<Box<dyn Future<Output = Self> + Send + 'static>>;
-
-    fn retry(&self, _req: &Req, res: Result<&Res, &E>) -> Option<Self::Future> {
-        match res {
-            Ok(_) => None,
-            Err(_) => {
-                if self.retries > 0 {
-                    let clone = self.clone();
-                    Some(
-                        async move {
-                            tokio::time::sleep(clone.delay).await;
-                            Delay {
-                                delay: clone.delay,
-                                retries: clone.retries - 1,
-                            }
-                        }
-                        .boxed(),
-                    )
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    fn clone_request(&self, _req: &Req) -> Option<Req> {
-        None
     }
 }
 

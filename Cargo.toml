@@ -18,7 +18,7 @@ jsonrpsee = { version = "0.24", features = ["server", "http-client", "macros"] }
 moka = { version = "0.12.10", features = ["future"] }
 http = "1.1.0"
 dotenv = "0.15.0"
-tower = { version = "0.4.13", features = ["retry"] }
+tower = "0.4.13"
 tower-http = { version = "0.5.2", features = [
     "decompression-full",
     "sensitive-headers",

@@ -1,21 +1,17 @@
 use crate::client::http::HttpClient;
 use crate::consistent_request::ConsistentRequest;
 use crate::server::PayloadSource;
-use crate::{ExecutionMode, Health, Probes};
+use crate::{ExecutionMode, Probes};
 use alloy_rpc_types_engine::JwtSecret;
-use http::request::{self};
-use http::{Uri, response};
+use http::Uri;
 use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
-use tokio::sync::watch;
-use tokio::task::JoinHandle;
 use tower::{Layer, Service};
-use tracing::{error, info, warn};
+use tracing::info;
 
 const ENGINE_METHOD: &str = "engine_";
 
@@ -88,14 +84,12 @@ where
             self.execution_mode.clone(),
         );
 
-        let service = ProxyService {
+        ProxyService {
             inner,
             l2_client,
             builder_client,
             set_max_da_size_manager,
-        };
-
-        service
+        }
     }
 }
 
