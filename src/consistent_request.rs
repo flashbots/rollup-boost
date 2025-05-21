@@ -3,6 +3,7 @@ use std::{
     time::Duration,
 };
 
+use eyre::bail;
 use http::{request, response};
 use http_body_util::BodyExt;
 use jsonrpsee::{
@@ -86,7 +87,7 @@ impl ConsistentRequest {
                             .expect("value should always be Some")
                             .clone()
                     };
-                    failed = clone.retry(parts.clone(), body.clone(), res_tx.clone()).await.is_err();
+                    failed = clone.retry_builder(parts.clone(), body.clone(), res_tx.clone()).await.is_err();
                     }
                 }
             }
@@ -132,29 +133,35 @@ impl ConsistentRequest {
             .forward(builder_req, self.method.clone())
             .await;
 
-        if builder_res.is_err() {
-            // l2 request succeeded, but builder request failed
-            // This state can only be recovered from if either the builder is restarted
-            // or if a retry eventually goes through.
-            error!(target: "proxy::call", method = self.method, message = "inconsistent responses from builder and L2");
-            let mut execution_mode = self.execution_mode.lock();
-            if *execution_mode == ExecutionMode::Enabled {
-                *execution_mode = ExecutionMode::Disabled;
-                // Drop before aquiring health lock
-                drop(execution_mode);
-                self.has_disabled_execution_mode
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                warn!(target: "proxy::call", message = "setting execution mode to Disabled");
-                // This health status will likely be later set back to healthy
-                // but this should be enough to trigger a new leader election.
-                self.probes.set_health(Health::PartialContent);
+        match builder_res {
+            Ok(_) => {
+                self.reset_execution_mode();
+                Ok(())
+            }
+            Err(e) => {
+                // l2 request succeeded, but builder request failed
+                // This state can only be recovered from if either the builder is restarted
+                // or if a retry eventually goes through.
+                error!(target: "proxy::call", method = self.method, message = "inconsistent responses from builder and L2");
+                let mut execution_mode = self.execution_mode.lock();
+                if *execution_mode == ExecutionMode::Enabled {
+                    *execution_mode = ExecutionMode::Disabled;
+                    // Drop before aquiring health lock
+                    drop(execution_mode);
+                    self.has_disabled_execution_mode
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                    warn!(target: "proxy::call", message = "setting execution mode to Disabled");
+                    // This health status will likely be later set back to healthy
+                    // but this should be enough to trigger a new leader election.
+                    self.probes.set_health(Health::PartialContent);
+                };
+
+                bail!("failed to send request to builder: {e}");
             }
         }
-
-        Ok(())
     }
 
-    async fn retry(
+    async fn retry_builder(
         &mut self,
         parts: request::Parts,
         body: Vec<u8>,
@@ -165,26 +172,31 @@ impl ConsistentRequest {
             .builder_client
             .forward(builder_req, self.method.clone())
             .await;
-        if builder_res.is_ok()
-            && self
-                .has_disabled_execution_mode
-                .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            {
-                let mut execution_mode = self.execution_mode.lock();
-                *execution_mode = ExecutionMode::Enabled;
-                // Drop before aquiring health lock
-                drop(execution_mode);
-                self.has_disabled_execution_mode
-                    .store(false, std::sync::atomic::Ordering::SeqCst);
-                info!(target: "proxy::call", message = "setting execution mode to Enabled");
 
-                // TODO: do we need to set the health status back to healthy?
-                self.probes.set_health(Health::Healthy);
+        match builder_res {
+            Ok(_) => {
+                self.reset_execution_mode();
+                Ok(())
+            }
+            Err(e) => {
+                bail!("failed to retry request to builder: {e}");
             }
         }
+    }
 
-        Ok(())
+    fn reset_execution_mode(&mut self) {
+        if self
+            .has_disabled_execution_mode
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            let mut execution_mode = self.execution_mode.lock();
+            *execution_mode = ExecutionMode::Enabled;
+            // Drop before aquiring health lock
+            drop(execution_mode);
+            self.has_disabled_execution_mode
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            info!(target: "proxy::call", message = "setting execution mode to Enabled");
+        }
     }
 
     // Send a request, ensuring consistent responses from both the builder and l2 client.
