@@ -655,7 +655,7 @@ impl RollupBoostServer {
             self.probes.set_health(Health::Healthy);
 
             if let Ok(Some(payload)) = builder_payload {
-                if self.execution_mode().is_dry_run() {
+                if execution_mode.is_dry_run() {
                     (l2_payload, PayloadSource::L2)
                 } else {
                     (payload, PayloadSource::Builder)
