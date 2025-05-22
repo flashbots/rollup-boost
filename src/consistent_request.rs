@@ -92,7 +92,6 @@ impl ConsistentRequest {
     }
 
     /// This function may be cancelled at any time from an incoming request.
-    /// We should ensure we're in a valid state at all await points.
     async fn send_with_retry_cancel_safe(
         &mut self,
         parts: request::Parts,
@@ -102,7 +101,9 @@ impl ConsistentRequest {
         // We send the l2 request first, because we need to avoid the situation where the
         // l2 fails and the builder succeeds. If this were to happen, it would be too dangerous to
         // return the l2 error response back to the caller, since the builder would now have an
-        // invalid state. We can return early if the l2 request fails.
+        // invalid state. We can return early if the l2 request fails. Note we're specifically
+        // spawning new tasks here to avoid any issues with cancellation. We should ensure we're
+        // in a valid state at all await points.
         let mut manager = self.clone();
         let parts_clone = parts.clone();
         let body_clone = body.clone();
@@ -141,17 +142,20 @@ impl ConsistentRequest {
         let l2_res = self.l2_client.forward(l2_req, self.method.clone()).await;
 
         // Return the l2 response asap
-        let (res, l2_res_parts) = match l2_res {
+        match l2_res {
             Ok(t) => {
                 let (parts, body) = t.into_parts();
                 let (body_bytes, _) =
                     http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
-                (Ok(()), Ok((parts, body_bytes)))
+                res_tx.send(Some(Ok((parts, body_bytes))))?;
+                Ok(())
             }
-            Err(e) => (Err(eyre!("failed to send request to l2: {e}")), Err(e)),
-        };
-        res_tx.send(Some(l2_res_parts))?;
-        res
+            Err(e) => {
+                let msg = format!("failed to send request to l2: {e}");
+                res_tx.send(Some(Err(e)))?;
+                Err(eyre!(msg))
+            }
+        }
     }
 
     async fn send_to_builder(&mut self, parts: request::Parts, body: Vec<u8>) -> eyre::Result<()> {
