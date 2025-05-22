@@ -591,10 +591,11 @@ impl RollupBoostServer {
         version: Version,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
         let l2_fut = self.l2_client.get_payload(payload_id, version);
+        let execution_mode = self.execution_mode().clone();
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
-        if self.execution_mode().is_disabled() {
+        if execution_mode.is_disabled() {
             return match l2_fut.await {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
