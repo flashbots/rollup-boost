@@ -1,5 +1,5 @@
 use crate::{
-    HealthHandle,
+    FlashblocksService, HealthHandle,
     client::rpc::RpcClient,
     debug_api::DebugServer,
     probe::{Health, Probes},
@@ -28,7 +28,7 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use tokio::task::JoinHandle;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 const CACHE_SIZE: u64 = 100;
 
@@ -125,6 +125,7 @@ pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<RpcClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
+    pub flashblocks_client: Option<Arc<FlashblocksService>>,
     health_handle: JoinHandle<()>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
@@ -138,6 +139,7 @@ impl RollupBoostServer {
         probes: Arc<Probes>,
         health_check_interval: u64,
         max_unsafe_interval: u64,
+        flashblocks_client: Option<FlashblocksService>,
     ) -> Self {
         let health_handle = HealthHandle {
             probes: probes.clone(),
@@ -152,6 +154,7 @@ impl RollupBoostServer {
             builder_client: Arc::new(builder_client),
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
+            flashblocks_client: flashblocks_client.map(Arc::new),
             probes,
             health_handle,
         }
@@ -333,6 +336,12 @@ impl EngineApiServer for RollupBoostServer {
                             span.id(),
                         )
                         .await;
+
+                    if let Some(flashblocks_client) = &self.flashblocks_client {
+                        if let Some(payload_id) = l2_response.payload_id {
+                            flashblocks_client.set_current_payload_id(payload_id).await;
+                        }
+                    }
                 }
 
                 return Ok(l2_response);
@@ -360,7 +369,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v3(
@@ -408,7 +419,9 @@ impl EngineApiServer for RollupBoostServer {
         fields(
             otel.kind = ?SpanKind::Server,
             %payload_id,
-            payload_source
+            payload_source,
+            gas_delta,
+            tx_count_delta,
         )
     )]
     async fn get_payload_v4(
@@ -468,6 +481,39 @@ impl OpExecutionPayloadEnvelope {
         match self {
             OpExecutionPayloadEnvelope::V3(_) => Version::V3,
             OpExecutionPayloadEnvelope::V4(_) => Version::V4,
+        }
+    }
+
+    pub fn transactions(&self) -> &[Bytes] {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                &v3.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                &v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+            }
+        }
+    }
+
+    pub fn gas_used(&self) -> u64 {
+        match self {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.gas_used
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .gas_used
+            }
         }
     }
 }
@@ -635,8 +681,28 @@ impl RollupBoostServer {
                 return RpcResult::Ok(None);
             }
 
-            // Get payload and validate with the local l2 client
-            let payload = self.builder_client.get_payload(payload_id, version).await?;
+            // Use the flashblocks payload if available
+            let payload = if let Some(flashblocks_client) = &self.flashblocks_client {
+                match flashblocks_client.get_best_payload(version).await {
+                    Ok(payload) => payload,
+                    Err(e) => {
+                        error!(message = "error getting flashblocks payload", "error" = %e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Fallback to the payload from the builder if no flashblocks payload is available
+            let payload = if let Some(payload) = payload {
+                info!(message = "using flashblocks payload");
+                // TODO: add flashblocks as payload source for tracing and metrics
+                payload
+            } else {
+                self.builder_client.get_payload(payload_id, version).await?
+            };
+
             let _ = self
                 .l2_client
                 .new_payload(NewPayload::from(payload.clone()))
@@ -654,6 +720,14 @@ impl RollupBoostServer {
             self.probes.set_health(Health::Healthy);
 
             if let Ok(Some(payload)) = builder_payload {
+                tracing::Span::current().record(
+                    "gas_delta",
+                    (payload.gas_used() - l2_payload.gas_used()).to_string(),
+                );
+                tracing::Span::current().record(
+                    "tx_count_delta",
+                    (payload.transactions().len() - l2_payload.transactions().len()).to_string(),
+                );
                 if self.execution_mode().is_dry_run() {
                     (l2_payload, PayloadSource::L2)
                 } else {
@@ -814,6 +888,7 @@ mod tests {
                 probes,
                 60,
                 5,
+                None,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();

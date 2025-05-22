@@ -27,3 +27,6 @@ pub use probe::*;
 
 mod health;
 pub use health::*;
+
+mod flashblocks;
+pub use flashblocks::*;
