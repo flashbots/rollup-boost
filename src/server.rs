@@ -591,7 +591,7 @@ impl RollupBoostServer {
         version: Version,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
         let l2_fut = self.l2_client.get_payload(payload_id, version);
-        let execution_mode = self.execution_mode().clone();
+        let execution_mode = self.execution_mode();
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
