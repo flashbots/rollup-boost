@@ -324,4 +324,24 @@ mod tests {
 
         assert!(t2 >= t1 + 1,);
     }
+
+    #[tokio::test]
+    async fn tick_matches_system_clock() {
+        let mut ts = MonotonicTimestamp::new();
+        let unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+
+        assert_eq!(ts.last_unix, unix);
+
+        std::thread::sleep(Duration::from_secs(5));
+
+        let t1 = ts.tick();
+        let unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        assert_eq!(t1, unix);
+    }
 }
