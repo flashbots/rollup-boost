@@ -58,7 +58,7 @@ run() {
     contender setup -p $PREFUNDED_PRIV_KEY "/tmp/scenario.toml" -r $ROLLUP_BOOST_SOCKET --optimism
 
     # Run the scenario on the builder
-    contender spam -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
+    contender spam --tps 50 -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
 }
 
 clean() {
