@@ -41,15 +41,12 @@ impl HealthHandle {
                     }
                 };
 
-                timestamp.tick();
+                let t = timestamp.tick();
 
-                if timestamp
-                    .last_unix
-                    .checked_sub(latest_unsafe.header.timestamp)
-                    .unwrap_or(0)
-                    > self.max_unsafe_interval
+                if t.saturating_sub(latest_unsafe.header.timestamp)
+                    .gt(&self.max_unsafe_interval)
                 {
-                    warn!(target: "rollup_boost::health", curr_unix = %timestamp.last_unix, unsafe_unix = %latest_unsafe.header.timestamp, "Unsafe block timestamp is too old updating health status");
+                    warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %latest_unsafe.header.timestamp, "Unsafe block timestamp is too old updating health status");
                     self.probes.set_health(Health::PartialContent);
                 } else {
                     self.probes.set_health(Health::Healthy);
@@ -76,6 +73,12 @@ pub struct MonotonicTimestamp {
     pub last_instant: Instant,
 }
 
+impl Default for MonotonicTimestamp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MonotonicTimestamp {
     pub fn new() -> Self {
         let last_unix = SystemTime::now()
@@ -91,7 +94,7 @@ impl MonotonicTimestamp {
 
     fn tick(&mut self) -> u64 {
         let elapsed = self.last_instant.elapsed().as_secs();
-        self.last_unix = self.last_unix + elapsed;
+        self.last_unix += elapsed;
         self.last_instant = Instant::now();
         self.last_unix
     }
