@@ -13,9 +13,12 @@ allow = [
 ]
 confidence-threshold = 0.8
 
-# This section is considered when running `cargo deny check bans`.
-# More documentation about the 'bans' section can be found here:
-# https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
+[advisories]
+ignore = [
+  # paste crate is unmaintained
+  "RUSTSEC-2024-0436",
+]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "warn"
