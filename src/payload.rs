@@ -22,7 +22,7 @@ impl OpExecutionPayloadEnvelope {
             OpExecutionPayloadEnvelope::V4(_) => PayloadVersion::V4,
         }
     }
-
+  
     pub fn gas_used(&self) -> u64 {
         match self {
             OpExecutionPayloadEnvelope::V3(payload) => {

@@ -37,7 +37,7 @@ pub struct Args {
     pub max_unsafe_interval: u64,
 
     /// Host to run the server on
-    #[arg(long, env, default_value = "0.0.0.0")]
+    #[arg(long, env, default_value = "127.0.0.1")]
     pub rpc_host: String,
 
     /// Port to run the server on
@@ -53,7 +53,7 @@ pub struct Args {
     pub metrics: bool,
 
     /// Host to run the metrics server on
-    #[arg(long, env, default_value = "0.0.0.0")]
+    #[arg(long, env, default_value = "127.0.0.1")]
     pub metrics_host: String,
 
     /// Port to run the metrics server on
@@ -94,9 +94,7 @@ pub struct Args {
 
 impl Args {
     pub async fn run(self) -> eyre::Result<()> {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .expect("Failed to install TLS ring CryptoProvider");
+        let _ = rustls::crypto::ring::default_provider().install_default();
 
         let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
 
@@ -107,7 +105,7 @@ impl Args {
                 Commands::Debug { command } => match command {
                     DebugCommands::SetExecutionMode { execution_mode } => {
                         let client = DebugClient::new(debug_addr.as_str())?;
-                        let result = client.set_execution_mode(execution_mode).await.unwrap();
+                        let result = client.set_execution_mode(execution_mode).await?;
                         println!("Response: {:?}", result.execution_mode);
 
                         Ok(())
