@@ -42,7 +42,6 @@ impl HealthHandle {
                 };
 
                 let t = timestamp.tick();
-
                 if t.saturating_sub(latest_unsafe.header.timestamp)
                     .gt(&self.max_unsafe_interval)
                 {
@@ -67,9 +66,10 @@ impl HealthHandle {
 /// - It tracks elapsed time using `Instant` to ensure monotonic progression.
 /// - It produces a synthetic wall-clock timestamp that won't regress.
 pub struct MonotonicTimestamp {
-    /// The last monotonic time reference.
-    pub last_unix: u64,
     /// The last known UNIX timestamp in seconds.
+    pub last_unix: u64,
+
+    /// The last monotonic time reference.
     pub last_instant: Instant,
 }
 
