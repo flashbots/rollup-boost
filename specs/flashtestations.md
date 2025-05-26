@@ -1,4 +1,4 @@
- Flashtestations: Transparent Onchain TEE Verification and Flashtestation Registry Protocol
+ Flashtestations: Transparent Onchain TEE Verification and DCAP Attestation Registry Protocol
 
 *Authors: [fnerdman](https://github.com/fnerdman), [Melville](https://github.com/Melvillian), [dmarz](https://github.com/dmarzzz), [Ruteri](https://github.com/Ruteri)*
 
@@ -35,7 +35,7 @@
     - [Runtime Authorization](#runtime-authorization)
     - [Maintenance: Handling Changing Endorsements](#maintenance-handling-changing-endorsements)
     - [Gas Cost Considerations and Future Optimizations](#gas-cost-considerations-and-future-optimizations)
-  - [Offchain TEE Address Verification](#offchain-tee-address-verification)
+  - [Offchain TEE Verification](#offchain-tee-verification)
     - [Example Verification Flow](#example-verification-flow)
   - [Transparency Log](#transparency-log)
     - [Purpose and Benefits](#purpose-and-benefits)
@@ -51,10 +51,10 @@
 
 Trusted Execution Environments (TEEs) offer a promising approach for running confidential workloads with hardware-enforced security guarantees. However, integrating TEEs with blockchain applications presents significant challenges: How can smart contracts verify that they're interacting with authentic TEE services running expected code? How can this verification scale efficiently onchain? How can we maintain an up-to-date registry of validated services as hardware security requirements evolve?
 
-Flashtestations addresses these challenges by providing a comprehensive onchain protocol for TEE verification, address registration, and transparent record-keeping. The protocol enables:
+Flashtestations addresses these challenges by providing a comprehensive onchain protocol for TEE verification, TEE-controlled address registration, and transparent record-keeping. The protocol enables:
 
 1. Onchain verification of Intel TDX attestations against current Intel endorsements
-2. Maintenance of a curated Registry of TEE owned Ethereum addresses associated with their respective DCAP Attestations
+2. Maintenance of a curated Registry of TEE-controlled addresses associated with their respective DCAP Attestations
 3. Policy-based authorization for TEE services to securely interact with smart contracts
 4. Transparent logging of all attestation events and endorsement changes
 
@@ -118,13 +118,13 @@ Within the Flashtestations specification, the protocol architecture consists of 
           │                              └──────────┼──────────┘
           │                                         │
 ┌─────────▼───────────┐                             ▼
-│ Policy Registry     │                  ┌─────────────────────────┐
-│                     │  isValid         │ Flashtestation Registry │
-│ ┌─────────────────┐ │  Query           │                         │
-│ │ workloadId[]    │ │ ◄───────────────►│ (address, attestation)  │
-│ │ per policyId    │ │                  │ mappings                │
-│ └─────────────────┘ │                  │                         │
-│                     │                  └─────────────────────────┘
+│ Policy Registry     │                  ┌───────────────────────────┐
+│                     │  isValid         │ Flashtestation Registry   │
+│ ┌─────────────────┐ │  Query           │                           │
+│ │ workloadId[]    │ │ ◄───────────────►│ (teeAddress, attestation) │
+│ │ per policyId    │ │                  │ mappings                  │
+│ └─────────────────┘ │                  │                           │
+│                     │                  └───────────────────────────┘
 └─────────────────────┘
 ```
 
@@ -157,7 +157,7 @@ The terms in this section are used consistently throughout the specification doc
 
 **Measurement Registers**: Hardware-enforced registers within the TEE (MRTD, RTMRs, MROWNER, etc.) that capture cryptographic hashes of code, data, and configuration loaded into the environment. These registers form the basis for workload identity.
 
-**REPORTDATA**: A 64-byte field in the attestation quote containing user-defined data. In Flashtestations, this contains a the public part of an Ethereum address key pair that the TEE workload controls.
+**REPORTDATA**: A 64-byte field in the attestation quote containing user-defined data. In Flashtestations, this contains the public part of a TEE-controlled address key pair that the TEE workload controls.
 
 **Quote Enclave (QE)**: Intel-provided enclave responsible for signing attestation quotes using Intel-provisioned keys. The QE creates the cryptographic binding between measurement registers and the attestation signature.
 
@@ -169,19 +169,21 @@ The terms in this section are used consistently throughout the specification doc
 
 **XFAM (Extended Features and Attributes Mask)**: A hardware register that indicates which CPU extended features (such as specific instruction sets or security capabilities) are enabled and available for use within the Trust Domain.
 
+**TEE-controlled address**: An Ethereum address whose private key was generated inside a TEE and never leaves the TEE boundaries. The TEE uses this address to authenticate itself in onchain transactions, providing cryptographic proof of TEE control over the address.
+
 ### Flashtestations Protocol Components
 
 **`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived as keccak256(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID || TDAttributes || XFAM).
 
 **`Endorsement Version`**: The specific version of Intel DCAP endorsements at a point in time. Endorsements change periodically as Intel releases updates or discovers vulnerabilities in hardware or firmware.
 
-**Flashtestation Registry**: The onchain data structure that tracks a TEE owned Ethereum addresses to valid DCAP attestation mapping. Implemented as the FlashtestationRegistry contract.
+**Flashtestation Registry**: The onchain data structure that maintains a 1:1 mapping from TEE-controlled addresses to valid DCAP attestations. Implemented as the FlashtestationRegistry contract.
 
 **Policy Registry**: A mapping system that groups related workload identities under a single policy identifier, enabling flexible authorization rules without modifying consumer contracts.
 
 **Transparency Log**: The onchain event-based system that records all attestation verifications, registry changes, and endorsement updates for auditability. Implemented through emitted blockchain events rather than as a separate logging service.
 
-**Onchain Verifier**: The smart contract component (using Automata's DCAP attestation system) that validates TDX attestation quotes against current Intel DCAP endorsements and interacts with the Flashtestation Registry to register addresses.
+**Onchain Verifier**: The smart contract component (using Automata's DCAP attestation system) that validates TDX attestation quotes against current Intel DCAP endorsements and interacts with the Flashtestation Registry to register TEE-controlled addresses.
 
 **Workload**: The specific software running inside a TEE. Its identity is derived from measurement registers that contain cryptographic hashes of loaded code and configuration.
 
@@ -191,7 +193,7 @@ The terms in this section are used consistently throughout the specification doc
 
 ### Operational Terms
 
-**Registration**: The process of adding an Ethereum address to the registry after successful attestation verification.
+**Registration**: The process of adding a TEE-controlled address to the registry after successful attestation verification.
 
 **Endorsement Revocation**: The process of marking attestations as outdated when Intel updates its security requirements.
 
@@ -317,34 +319,38 @@ The attestation process follows these steps:
 
 ### Onchain DCAP Attestation
 
-The following code sample illustrates how DCAP attestation verification is performed onchain, and how the key components (workloadId, quote, and Ethereum address) are extracted and registered in the Flashtestations registry:
+The following code sample illustrates how DCAP attestation verification is performed onchain, and how the key components (workloadId, quote, and TEE-controlled address) are extracted and registered in the Flashtestations registry:
 
 ```solidity
-// Sample interaction with Automata DCAP Attestation
-function registerTEEService(bytes calldata rawQuote) {
+// External function - anyone can submit a TEE attestation for verification
+function registerTEEService(bytes calldata rawQuote) external {
     // Verify the DCAP quote onchain using Automata's verifier
     // Note: The verifier internally checks the quote against current endorsements
     bool isValid = IDCAPAttestation(DCAP_ATTESTATION_CONTRACT).verifyAndAttestOnChain(rawQuote);
     require(isValid, "Invalid DCAP quote");
     
-    // Extract and convert address from quote's report data
-    address ethAddress = extractAddressFromQuote(rawQuote);
+    // Extract TEE-controlled address from quote's report data
+    address teeAddress = extractAddressFromQuote(rawQuote);
+    
+    // Critical security check: Only the TEE-controlled address can register itself
+    require(msg.sender == teeAddress, "Only the TEE-controlled address can register itself");
     
     // Extract workload identity from quote measurements
     bytes32 workloadId = extractWorkloadIdFromQuote(rawQuote);
     
-    // Register the address in the registry with the raw quote for future verification
-    IFlashtestationRegistry(REGISTRY_CONTRACT).addAddress(workloadId, ethAddress, rawQuote);
+    // Internal call to update the registry after successful verification
+    _recordValidAttestation(workloadId, teeAddress, rawQuote);
     
-    emit TEEServiceRegistered(workloadId, ethAddress, rawQuote);
+    emit TEEServiceRegistered(workloadId, teeAddress, rawQuote);
 }
 ```
 
 This implementation highlights several key aspects:
 1. The DCAP attestation is verified using Automata's onchain verifier
 2. The workloadId is derived from the quote's measurement registers
-3. The Ethereum address is extracted from the quote's report data
-4. The extracted information and raw quote are registered in the registry
+3. The TEE-controlled address is extracted from the quote's report data
+4. Critical security validation ensures only the TEE-controlled address can register itself
+5. The extracted information and raw quote are registered in the registry
 
 ### Workload Identity Derivation
 
@@ -370,7 +376,7 @@ All of these values are captured in the workload identity hash, ensuring that an
 
 ## Flashtestation Registry
 
-The Flashtestation Registry is a core component of Flashtestations that acts as a bookkeeper for tracking which Ethereum addresses have successfully passed attestation within a Trusted Execution Environment (TEE). It's purpose is to provide a data structure optimistically filled with up-to-date attestation data. In itself it does not provide any filtering in regards to the content of the TEEs.
+The Flashtestation Registry is a core component of Flashtestations that maintains a 1:1 mapping between TEE-controlled addresses and their TEE attestations. It acts as a bookkeeper for tracking which TEE-controlled addresses have successfully passed attestation verification. Its purpose is to provide a data structure optimistically filled with up-to-date attestation data. In itself it does not provide any filtering in regards to the content of the TEEs.
 
 ### Core Concepts
 
@@ -383,8 +389,7 @@ At its most abstract level within this specification, the Flashtestation Registr
 
 The registry operates on these key abstractions:
 
-
-1. **Ethereum Address**: The public key extracted from the attestation's report data field ([TDReport.ReportData](#tdreport)), which will be used to interact with onchain contracts.
+1. **TEE-controlled address**: The address extracted from the attestation's report data field ([TDReport.ReportData](#tdreport)), whose private key was generated inside the TEE and is used to interact with onchain contracts.
 
 2. **Parsed Attestation**: A struct containing the verified and attested data. It contains the quote in its raw form as well as extracted values which are often used and required such as the workloadId.
 
@@ -394,11 +399,11 @@ The registry operates on these key abstractions:
 
 ### Key Relationship Model
 
-The Flashtestation Registry maintains a straightforward relationship between these entities:
+The Flashtestation Registry maintains a 1:1 mapping between these entities:
 
-1. The TEE owned Ethereum address is the key element in the mapping to the parsed attestation struct
-2. Each address points to exactly one attestation struct, the data element for an address can be overwritten with new valid attestations
-3. The registry will only accept adding an attestation where the msg.sender matches the quote report data
+1. The TEE-controlled address is the key element in the 1:1 mapping to the parsed attestation struct
+2. Each address maps to exactly one attestation struct, the data element for an address can be overwritten with new valid attestations
+3. The registry will only accept adding an attestation where the msg.sender matches the quote report data (proving control of the address)
 4. The registry tracks whether each entry is currently a valid attestation or has been marked as outdated
 
 ### Fundamental Operations
@@ -410,11 +415,11 @@ The Flashtestation Registry provides these core operations:
 The most frequent operation is checking if an address is valid for a specific workload:
 
 ```
-function isValidWorkload(workloadId, address) → boolean
+function isValidWorkload(workloadId, teeAddress) → boolean
 ```
 
 This function operates by:
-1. Retrieving the stored attestation struct for the given address
+1. Retrieving the stored attestation struct for the given TEE-controlled address
 2. Extracting the workloadId from that attestation
 3. Comparing it with the provided workloadId parameter
 4. Returning true if they match and the attestation has not been marked as outdated
@@ -426,24 +431,25 @@ This operation must be highly gas-efficient as it may run on every block.
 When an attestation successfully passes verification:
 
 ```
-function addAddress(workloadId, address, quote)
+function _recordValidAttestation(workloadId, teeAddress, quote) internal
 ```
 
-This operation:
-1. Records that this address has been validated for this workload
+This internal operation:
+1. Records that this TEE-controlled address has been validated for this workload
 2. Stores the raw attestation quote for future reference and verification
-3. If the address was previously registered for this workloadId, the old entry is replaced
+3. If the address was previously registered, the old entry is replaced
+4. Can only be called internally after successful attestation verification and sender validation
 
 #### 3. Attestation Verification
 
 To verify if an attestation is still valid against current endorsements:
 
 ```
-function verifyAttestation(address) → boolean
+function verifyAttestation(teeAddress) → boolean
 ```
 
 This operation:
-1. Retrieves the stored attestation quote for the address
+1. Retrieves the stored attestation quote for the TEE-controlled address
 2. Verifies it against current Intel endorsements
 3. If verification fails, marks the address as outdated in the registry
 4. Returns the verification result
@@ -453,14 +459,14 @@ This operation:
 To retrieve the stored attestation quote for a specific address:
 
 ```
-function getQuoteForAddress(address) → bytes
+function getQuoteForAddress(teeAddress) → bytes
 ```
 
-This operation returns the raw attestation quote that was used to register the address, enabling offline verification or additional analysis of the attestation data.
+This operation returns the raw attestation quote that was used to register the TEE-controlled address, enabling offline verification or additional analysis of the attestation data.
 
 ### Key Requirements
 
-1. **Simple Storage Model**: The registry maintains a simple mapping between addresses, workloadIds, and their attestation quotes without tracking complex endorsement relationships.
+1. **Simple Storage Model**: The registry maintains a simple mapping between TEE-controlled addresses, workloadIds, and their attestation quotes without tracking complex endorsement relationships.
 
 2. **Individual Verification**: Instead of batch removal based on endorsement bundles, attestations are verified individually when needed, allowing for more granular management.
 
@@ -476,11 +482,11 @@ The attestation verification endpoint provides a mechanism to validate stored at
 
 2. **Simple Management**: When Intel updates its endorsements, the system automatically adapts during verification.
 
-3. **Smooth Transitions**: Addresses are marked as outdated only when their verification actually fails.
+3. **Smooth Transitions**: TEE-controlled addresses are marked as outdated only when their verification actually fails.
 
 The verification process works as follows:
 
-1. The endpoint accepts an address as input
+1. The endpoint accepts a TEE-controlled address as input
 2. It retrieves the stored attestation quote for that address
 3. It runs the verification against current Intel endorsements
 4. If verification fails, it marks the address as outdated in the registry
@@ -508,7 +514,7 @@ The Policy layer provides these operations:
 
 ```
 // Check if an address is allowed under any workload in a policy
-function isAllowedPolicy(policyId, address) → boolean
+function isAllowedPolicy(policyId, teeAddress) → boolean
 
 // Governance operations
 function addWorkloadToPolicy(policyId, workloadId)
@@ -518,11 +524,11 @@ function removeWorkloadFromPolicy(policyId, workloadId)
 The key function `isAllowedPolicy` checks if an address is valid for ANY of the workloads in the policy group. Conceptually:
 
 ```
-function isAllowedPolicy(policyId, address) {
+function isAllowedPolicy(policyId, teeAddress) {
   workloadIds = getWorkloadsForPolicy(policyId);
   
   for each workloadId in workloadIds {
-    if (IFlashtestationRegistry(REGISTRY_CONTRACT).isValidWorkload(workloadId, address)) {
+    if (IFlashtestationRegistry(REGISTRY_CONTRACT).isValidWorkload(workloadId, teeAddress)) {
       return true;
     }
   }
@@ -544,13 +550,14 @@ The complete verification flow connects attestation, the registry, and the polic
 2. **Verification Service**: An onchain verification service validates this attestation
    - Checks cryptographic signatures
    - Validates against current Intel endorsements ([DCAPEndorsements](#dcapendorsements))
-   - Extracts the Ethereum address and workload measurements
+   - Extracts the TEE-controlled address and workload measurements
+   - Validates that msg.sender matches the extracted TEE-controlled address
 
-3. **Registration**: Upon successful verification, the address is registered
+3. **Registration**: Upon successful verification and sender validation, the address is registered
    ```
-   registry.addAddress(derivedWorkloadId, extractedAddress, rawQuote)
+   _recordValidAttestation(derivedWorkloadId, teeAddress, rawQuote)
    ```
-   - If the address was previously registered for this workloadId, the old entry is replaced
+   - If the address was previously registered, the old entry is replaced
 
 ### Runtime Authorization
 
@@ -569,7 +576,7 @@ When a contract needs to verify if an operation is authorized:
 
 Intel endorsements change over time, requiring a maintenance process:
 
-1. **Passive Verification**: When addresses are verified using the `verifyAttestation` function, the system checks if their attestation is still valid against current endorsements.
+1. **Passive Verification**: When TEE-controlled addresses are verified using the `verifyAttestation` function, the system checks if their attestation is still valid against current endorsements.
 
 2. **Marking as Outdated**: If verification fails due to outdated endorsements, the address is automatically marked as outdated.
 
@@ -591,20 +598,20 @@ Future optimizations could include:
 
 These optimizations would maintain the design's simplicity while providing more gas-efficient ways to handle endorsement changes, especially as the number of registered addresses grows.
 
-## Offchain TEE Address Verification
+## Offchain TEE Verification
 
-The Flashtestations protocol enables comprehensive offchain verification of TEE service addresses through its quote storage mechanism. Applications can retrieve the original attestation quote for any registered address via the getQuoteForAddress(address) function, allowing for complete independent verification without incurring gas costs. This approach permits offchain entities to perform the same cryptographic validation as the original onchain verifier, including measurement verification and endorsement checks against the Intel PCS.
+The Flashtestations protocol enables comprehensive offchain verification of TEE services through its quote storage mechanism. Applications can retrieve the original attestation quote for any registered TEE-controlled address via the getQuoteForAddress(teeAddress) function, allowing for complete independent verification without incurring gas costs. This approach permits offchain entities to perform the same cryptographic validation as the original onchain verifier, including measurement verification and endorsement checks against the Intel PCS.
 
 ### Example Verification Flow
 
 ```javascript
 // JavaScript example for offchain quote verification
-async function verifyTEEAddressOffchain(serviceAddress) {
+async function verifyTEEAddressOffchain(teeAddress) {
   const registry = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
   // Retrieve the stored attestation quote
-  const quote = await registry.getQuoteForAddress(serviceAddress);
+  const quote = await registry.getQuoteForAddress(teeAddress);
   // Verify the quote against Intel endorsements using local DCAP verification
-  return verifyDCAPQuoteLocally(quote, serviceAddress);
+  return verifyDCAPQuoteLocally(quote, teeAddress);
 }
 ```
 
@@ -638,7 +645,7 @@ The transparency log is implemented through a combination of blockchain events a
 event AttestationSubmitted(
     bytes indexed rawQuote,
     bytes32 indexed workloadId,
-    address ethAddress,
+    address teeAddress,
     bool success
 );
 
@@ -649,13 +656,13 @@ event EndorsementUpdated(
 
 event RegistryUpdated(
     bytes32 indexed workloadId,
-    address indexed ethAddress,
+    address indexed teeAddress,
     bool isAdded,
     bool isValid
 );
 
 event QuoteStored(
-    address indexed ethAddress,
+    address indexed teeAddress,
     bytes quote
 );
 ```
@@ -664,7 +671,7 @@ When an attestation is verified, the raw quote data is included in the transacti
 
 ### Relationship with Registry
 
-While the Flashtestation Registry maintains the current attested state (which addresses are currently valid for which workloads), the transparency log maintains the complete history of how that state evolved:
+While the Flashtestation Registry maintains the current attested state (which TEE-controlled addresses are currently valid for which workloads), the transparency log maintains the complete history of how that state evolved:
 
 1. **Registry**: Optimized for efficient runtime checks and state updates
 2. **Transparency Log**: Optimized for auditability and historical verification
@@ -679,7 +686,7 @@ The following explains the reasoning behind key design decisions in the Flashtes
 
 The protocol uses a direct replacement approach for attestations:
 
-- When an address re-attests for a workloadId, its old entry is replaced with the new one
+- When a TEE-controlled address re-attests for a workloadId, its old entry is replaced with the new one
 - This keeps the model simpler by ensuring each address has exactly one current endorsement per workloadId
 - When endorsements become invalid, all addresses using that specific endorsement are removed completely
 
@@ -687,7 +694,7 @@ The protocol uses a direct replacement approach for attestations:
 
 The rationale for gas optimization in the protocol design is that the system must prioritize efficiency, particularly for the lookup operations:
 
-- Lookups should reflect O(1) gas costs regardless of the number of addresses
+- Lookups should reflect O(1) gas costs regardless of the number of TEE-controlled addresses
 - Storage slots should be fully cleared when no longer needed (to receive gas refunds)
 - Batch operations should be supported for removing addresses when endorsements become invalid
 
@@ -695,7 +702,7 @@ The rationale for gas optimization in the protocol design is that the system mus
 
 A key design rationale is maintaining clear separation between:
 
-1. **Flashtestation Registry**: Tracks which addresses have attestations validated by current endorsements
+1. **Flashtestation Registry**: Tracks which TEE-controlled addresses have attestations validated by current endorsements
 2. **Policy Registry**: Defines which workloads are acceptable for specific onchain operations
 3. **Verification Service**: Validates attestations and updates the registry
 4. **Consumer Contracts**: Use policy checks to authorize operations
