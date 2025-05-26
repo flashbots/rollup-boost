@@ -55,7 +55,7 @@ Flashtestations addresses these challenges by providing a comprehensive onchain 
 
 1. Onchain verification of Intel TDX attestations against current Intel endorsements
 2. Maintenance of a curated allowlist of validated Ethereum addresses associated with specific TEE workloads
-3. Policy-based authorization for smart contracts to securely interact with TEE services
+3. Policy-based authorization for TEE services to securely interact with smart contracts
 4. Transparent logging of all attestation events and endorsement changes
 
 # Prerequisites
@@ -77,7 +77,7 @@ Flashtestations is designed to achieve the following objectives:
 
 1. **Security**: Provide cryptographic proof that a service is running inside a genuine TEE with expected code, with verification resistant to spoofing or replay attacks.
 
-2. **Efficiency**: Ensure key operations (especially allowlist lookups) are gas-efficient enough for regular use in smart contracts, with O(1) complexity regardless of allowlist size.
+2. **Efficiency**: Ensure key operations (especially allowlist lookups) are gas-efficient enough for regular use in smart contracts, with O(1) gas costs regardless of allowlist size.
 
 3. **Maintainability**: Support efficient updates as Intel endorsements evolve, without requiring re-verification of all attestations.
 
@@ -246,10 +246,10 @@ class TDReport():
 
 - `MRTD`: Measurement register for the TD (initial code/data).
 - `RTMR`: Runtime measurement registers.
-- `MROWNER`: Measurement register for the owner (policy).
-- `MRCONFIGID`: Configuration ID.
-- `MROWNER_CONFIG`: Owner-defined configuration.
-- `ReportData`: User-defined data included in the report (e.g., public key hash).
+- `MROWNER`: Measurement register that takes arbitrary information and can be set by the infrastructure operator during before startup of the VM
+- `MRCONFIGID`: same as `MROWNER`
+- `MROWNER_CONFIG`: same as `MROWNER`
+- `ReportData`: Confidential-VM defined data included in the report (e.g., public key hash).
 
 ### **`DCAPEndorsements`**
 
@@ -285,7 +285,7 @@ class TDXMeasurements():
 
 - `MRTD`: Initial TD measurement (boot loader, initial data).
 - `RTMR`: Runtime measurements (extended at runtime).
-- `MROWNER`: Contains the operator's public key (Ethereum address or other identifier).
+- `MROWNER`: Contains the infrastructure operator's public key (Ethereum address or other identifier).
 - `MRCONFIGID`: Hash of service configuration stored onchain and fetched on boot.
 - `MROWNERCONFIG`: Contains unique instance ID chosen by the operator.
 
@@ -364,14 +364,14 @@ At its most abstract level within this specification, the Allowlist Registry is 
 
 1. **Storing addresses** that have been validated through attestation
 2. **Associating addresses** with their specific workload identity
-3. **Storing attestation quotes** for future verification
-4. **Providing efficient lookup** capabilities to verify if an address is authorized
+3. **Storing attestation quotes** for future verification and revocation
+4. **Providing efficient lookup** capabilities to verify if an address is authorized for a particular workloadID
 
 The registry operates on these key abstractions:
 
 1. **Workload Identity (`workloadId`)**: A 32-byte hash derived from TDX measurement registers (as defined in [Workload Identity Derivation](#workload-identity-derivation)) that uniquely identifies a specific piece of code running in a TDX environment. This serves as the primary namespace under which addresses are stored.
 
-2. **Attestation Quote**: The raw attestation data provided during registration that contains the cryptographic proof of the TEE's state. This quote is stored alongside the address for later verification.
+2. **Attestation Quote**: The raw attestation data provided during registration that contains the cryptographic proof of the TEE's state. This quote is stored alongside the address for later verification and revocation.
 
 3. **Ethereum Address**: The public key extracted from the attestation's report data field ([TDReport.ReportData](#tdreport)), which will be used to interact with onchain contracts.
 
@@ -382,8 +382,6 @@ The Allowlist Registry maintains a straightforward relationship between these en
 1. Each Ethereum address can be registered for multiple different workloads
 2. Each address has exactly one attestation quote stored for each workloadId it's registered under
 3. The registry tracks whether each (address, workloadId) pair is currently valid or has been marked as outdated
-
-This simplified model focuses on tracking the direct relationship between addresses and workloads without the complexity of tracking endorsement bundles.
 
 ### Fundamental Operations
 
@@ -444,7 +442,7 @@ This operation returns the raw attestation quote that was used to register the a
 
 3. **Quote Storage**: The system maintains a copy of the attestation quote used to register each address, supporting external verification and auditability.
 
-4. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1)) regardless of the number of addresses stored.
+4. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1) gas costs) regardless of the number of addresses stored.
 
 ### Attestation Verification Endpoint
 
@@ -665,7 +663,7 @@ The protocol uses a direct replacement approach for attestations:
 
 The rationale for gas optimization in the protocol design is that the system must prioritize efficiency, particularly for the lookup operations:
 
-- Lookups should be O(1) regardless of the number of addresses
+- Lookups should reflect O(1) gas costs regardless of the number of addresses
 - Storage slots should be fully cleared when no longer needed (to receive gas refunds)
 - Batch operations should be supported for removing addresses when endorsements become invalid
 
