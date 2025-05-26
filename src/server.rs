@@ -500,8 +500,9 @@ impl EngineApiServer for RollupBoostServer {
 
 impl MinerApiExtServer for RollupBoostServer {
     async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
-        // TODO: send to l2 client, if this fails, return an error immediately
-
+        self.l2_client
+            .set_max_da_size(max_tx_size, max_block_size)
+            .await?;
         // TODO: enqueue the request to the process_miner_api queue
 
         todo!()
