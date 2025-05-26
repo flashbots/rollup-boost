@@ -1,7 +1,7 @@
 use crate::client::auth::AuthLayer;
 use crate::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
 use crate::server::EngineApiClient;
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::{B256, Bytes, U64};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,
     PayloadId, PayloadStatus,
@@ -9,9 +9,11 @@ use alloy_rpc_types_engine::{
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use clap::{Parser, arg};
 use http::Uri;
+use jsonrpsee::core::RpcResult;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorObjectOwned;
+use op_alloy_rpc_jsonrpsee::traits::MinerApiExtClient;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -332,6 +334,10 @@ impl RpcClient {
             .get_block_by_number(number, full)
             .await
             .set_code()?)
+    }
+
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        todo!()
     }
 }
 

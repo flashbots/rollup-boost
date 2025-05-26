@@ -10,7 +10,7 @@ use crate::{
     },
     probe::{Health, Probes},
 };
-use alloy_primitives::{B256, Bytes, bytes};
+use alloy_primitives::{B256, Bytes, bytes, U64};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
@@ -27,6 +27,7 @@ use jsonrpsee::server::HttpResponse;
 use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use metrics::counter;
+use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -238,6 +239,18 @@ impl RollupBoostServer {
             %payload_id,
         );
         Ok(payload)
+    }
+
+    fn process_miner_api(&self) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            // TODO: create var to store latest max da size call
+            loop {
+                // TODO: select! either if new item enters queue or set_max_da_size completes
+                // if set max da size call is error, log and retry
+                // if new item enters the queue,
+                todo!()
+            }
+        })
     }
 }
 
@@ -513,6 +526,16 @@ pub async fn into_buffered_request(req: HttpRequest) -> Result<BufferedRequest, 
 
 pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
     req.map(HttpBody::new)
+}
+
+impl MinerApiExtServer for RollupBoostServer {
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        // TODO: send to l2 client, if this fails, return an error immediately
+
+        // TODO: enqueue the request to the process_miner_api queue
+
+        todo!()
+    }
 }
 
 #[cfg(test)]

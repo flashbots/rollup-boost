@@ -17,6 +17,7 @@ use tower::{Layer, Service};
 use tracing::info;
 
 const ENGINE_METHOD: &str = "engine_";
+const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
 
 /// Requests that should be forwarded to both the builder and default execution client
 const FORWARD_REQUESTS: [&str; 5] = [
@@ -139,7 +140,8 @@ where
                 .to_string();
 
             // If the request is an Engine API method, call the inner RollupBoostServer
-            if method.starts_with(ENGINE_METHOD) {
+            if method.starts_with(ENGINE_METHOD) || method == MINER_SET_MAX_DA_SIZE {
+                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
                 return service
                     .inner
