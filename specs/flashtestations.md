@@ -165,9 +165,13 @@ The terms in this section are used consistently throughout the specification doc
 
 **Attestation Key (AK)**: The cryptographic key used by the Quote Enclave to sign attestation quotes. The validity of this key is established through a certificate chain back to Intel.
 
+**TDAttributes**: Hardware-enforced attributes that describe the security properties and configuration of a Trust Domain, including settings that affect the TEE's isolation guarantees and security posture.
+
+**XFAM (Extended Features and Attributes Mask)**: A hardware register that indicates which CPU extended features (such as specific instruction sets or security capabilities) are enabled and available for use within the Trust Domain.
+
 ### Flashtestations Protocol Components
 
-**`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived as keccak256(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID).
+**`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived as keccak256(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID || TDAttributes || XFAM).
 
 **`Endorsement Version`**: The specific version of Intel DCAP endorsements at a point in time. Endorsements change periodically as Intel releases updates or discovers vulnerabilities in hardware or firmware.
 
@@ -239,6 +243,8 @@ class TDReport():
     MROWNER: Bytes48
     MRCONFIGID: Bytes48
     MROWNER_CONFIG: Bytes48
+    TDAttributes: Bytes8
+    XFAM: Bytes8
     ReportData: Bytes64
 ```
 
@@ -249,6 +255,8 @@ class TDReport():
 - `MROWNER`: Measurement register that takes arbitrary information and can be set by the infrastructure operator during before startup of the VM
 - `MRCONFIGID`: same as `MROWNER`
 - `MROWNER_CONFIG`: same as `MROWNER`
+- `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain.
+- `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain.
 - `ReportData`: Confidential-VM defined data included in the report (e.g., public key hash).
 
 ### **`DCAPEndorsements`**
@@ -279,6 +287,8 @@ class TDXMeasurements():
     MROWNER: Bytes
     MRCONFIGID: Bytes
     MROWNERCONFIG: Bytes
+    TDAttributes: Bytes
+    XFAM: Bytes
 ```
 
 **Field descriptions:**
@@ -288,6 +298,8 @@ class TDXMeasurements():
 - `MROWNER`: Contains the infrastructure operator's public key (Ethereum address or other identifier).
 - `MRCONFIGID`: Hash of service configuration stored onchain and fetched on boot.
 - `MROWNERCONFIG`: Contains unique instance ID chosen by the operator.
+- `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain.
+- `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain.
 
 ## TEE Attestation Mechanism
 
@@ -341,7 +353,7 @@ A TEE's workload identity is derived from a combination of its measurement regis
 The workload identity computation takes these registers into account:
 
 ```
-keccak256(abi.encodePacked(MRTD, RTMR0, RTMR1, RTMR2, RTMR3, MROWNER, MROWNERCONFIG, MRCONFIGID)))
+keccak256(abi.encodePacked(MRTD, RTMR0, RTMR1, RTMR2, RTMR3, MROWNER, MROWNERCONFIG, MRCONFIGID, TDAttributes, XFAM)))
 ```
 
 These measurement registers serve specific purposes in the permissioned attestation model:
@@ -349,8 +361,10 @@ These measurement registers serve specific purposes in the permissioned attestat
 - **MROWNER**: Contains the operator's public key (Ethereum address or other identifier), establishing who is authorized to run this instance
 - **MROWNERCONFIG**: Contains a unique instance ID chosen by the operator, which the operator must sign to authenticate itself
 - **MRCONFIGID**: Contains a hash of the actual service configuration that is stored onchain and fetched during boot
+- **TDAttributes**: Captures the security properties and configuration of the Trust Domain, ensuring workload identity reflects the TEE's security posture
+- **XFAM**: Captures which CPU extended features are enabled, ensuring workload identity reflects the available hardware capabilities
 
-All of these values are captured in the workload identity hash, ensuring that any change to the code, configuration, or operator results in a different identity that must be explicitly authorized through governance.
+All of these values are captured in the workload identity hash, ensuring that any change to the code, configuration, operator, security properties, or hardware features results in a different identity that must be explicitly authorized through governance.
 
 **Note on Reproducible Builds**: To establish trust in expected measurements, TEE workloads must use reproducible build processes where source code, build environment, and instructions are published, allowing independent verification that expected measurements correspond to the published source code.
 
