@@ -4,12 +4,15 @@ use crate::{Request, Response, from_buffered_request, into_buffered_request};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
 use http_body_util::{BodyExt as _, Full};
-use jsonrpsee::core::BoxError;
+use jsonrpsee::core::{BoxError, http_helpers};
 use jsonrpsee::server::HttpBody;
 use jsonrpsee::types::error::METHOD_NOT_FOUND_CODE;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
+use tracing::info;
+
+const ENGINE_METHOD: &str = "engine_";
 
 /// Requests that should be forwarded to both the builder and default execution client
 const FORWARD_REQUESTS: [&str; 5] = [
@@ -19,6 +22,8 @@ const FORWARD_REQUESTS: [&str; 5] = [
     "miner_setGasPrice",
     "miner_setGasLimit",
 ];
+
+const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
@@ -99,58 +104,49 @@ where
             method: &'a str,
         }
 
-        #[derive(serde::Deserialize, Debug)]
-        struct RpcResponse {
-            code: Option<i32>,
-        }
-
         // See https://github.com/tower-rs/tower/blob/abb375d08cf0ba34c1fe76f66f1aba3dc4341013/tower-service/src/lib.rs#L276
         // for an explanation of this pattern
         let mut service = self.clone();
         service.inner = std::mem::replace(&mut self.inner, service.inner);
 
         let fut = async move {
-            // First we'll check if the request should be handled by the inner service.
             let buffered = into_buffered_request(req).await?;
-            let inner_res = service
-                .inner
-                .call(from_buffered_request(buffered.clone()))
-                .await
-                .map_err(|e| e.into());
+            let body_bytes = buffered.clone().collect().await?.to_bytes();
 
-            let (parts, body) = inner_res?.into_parts();
-            let bytes = body.collect().await?.to_bytes();
-            let code = serde_json::from_slice::<RpcResponse>(&bytes)?.code;
-            if code != Some(METHOD_NOT_FOUND_CODE) {
-                // If the inner service handled the request, return its response
-                println!("body: {}", String::from_utf8_lossy(&bytes));
-                return Ok(Response::from_parts(
-                    parts,
-                    HttpBody::new(Full::from(bytes)),
-                ));
-            }
-
-            let bytes = buffered.clone().into_parts().1.collect().await?.to_bytes();
-            let method = serde_json::from_slice::<RpcRequest>(&bytes)?
+            // Deserialize the bytes to find the method
+            let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
                 .method
                 .to_string();
+
+            // If the request is an Engine API method, call the inner RollupBoostServer
+            if method.starts_with(ENGINE_METHOD) || method == MINER_SET_MAX_DA_SIZE {
+                // let req = Request::from_parts(parts, HttpBody::from(body_bytes));
+                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+                return service
+                    .inner
+                    .call(from_buffered_request(buffered))
+                    .await
+                    .map_err(|e| e.into());
+            }
 
             if FORWARD_REQUESTS.contains(&method.as_str()) {
                 // If the request should be forwarded, send to both the
                 // default execution client and the builder
+                let method_clone = method.clone();
+                let buffered_clone = buffered.clone();
                 let mut builder_client = service.builder_client.clone();
 
-                let buffered_clone = buffered.clone();
-                let method_clone = method.clone();
                 // Fire and forget the builder request
                 tokio::spawn(async move {
-                    let _ = builder_client.forward(buffered_clone, method_clone).await;
+                    let _ = builder_client
+                        .forward(from_buffered_request(buffered_clone), method_clone)
+                        .await;
                 });
             }
 
             service
                 .l2_client
-                .forward(buffered, method)
+                .forward(from_buffered_request(buffered), method)
                 .await
                 .map(|res| res.map(HttpBody::new))
         };
