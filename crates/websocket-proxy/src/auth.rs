@@ -88,6 +88,7 @@ impl Authentication {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new(api_keys: HashMap<String, String>) -> Self {
         Self {
             key_to_application: api_keys,
