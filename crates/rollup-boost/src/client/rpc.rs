@@ -340,7 +340,8 @@ impl RpcClient {
         Ok(self
             .auth_client
             .set_max_da_size(max_tx_size, max_block_size)
-            .await?)
+            .await
+            .expect("TODO: handle error"))
     }
 }
 
