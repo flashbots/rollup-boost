@@ -21,7 +21,8 @@ install() {
 
 install_contender() {
     docker pull flashbots/contender:latest
-    if docker run --rm flashbots/contender --version > /dev/null; then
+    docker tag flashbots/contender:latest contender
+    if docker run --rm contender --version > /dev/null; then
         echo "✅ Contender installation completed and verified!"
     else
         echo "❌ Contender installation failed. 'contender' command not found in Docker container"
@@ -58,10 +59,10 @@ run() {
 
     # Deploy the contract with contender, this should be enough to check that the
     # builder is working as expected
-    docker run --name contender flashbots/contender setup -p $PREFUNDED_PRIV_KEY scenario:stress.toml -r $ROLLUP_BOOST_SOCKET --optimism
+    docker run --rm --network host -v /tmp/.contender:/root/.contender contender setup -p $PREFUNDED_PRIV_KEY scenario:stress.toml -r $ROLLUP_BOOST_SOCKET --optimism
 
     # Run the fill-block scenario on the builder
-    docker run --name contender flashbots/contender spam --tps 50 -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
+    docker run --rm --network host -v /tmp/.contender:/root/.contender contender spam --tps 50 -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
 }
 
 clean() {
