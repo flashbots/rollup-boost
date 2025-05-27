@@ -266,14 +266,17 @@ impl RollupBoostServer {
                     }
 
                     _ = async {
-                        let (max_tx_size, max_block_size) = retry.unwrap();
-                        if builder_client.set_max_da_size(max_tx_size, max_block_size).await.is_ok() {
-                            // TODO: log
-                            *exectuion_mode.lock() = ExecutionMode::Enabled;
+                        if let Some((max_tx_size, max_block_size)) = retry {
+                            if builder_client.set_max_da_size(max_tx_size, max_block_size).await.is_ok() {
+                                // TODO: log
+                                *exectuion_mode.lock() = ExecutionMode::Enabled;
+                            } else {
+                                tokio::time::sleep(Duration::from_secs(1));
+                            }
                         } else {
                             tokio::time::sleep(Duration::from_secs(1));
                         }
-                    }, if retry.is_some() => {}
+                    } => {}
 
                 }
             }
