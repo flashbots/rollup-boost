@@ -474,11 +474,13 @@ This operation returns the raw attestation quote that was used to register the T
 
 4. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1) gas costs) regardless of the number of addresses stored.
 
+5. **Reliance on Off-Chain Observation (Initial Version)**: In its current design, the protocol relies on an honest off-chain service (e.g., operated by TEE operators or other trusted entities) to monitor attestations and their associated collateral. This service is expected to call `verifyAttestation` to mark an attestation as stale if the underlying collateral is updated or becomes invalid. This implies a trust assumption in these off-chain entities to maintain the integrity of the registry's "valid" attestations.
+
 ### Attestation Verification Endpoint
 
 The attestation verification endpoint provides a mechanism to validate stored attestations against current Intel endorsements:
 
-1. **On-demand Verification**: Verification happens only when needed, rather than requiring constant maintenance.
+1. **On-demand Verification**: Verification happens only when needed, rather than requiring constant maintenance. This is typically triggered by an off-chain service.
 
 2. **Simple Management**: When Intel updates its endorsements, the system automatically adapts during verification.
 
@@ -492,7 +494,7 @@ The verification process works as follows:
 4. If verification fails, it marks the address as outdated in the registry
 5. The address remains in the registry but will fail the `isValidWorkload` check
 
-This approach provides a clean, straightforward way to manage attestation validity over time.
+This approach provides a clean, straightforward way to manage attestation validity over time, **though it currently relies on external actors to initiate the `verifyAttestation` call for attestations that may have become stale due to collateral changes.**
 
 ## Policy Layer: Flexible Authorization
 
@@ -576,27 +578,21 @@ When a contract needs to verify if an operation is authorized:
 
 Intel endorsements change over time, requiring a maintenance process:
 
-1. **Passive Verification**: When TEE-controlled addresses are verified using the `verifyAttestation` function, the system checks if their attestation is still valid against current endorsements.
+1. **Triggered Verification**: When an off-chain service observes that an attestation's collateral has been updated or is no longer valid, it calls the `verifyAttestation(teeAddress)` function. The system then checks if the corresponding stored attestation is still valid against current Intel endorsements.
 
-2. **Marking as Outdated**: If verification fails due to outdated endorsements, the address is automatically marked as outdated.
+2. **Marking as Outdated**: If verification fails (e.g., due to outdated endorsements or collateral issues identified by the off-chain service leading to the `verifyAttestation` call), the address is automatically marked as outdated in the registry.
 
 3. **Re-attestation**: Addresses marked as outdated must re-attest using current endorsements to regain valid status.
 
-This approach ensures that addresses naturally transition from valid to outdated as Intel's security requirements evolve, without requiring manual tracking of endorsement changes or complex batch operations.
-
-The maintenance process keeps the registry in sync with Intel's current security opinions while allowing for graceful transitions when endorsements change.
+This approach ensures that addresses transition from valid to outdated as Intel's security requirements evolve or as collateral changes, **facilitated by an honest off-chain service responsible for monitoring and triggering these checks.** The registry itself remains synchronized with Intel's current security opinions once verification is invoked.
 
 ### Gas Cost Considerations and Future Optimizations
 
-The individual attestation verification approach prioritizes simplicity but may incur higher gas costs compared to bulk operations. Each verification requires running the complete attestation verification process against current endorsements.
+The individual attestation verification approach prioritizes simplicity but requires running an offchain observation service for maintaning freshness of attestations. Also, each verification requires running the complete attestation verification process against current endorsements.
 
-Future optimizations could include:
+Future optimizations could include **Validation on Access**, where the system would verify the endorsement status upon each call to `isValidWorkload`. This could be achieved by enhancing the `ParsedAttestation` struct to track necessary endorsement data (or a reference to it). The `isValidWorkload` function would then validate the freshness of the endorsements used during attestation directly against on-chain PCCS data with each call. Should it detect stale data, a subsequent new attestation would be triggered. Here also there's potential to reduce Gas Costs by only reattesting against the updated PCCS endorsement data rather the whole quote.
 
-1. **Tracking Endorsement References**: Store a reference to which endorsement version validated each attestation. When endorsements become outdated, all attestations linked to that specific endorsement could be marked invalid in a single operation.
-
-2. **Validation on Access**: Alternatively, the system could verify the endorsement status upon each call to `isValidWorkload`, checking if the original validating endorsement is still considered secure without re-running the full attestation verification.
-
-These optimizations would maintain the design's simplicity while providing more gas-efficient ways to handle endorsement changes, especially as the number of registered addresses grows.
+These optimizations would maintain the design's simplicity while reducing the reliance on off-chain services for marking attestations stale and providing more gas-efficient ways to handle endorsement changes, especially as the number of registered addresses grows. That said, it will increase the gas cost of `isValidWorkload` although initial investigation has shown that this may be neglectable.
 
 ## Offchain TEE Verification
 
