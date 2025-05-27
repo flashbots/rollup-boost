@@ -1,14 +1,16 @@
 use crate::client::auth::AuthLayer;
 use crate::server::PayloadSource;
+use alloy_primitives::bytes::Bytes;
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
-use http_body_util::BodyExt;
+use http_body_util::{BodyExt, Full};
+use hyper::body::Body;
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
-use jsonrpsee::http_client::HttpBody;
+use jsonrpsee::server::HttpBody;
 use opentelemetry::trace::SpanKind;
 use tower::{Service as _, ServiceBuilder, ServiceExt};
 use tower_http::decompression::{Decompression, DecompressionLayer};
@@ -52,36 +54,41 @@ impl HttpClient {
     /// Forwards an HTTP request to the `authrpc`, attaching the provided JWT authorization.
     #[instrument(
         skip(self, req),
-        fields(otel.kind = ?SpanKind::Client,
-        url = %self.url,
-        method,
-        code,
+        fields(
+            otel.kind = ?SpanKind::Client,
+            url = %self.url,
+            method,
+            code,
         ),
         err(Debug)
     )]
-    pub async fn forward(
+    pub async fn forward<B>(
         &mut self,
-        mut req: http::Request<HttpBody>,
+        mut req: http::Request<B>,
         method: String,
-    ) -> Result<http::Response<HttpBody>, BoxError> {
+    ) -> Result<http::Response<Full<Bytes>>, BoxError>
+    where
+        B: Body<Data = Bytes, Error: Into<Box<dyn std::error::Error + Send + Sync>>>
+            + Send
+            + 'static,
+    {
         debug!("forwarding {} to {}", method, self.target);
         tracing::Span::current().record("method", method);
         *req.uri_mut() = self.url.clone();
 
+        let req = req.map(HttpBody::new);
+
         let res = self.client.ready().await?.call(req).await?;
 
         let (parts, body) = res.into_parts();
-        let body_bytes = body.collect().await?.to_bytes().to_vec();
+        let body_bytes = body.collect().await?.to_bytes();
 
         if let Some(code) = parse_response_code(&body_bytes)? {
             error!(%code, "error in forwarded response");
             tracing::Span::current().record("code", code);
         }
 
-        Ok(http::Response::from_parts(
-            parts,
-            HttpBody::from(body_bytes),
-        ))
+        Ok(http::Response::from_parts(parts, Full::from(body_bytes)))
     }
 }
 

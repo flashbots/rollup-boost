@@ -3,17 +3,13 @@ use std::{
     time::Duration,
 };
 
-use eyre::{bail, eyre};
-use http::{request, response};
-use jsonrpsee::{
-    core::{BoxError, http_helpers},
-    http_client::{HttpBody, HttpRequest, HttpResponse},
-};
+use eyre::bail;
+use jsonrpsee::core::BoxError;
 use parking_lot::Mutex;
 use tokio::{sync::watch, task::JoinHandle};
 use tracing::{error, info, warn};
 
-use crate::{ExecutionMode, Health, HttpClient, Probes};
+use crate::{BufferedRequest, BufferedResponse, ExecutionMode, Health, HttpClient, Probes};
 
 /// A request manager that ensures requests are sent consistently
 /// across both the builder and l2 client.
@@ -23,8 +19,8 @@ pub struct ConsistentRequest {
     l2_client: HttpClient,
     builder_client: HttpClient,
     has_disabled_execution_mode: Arc<AtomicBool>,
-    req_tx: watch::Sender<Option<(request::Parts, Vec<u8>)>>,
-    res_rx: watch::Receiver<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
+    req_tx: watch::Sender<Option<BufferedRequest>>,
+    res_rx: watch::Receiver<Option<Result<BufferedResponse, BoxError>>>,
     probes: Arc<Probes>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
 }
@@ -72,7 +68,7 @@ impl ConsistentRequest {
                     }
                 }
 
-                let (parts, body) = req_rx
+                let req = req_rx
                     .borrow_and_update()
                     .as_ref()
                     .expect("value should always be Some")
@@ -81,9 +77,7 @@ impl ConsistentRequest {
                 let mut clone = clone.clone();
                 let res_tx_clone = res_tx.clone();
                 attempt = Some(tokio::spawn(async move {
-                    clone
-                        .send_with_retry_cancel_safe(parts, body, res_tx_clone)
-                        .await
+                    clone.send_with_retry_cancel_safe(req, res_tx_clone).await
                 }));
             }
         });
@@ -94,9 +88,8 @@ impl ConsistentRequest {
     /// This function may be cancelled at any time from an incoming request.
     async fn send_with_retry_cancel_safe(
         &mut self,
-        parts: request::Parts,
-        body: Vec<u8>,
-        res_tx: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
+        req: BufferedRequest,
+        res_tx: watch::Sender<Option<Result<BufferedResponse, BoxError>>>,
     ) -> eyre::Result<()> {
         // We send the l2 request first, because we need to avoid the situation where the
         // l2 fails and the builder succeeds. If this were to happen, it would be too dangerous to
@@ -105,25 +98,16 @@ impl ConsistentRequest {
         // spawning new tasks here to avoid any issues with cancellation. We should ensure we're
         // in a valid state at all await points.
         let mut manager = self.clone();
-        let parts_clone = parts.clone();
-        let body_clone = body.clone();
         let res_sender_clone = res_tx.clone();
-        tokio::spawn(async move {
-            manager
-                .send_to_l2(parts_clone, body_clone, res_sender_clone)
-                .await
-        })
-        .await??;
+        let req_clone = req.clone();
+        tokio::spawn(async move { manager.send_to_l2(req_clone, res_sender_clone).await })
+            .await??;
 
         loop {
             let mut manager = self.clone();
-            let parts_clone = parts.clone();
-            let body_clone = body.clone();
-            match tokio::spawn(
-                async move { manager.send_to_builder(parts_clone, body_clone).await },
-            )
-            .await?
-            {
+            let req_clone = req.clone();
+
+            match tokio::spawn(async move { manager.send_to_builder(req_clone).await }).await? {
                 Ok(_) => return Ok(()),
                 Err(_) => {
                     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -134,35 +118,18 @@ impl ConsistentRequest {
 
     async fn send_to_l2(
         &mut self,
-        parts: request::Parts,
-        body: Vec<u8>,
-        res_tx: watch::Sender<Option<Result<(response::Parts, Vec<u8>), BoxError>>>,
+        req: BufferedRequest,
+        res_tx: watch::Sender<Option<Result<BufferedResponse, BoxError>>>,
     ) -> eyre::Result<()> {
-        let l2_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
-        let l2_res = self.l2_client.forward(l2_req, self.method.clone()).await;
-
-        // Return the l2 response asap
-        match l2_res {
-            Ok(t) => {
-                let (parts, body) = t.into_parts();
-                let (body_bytes, _) =
-                    http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
-                res_tx.send(Some(Ok((parts, body_bytes))))?;
-                Ok(())
-            }
-            Err(e) => {
-                let msg = format!("failed to send request to l2: {e}");
-                res_tx.send(Some(Err(e)))?;
-                Err(eyre!(msg))
-            }
-        }
+        let l2_res = self.l2_client.forward(req, self.method.clone()).await;
+        res_tx.send(Some(l2_res))?;
+        Ok(())
     }
 
-    async fn send_to_builder(&mut self, parts: request::Parts, body: Vec<u8>) -> eyre::Result<()> {
-        let builder_req = HttpRequest::from_parts(parts.clone(), HttpBody::from(body.clone()));
+    async fn send_to_builder(&mut self, req: BufferedRequest) -> eyre::Result<()> {
         let builder_res = self
             .builder_client
-            .forward(builder_req, self.method.clone())
+            .forward(req.clone(), self.method.clone())
             .await;
 
         match builder_res {
@@ -205,21 +172,13 @@ impl ConsistentRequest {
     }
 
     // Send a request, ensuring consistent responses from both the builder and l2 client.
-    pub async fn send(
-        &mut self,
-        parts: request::Parts,
-        body_bytes: Vec<u8>,
-    ) -> Result<HttpResponse, BoxError> {
-        self.req_tx
-            .send(Some((parts.clone(), body_bytes.clone())))?;
+    pub async fn send(&mut self, req: BufferedRequest) -> Result<BufferedResponse, BoxError> {
+        self.req_tx.send(Some(req))?;
 
         self.res_rx.changed().await?;
         let res = self.res_rx.borrow_and_update();
         match res.as_ref().expect("value should always be Some") {
-            Ok((parts, body)) => Ok(HttpResponse::from_parts(
-                parts.to_owned(),
-                HttpBody::from(body.to_owned()),
-            )),
+            Ok(res) => Ok(res.clone()),
             Err(e) => Err(format!("error sending consistent request: {e}").into()),
         }
     }

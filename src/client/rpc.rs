@@ -3,7 +3,7 @@ use crate::server::{
     EngineApiClient, NewPayload, OpExecutionPayloadEnvelope, PayloadSource, Version,
 };
 
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::B256;
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,
     PayloadId, PayloadStatus,
@@ -277,7 +277,7 @@ impl RpcClient {
         payload: OpExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
-        execution_requests: Vec<Bytes>,
+        execution_requests: Vec<alloy_primitives::Bytes>,
     ) -> ClientResult<PayloadStatus> {
         info!("Sending new_payload_v4 to {}", self.payload_source);
         let execution_payload = ExecutionPayload::from(payload.payload_inner.clone());

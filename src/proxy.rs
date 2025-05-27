@@ -1,11 +1,14 @@
 use crate::client::http::HttpClient;
 use crate::consistent_request::ConsistentRequest;
 use crate::server::PayloadSource;
-use crate::{ExecutionMode, Probes};
+use crate::{
+    ExecutionMode, Probes, Request, Response, from_buffered_request, into_buffered_request,
+};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
+use http_body_util::{BodyExt as _, Collected};
 use jsonrpsee::core::{BoxError, http_helpers};
-use jsonrpsee::http_client::{HttpBody, HttpRequest, HttpResponse};
+use jsonrpsee::server::{HttpBody, HttpRequest, HttpResponse};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -13,16 +16,13 @@ use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
 use tracing::info;
 
-const ENGINE_METHOD: &str = "engine_";
-
 /// Requests that should be forwarded to both the builder and default execution client
-const FORWARD_REQUESTS: [&str; 6] = [
+const FORWARD_REQUESTS: [&str; 5] = [
     "eth_sendRawTransaction",
     "eth_sendRawTransactionConditional",
     "miner_setExtra",
     "miner_setGasPrice",
     "miner_setGasLimit",
-    "miner_setMaxDASize",
 ];
 
 const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
@@ -58,8 +58,8 @@ impl ProxyLayer {
 }
 
 impl<S> Layer<S> for ProxyLayer
-where
-    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
+// where
+//     S: Service<Request, Response = Response> + Send + Sync + Clone + 'static,
 {
     type Service = ProxyService<S>;
 
@@ -102,14 +102,14 @@ pub struct ProxyService<S> {
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
-impl<S> Service<HttpRequest> for ProxyService<S>
+impl<S> Service<Request> for ProxyService<S>
 where
-    S: Service<HttpRequest<HttpBody>, Response = HttpResponse> + Send + Sync + Clone + 'static,
+    S: Service<Request, Response = Response> + Send + Sync + Clone + 'static,
     S::Response: 'static,
     S::Error: Into<BoxError> + 'static,
     S::Future: Send + 'static,
 {
-    type Response = S::Response;
+    type Response = Response;
     type Error = BoxError;
     type Future =
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
@@ -118,7 +118,7 @@ where
         self.inner.poll_ready(cx).map_err(Into::into)
     }
 
-    fn call(&mut self, req: HttpRequest) -> Self::Future {
+    fn call(&mut self, req: Request) -> Self::Future {
         #[derive(serde::Deserialize, Debug)]
         struct RpcRequest<'a> {
             #[serde(borrow)]
@@ -131,47 +131,45 @@ where
         service.inner = std::mem::replace(&mut self.inner, service.inner);
 
         let fut = async move {
-            let (parts, body) = req.into_parts();
-            let (body_bytes, _) = http_helpers::read_body(&parts.headers, body, u32::MAX).await?;
+            let buffered = into_buffered_request(req).await?;
+            let inner_res = service
+                .inner
+                .call(from_buffered_request(buffered.clone()))
+                .await
+                .map_err(|e| e.into());
+            match &inner_res {
+                Ok(res) if res.status() == http::StatusCode::METHOD_NOT_ALLOWED => {}
+                _ => {
+                    // If the response is successful, return it directly
+                    return inner_res;
+                }
+            }
 
             // Deserialize the bytes to find the method
-            let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
+            let bytes = buffered.clone().into_parts().1.collect().await?.to_bytes();
+            let method = serde_json::from_slice::<RpcRequest>(&bytes)?
                 .method
                 .to_string();
 
             // If the request is an Engine API method, call the inner RollupBoostServer
-            if method.starts_with(ENGINE_METHOD) {
-                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                service.inner.call(req).await.map_err(|e| e.into())
-            } else if FORWARD_REQUESTS.contains(&method.as_str()) {
-                if method == MINER_SET_MAX_DA_SIZE {
-                    service
-                        .set_max_da_size_manager
-                        .send(parts.clone(), body_bytes.clone())
-                        .await
-                } else {
-                    // If the request should be forwarded, send to both the
-                    // default execution client and the builder
-                    let builder_req =
-                        HttpRequest::from_parts(parts.clone(), HttpBody::from(body_bytes.clone()));
-                    let builder_method = method.clone();
-                    let mut builder_client = service.builder_client.clone();
+            if FORWARD_REQUESTS.contains(&method.as_str()) {
+                // If the request should be forwarded, send to both the
+                // default execution client and the builder
+                let mut builder_client = service.builder_client.clone();
 
-                    let l2_req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                    // Fire and forget the builder request
-                    tokio::spawn(async move {
-                        let _ = builder_client.forward(builder_req, builder_method).await;
-                    });
-                    // Return the response from the L2 client
-                    service.l2_client.forward(l2_req, method).await
-                }
-            } else {
-                // If the request should not be forwarded, send directly to the
-                // default execution client
-                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
-                service.l2_client.forward(req, method).await
+                let buffered_clone = buffered.clone();
+                let method_clone = method.clone();
+                // Fire and forget the builder request
+                tokio::spawn(async move {
+                    let _ = builder_client.forward(buffered_clone, method_clone).await;
+                });
             }
+
+            service
+                .l2_client
+                .forward(buffered, method)
+                .await
+                .map(|res| res.map(HttpBody::new))
         };
 
         Box::pin(fut)
@@ -187,7 +185,7 @@ mod tests {
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
     use http::StatusCode;
-    use http_body_util::BodyExt;
+    use http_body_util::{BodyExt, Full};
     use hyper::service::service_fn;
     use hyper_util::client::legacy::Client;
     use hyper_util::client::legacy::connect::HttpConnector;
@@ -430,7 +428,7 @@ mod tests {
         let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
         let proxy_server = spawn_proxy_server(execution_mode).await;
         // Create a new HTTP client
-        let client: Client<HttpConnector, HttpBody> =
+        let client: Client<HttpConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build_http();
 
         // Test the health check endpoint

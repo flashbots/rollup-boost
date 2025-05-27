@@ -4,11 +4,13 @@ use crate::{
     debug_api::DebugServer,
     probe::{Health, Probes},
 };
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::{B256, Bytes, U64, bytes};
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use futures::{StreamExt as _, stream};
+use http_body_util::{BodyExt, Full};
 use metrics::counter;
 use moka::future::Cache;
+use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -18,11 +20,14 @@ use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
 };
-use jsonrpsee::RpcModule;
-use jsonrpsee::core::{RegisterMethodError, RpcResult, async_trait};
-use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
+use jsonrpsee::{RpcModule, server::HttpBody};
+use jsonrpsee::{core::BoxError, proc_macros::rpc};
+use jsonrpsee::{
+    core::{RegisterMethodError, RpcResult, async_trait},
+    server::HttpRequest,
+};
+use jsonrpsee::{server::HttpResponse, types::ErrorObject};
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -31,6 +36,11 @@ use tokio::task::JoinHandle;
 use tracing::{info, instrument};
 
 const CACHE_SIZE: u64 = 100;
+
+pub type Request = HttpRequest;
+pub type Response = HttpResponse;
+pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
+pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
 #[derive(Debug, Clone)]
 pub struct PayloadTrace {
@@ -457,6 +467,18 @@ impl EngineApiServer for RollupBoostServer {
     }
 }
 
+#[async_trait]
+impl MinerApiExtServer for RollupBoostServer {
+    #[instrument(
+        skip(self),
+        err,
+        fields(otel.kind = ?SpanKind::Server)
+    )]
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        todo!()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum OpExecutionPayloadEnvelope {
     V3(OpExecutionPayloadEnvelopeV3),
@@ -686,6 +708,17 @@ impl RollupBoostServer {
         );
         Ok(payload)
     }
+}
+
+pub async fn into_buffered_request(req: HttpRequest) -> Result<BufferedRequest, BoxError> {
+    let (parts, body) = req.into_parts();
+    let bytes = body.collect().await?.to_bytes();
+    let full = Full::<bytes::Bytes>::from(bytes.clone());
+    Ok(http::Request::from_parts(parts, full))
+}
+
+pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
+    req.map(HttpBody::new)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 op-alloy-rpc-types-engine = "0.12.0"
+op-alloy-rpc-jsonrpsee = { version = "0.12.0", features = ["client"] }
 alloy-rpc-types-engine = "0.13.0"
 alloy-rpc-types-eth = "0.13.0"
 alloy-primitives = { version = "0.8.10", features = ["rand"] }
