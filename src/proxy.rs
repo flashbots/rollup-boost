@@ -57,10 +57,7 @@ impl ProxyLayer {
     }
 }
 
-impl<S> Layer<S> for ProxyLayer
-// where
-//     S: Service<Request, Response = Response> + Send + Sync + Clone + 'static,
-{
+impl<S> Layer<S> for ProxyLayer {
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {

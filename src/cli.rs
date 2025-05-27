@@ -176,7 +176,6 @@ impl Args {
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);
 
-        // The inner (S) is the lower service
         let http_middleware =
             tower::ServiceBuilder::new()
                 .layer(probe_layer)

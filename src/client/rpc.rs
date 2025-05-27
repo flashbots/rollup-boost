@@ -3,7 +3,7 @@ use crate::server::{
     EngineApiClient, NewPayload, OpExecutionPayloadEnvelope, PayloadSource, Version,
 };
 
-use alloy_primitives::B256;
+use alloy_primitives::{B256, Bytes, U64};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret,
     PayloadId, PayloadStatus,
@@ -14,6 +14,7 @@ use http::Uri;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorObjectOwned;
+use op_alloy_rpc_jsonrpsee::traits::MinerApiExtClient;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -277,7 +278,7 @@ impl RpcClient {
         payload: OpExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
-        execution_requests: Vec<alloy_primitives::Bytes>,
+        execution_requests: Vec<Bytes>,
     ) -> ClientResult<PayloadStatus> {
         info!("Sending new_payload_v4 to {}", self.payload_source);
         let execution_payload = ExecutionPayload::from(payload.payload_inner.clone());
@@ -332,6 +333,26 @@ impl RpcClient {
         Ok(self
             .auth_client
             .get_block_by_number(number, full)
+            .await
+            .set_code()?)
+    }
+
+    #[instrument(
+        skip(self),
+        err,
+        fields(
+            otel.kind = ?SpanKind::Client,
+            target = self.payload_source.to_string(),
+            url = %self.auth_rpc,
+            code,
+        )
+    )]
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> ClientResult<bool> {
+        info!("Sending set_max_da_size to {}", self.payload_source);
+
+        Ok(self
+            .auth_client
+            .set_max_da_size(max_tx_size, max_block_size)
             .await
             .set_code()?)
     }

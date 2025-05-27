@@ -13,7 +13,7 @@ use moka::future::Cache;
 use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use crate::debug_api::ExecutionMode;
 use alloy_rpc_types_engine::{
@@ -32,7 +32,7 @@ use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
-use tokio::task::JoinHandle;
+use tokio::{sync::watch, task::JoinHandle};
 use tracing::{info, instrument};
 
 const CACHE_SIZE: u64 = 100;
@@ -474,9 +474,7 @@ impl MinerApiExtServer for RollupBoostServer {
         err,
         fields(otel.kind = ?SpanKind::Server)
     )]
-    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
-        todo!()
-    }
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {}
 }
 
 #[derive(Debug, Clone)]

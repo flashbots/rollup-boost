@@ -9,7 +9,9 @@ use parking_lot::Mutex;
 use tokio::{sync::watch, task::JoinHandle};
 use tracing::{error, info, warn};
 
-use crate::{BufferedRequest, BufferedResponse, ExecutionMode, Health, HttpClient, Probes};
+use crate::{
+    BufferedRequest, BufferedResponse, ExecutionMode, Health, HttpClient, Probes, Request,
+};
 
 /// A request manager that ensures requests are sent consistently
 /// across both the builder and l2 client.
