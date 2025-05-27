@@ -276,8 +276,6 @@ impl RollupBoostServer {
                     }, if retry.is_some() => {}
 
                 }
-
-                todo!()
             }
         })
     }
