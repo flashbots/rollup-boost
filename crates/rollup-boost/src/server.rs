@@ -253,6 +253,7 @@ impl RollupBoostServer {
             loop {
                 tokio::select! {
                     biased;
+
                     Some((max_tx_size, max_block_size)) = rx.recv() => {
                         if let Err(e) = builder_client.set_max_da_size(max_tx_size, max_block_size).await {
                             // TODO: log err
@@ -266,7 +267,6 @@ impl RollupBoostServer {
 
                     _ = async {
                         let (max_tx_size, max_block_size) = retry.unwrap();
-
                         if builder_client.set_max_da_size(max_tx_size, max_block_size).await.is_ok() {
                             // TODO: log
                             *exectuion_mode.lock() = ExecutionMode::Enabled;
