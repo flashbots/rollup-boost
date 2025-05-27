@@ -20,7 +20,13 @@ install() {
 }
 
 install_contender() {
-    cargo install --git https://github.com/flashbots/contender --bin contender --force
+    docker pull flashbots/contender:latest
+    if docker run --rm flashbots/contender --version > /dev/null; then
+        echo "✅ Contender installation completed and verified!"
+    else
+        echo "❌ Contender installation failed. 'contender' command not found in Docker container"
+        return 1
+    fi
 }
 
 run() {
@@ -50,15 +56,12 @@ run() {
         echo "✅ Prefunded address has balance"
     fi
 
-    # Download the scenario for contender
-    wget https://raw.githubusercontent.com/flashbots/contender/refs/heads/main/scenarios/stress.toml -O "/tmp/scenario.toml"
-
     # Deploy the contract with contender, this should be enough to check that the
     # builder is working as expected
-    contender setup -p $PREFUNDED_PRIV_KEY "/tmp/scenario.toml" -r $ROLLUP_BOOST_SOCKET --optimism
+    docker run --name contender flashbots/contender setup -p $PREFUNDED_PRIV_KEY scenario:stress.toml -r $ROLLUP_BOOST_SOCKET --optimism
 
-    # Run the scenario on the builder
-    contender spam --tps 50 -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
+    # Run the fill-block scenario on the builder
+    docker run --name contender flashbots/contender spam --tps 50 -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
 }
 
 clean() {
