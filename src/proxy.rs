@@ -3,10 +3,9 @@ use crate::server::PayloadSource;
 use crate::{Request, Response, from_buffered_request, into_buffered_request};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
-use http_body_util::{BodyExt as _, Full};
-use jsonrpsee::core::{BoxError, http_helpers};
+use http_body_util::BodyExt as _;
+use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
-use jsonrpsee::types::error::METHOD_NOT_FOUND_CODE;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
@@ -23,7 +22,7 @@ const FORWARD_REQUESTS: [&str; 5] = [
     "miner_setGasLimit",
 ];
 
-const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
+pub const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
@@ -507,34 +506,16 @@ mod tests {
         let max_tx_size = U64::MAX;
         let max_block_size = U64::MAX;
 
-        test_harness
-            .proxy_client
-            .request::<serde_json::Value, _>("miner_setMaxDASize", (max_tx_size, max_block_size))
-            .await?;
-
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-        let expected_method = "miner_setMaxDASize";
-        let expected_tx_size = json!(max_tx_size);
-        let expected_block_size = json!(max_block_size);
-
-        // Assert the builder received the correct payload
-        let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
-        let builder_req = builder_requests.first().unwrap();
-        assert_eq!(builder_requests.len(), 1);
-        assert_eq!(builder_req["method"], expected_method);
-        assert_eq!(builder_req["params"][0], expected_tx_size);
-        assert_eq!(builder_req["params"][1], expected_block_size);
-
-        // Assert the l2 received the correct payload
-        let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
-        let l2_req = l2_requests.first().unwrap();
-        assert_eq!(l2_requests.len(), 1);
-        assert_eq!(l2_req["method"], expected_method);
-        assert_eq!(l2_req["params"][0], expected_tx_size);
-        assert_eq!(builder_req["params"][1], expected_block_size);
+        assert!(
+            test_harness
+                .proxy_client
+                .request::<serde_json::Value, _>(
+                    "miner_setMaxDASize",
+                    (max_tx_size, max_block_size)
+                )
+                .await
+                .is_err()
+        );
 
         Ok(())
     }

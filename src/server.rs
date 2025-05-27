@@ -1,5 +1,5 @@
 use crate::{
-    HealthHandle,
+    HealthHandle, MINER_SET_MAX_DA_SIZE,
     client::rpc::RpcClient,
     consistent_request::ConsistentRequest,
     debug_api::DebugServer,
