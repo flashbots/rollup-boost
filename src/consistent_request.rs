@@ -179,6 +179,7 @@ where
                 let mut mode = self.execution_mode.lock();
                 if *mode == ExecutionMode::Enabled {
                     *mode = ExecutionMode::Disabled;
+                    // Drop before aquiring health lock
                     drop(mode);
 
                     self.has_disabled_execution_mode
@@ -187,6 +188,8 @@ where
                         target: "proxy::call",
                         "setting execution mode to Disabled"
                     );
+                    // This health status will likely be later set back to healthy
+                    // but this should be enough to trigger a new leader election.
                     self.probes.set_health(Health::PartialContent);
                 }
 
@@ -195,8 +198,7 @@ where
         }
     }
 
-    /// Public API: run the same request on both clients and return
-    /// the **L2** result once it’s available.
+    // Send a request, ensuring consistent responses from both the builder and l2 client.
     pub async fn send(&mut self, req_fn: RequestFn<U>) -> Result<U, BoxError> {
         self.req_tx.send(Some(req_fn))?;
 

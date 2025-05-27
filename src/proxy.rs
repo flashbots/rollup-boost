@@ -138,15 +138,14 @@ where
 
                 // Fire and forget the builder request
                 tokio::spawn(async move {
-                    let _ = builder_client
-                        .forward(from_buffered_request(buffered_clone), method_clone)
-                        .await;
+                    let _ = builder_client.forward(buffered_clone, method_clone).await;
                 });
             }
 
+            // Return the response from the L2 client
             service
                 .l2_client
-                .forward(from_buffered_request(buffered), method)
+                .forward(buffered, method)
                 .await
                 .map(|res| res.map(HttpBody::new))
         };

@@ -141,8 +141,6 @@ pub struct RollupBoostServer {
     set_max_da_size_manager: ConsistentRequest<bool>,
 }
 
-const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
-
 impl RollupBoostServer {
     pub fn new(
         l2_client: RpcClient,
