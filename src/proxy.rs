@@ -500,9 +500,6 @@ mod tests {
         module
             .register_method("non_existent_method", |_, _, _| "no proxy response")
             .unwrap();
-        module
-            .register_method("greet_melkor", |_, _, _| "You are the dark lord")
-            .unwrap();
 
         server.start(module)
     }

@@ -20,23 +20,19 @@ use crate::{ExecutionMode, Health, Probes, RpcClient};
 pub type BoxFutureResult<U> = Pin<Box<dyn Future<Output = Result<U, BoxError>> + Send + 'static>>;
 pub type RequestFn<U> = Arc<dyn Fn(RpcClient) -> BoxFutureResult<U> + Send + Sync>;
 
-/// Executes every request once against the L2 and once against the builder,
-/// keeping the two in lock-step.
+/// A request manager that ensures requests are sent consistently
+/// across both the builder and l2 client.
 #[derive(Clone)]
 pub struct ConsistentRequest<U>
 where
     U: Clone + Send + Sync + 'static,
 {
     method: String,
-
     l2_client: RpcClient,
     builder_client: RpcClient,
-
     has_disabled_execution_mode: Arc<AtomicBool>,
-
     req_tx: watch::Sender<Option<RequestFn<U>>>,
     res_rx: watch::Receiver<Option<Result<U, BoxError>>>,
-
     probes: Arc<Probes>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
 }
@@ -70,7 +66,6 @@ where
             execution_mode,
         };
 
-        // background dispatcher
         let clone = manager.clone();
         tokio::spawn(async move {
             let mut attempt: Option<JoinHandle<_>> = None;
@@ -81,14 +76,14 @@ where
                     .await
                     .expect("watch channel should stay open");
 
-                if let Some(task) = attempt.take() {
-                    if !task.is_finished() {
+                if let Some(attempt) = attempt.take() {
+                    if !attempt.is_finished() {
                         error!(
                             target: "proxy::call",
                             method = clone.method,
                             "request cancelled"
                         );
-                        task.abort();
+                        attempt.abort();
                     }
                 }
 
@@ -111,16 +106,22 @@ where
         manager
     }
 
+    /// This function may be cancelled at any time from an incoming request.
     async fn send_with_retry_cancel_safe(
         &mut self,
         req_fn: RequestFn<U>,
         res_tx: watch::Sender<Option<Result<U, BoxError>>>,
     ) -> EyreResult<()> {
-        // 1️⃣  Fire L2 call (fail-fast on error).
+        // We send the l2 request first, because we need to avoid the situation where the
+        // l2 fails and the builder succeeds. If this were to happen, it would be too dangerous to
+        // return the l2 error response back to the caller, since the builder would now have an
+        // invalid state. We can return early if the l2 request fails. Note we're specifically
+        // spawning new tasks here to avoid any issues with cancellation. We should ensure we're
+        // in a valid state at all await points.
         let mut manager_for_l2 = self.clone();
-        let res_tx_l2 = res_tx.clone();
+        let res_tx_clone = res_tx.clone();
         let req_fn_l2 = req_fn.clone();
-        tokio::spawn(async move { manager_for_l2.send_to_l2(req_fn_l2, res_tx_l2).await })
+        tokio::spawn(async move { manager_for_l2.send_to_l2(req_fn_l2, res_tx_clone).await })
             .await??;
 
         // 2️⃣  Retry builder until it works.
@@ -156,7 +157,6 @@ where
                     let mut mode = self.execution_mode.lock();
                     *mode = ExecutionMode::Enabled;
                     drop(mode);
-
                     self.has_disabled_execution_mode
                         .store(false, Ordering::SeqCst);
                     info!(
@@ -167,6 +167,9 @@ where
                 Ok(())
             }
             Err(e) => {
+                // l2 request succeeded, but builder request failed
+                // This state can only be recovered from if either the builder is restarted
+                // or if a retry eventually goes through.
                 error!(
                     target: "proxy::call",
                     method = self.method,
