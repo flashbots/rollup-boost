@@ -347,7 +347,11 @@ impl RpcClient {
             code,
         )
     )]
-    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> ClientResult<bool> {
+    pub async fn set_max_da_size(
+        &self,
+        max_tx_size: U64,
+        max_block_size: U64,
+    ) -> ClientResult<bool> {
         info!("Sending set_max_da_size to {}", self.payload_source);
 
         Ok(self

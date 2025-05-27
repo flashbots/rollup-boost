@@ -1,12 +1,13 @@
 use crate::{
     HealthHandle,
     client::rpc::RpcClient,
+    consistent_request::ConsistentRequest,
     debug_api::DebugServer,
     probe::{Health, Probes},
 };
 use alloy_primitives::{B256, Bytes, U64, bytes};
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use futures::{StreamExt as _, stream};
+use futures::{FutureExt, StreamExt as _, stream};
 use http_body_util::{BodyExt, Full};
 use metrics::counter;
 use moka::future::Cache;
@@ -131,14 +132,17 @@ impl PayloadTraceContext {
     }
 }
 
+#[derive(Clone)]
 pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<RpcClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
-    health_handle: JoinHandle<()>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
+    set_max_da_size_manager: ConsistentRequest<()>,
 }
+
+const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
 
 impl RollupBoostServer {
     pub fn new(
@@ -149,7 +153,7 @@ impl RollupBoostServer {
         health_check_interval: u64,
         max_unsafe_interval: u64,
     ) -> Self {
-        let health_handle = HealthHandle {
+        HealthHandle {
             probes: probes.clone(),
             builder_client: Arc::new(builder_client.clone()),
             health_check_interval,
@@ -157,13 +161,21 @@ impl RollupBoostServer {
         }
         .spawn();
 
+        let set_max_da_size_manager = ConsistentRequest::<()>::new(
+            MINER_SET_MAX_DA_SIZE.to_string(),
+            l2_client.clone(),
+            builder_client.clone(),
+            probes.clone(),
+            initial_execution_mode.clone(),
+        );
+
         Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
             probes,
-            health_handle,
+            set_max_da_size_manager,
         }
     }
 
@@ -175,10 +187,6 @@ impl RollupBoostServer {
 
     pub fn execution_mode(&self) -> ExecutionMode {
         *self.execution_mode.lock()
-    }
-
-    pub fn health_handle(&self) -> &JoinHandle<()> {
-        &self.health_handle
     }
 }
 
@@ -474,7 +482,29 @@ impl MinerApiExtServer for RollupBoostServer {
         err,
         fields(otel.kind = ?SpanKind::Server)
     )]
-    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {}
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        let req = move |client: RpcClient| {
+            // let client = client.clone();
+            async move {
+                client.set_max_da_size(max_tx_size, max_block_size).await;
+                Ok(())
+            }
+            .boxed()
+        };
+        self.clone()
+            .set_max_da_size_manager
+            .send(Arc::new(req))
+            .await
+            .map_err(|e| {
+                ErrorObject::owned(
+                    INVALID_REQUEST_CODE,
+                    format!("Failed to set max DA size: {}", e),
+                    None::<String>,
+                )
+            })?;
+
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone)]

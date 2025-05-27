@@ -73,29 +73,19 @@ impl<S> Layer<S> for ProxyLayer {
             PayloadSource::Builder,
         );
 
-        let set_max_da_size_manager = ConsistentRequest::new(
-            MINER_SET_MAX_DA_SIZE.to_string(),
-            l2_client.clone(),
-            builder_client.clone(),
-            self.probes.clone(),
-            self.execution_mode.clone(),
-        );
-
         ProxyService {
             inner,
             l2_client,
             builder_client,
-            set_max_da_size_manager,
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
-    set_max_da_size_manager: ConsistentRequest,
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
