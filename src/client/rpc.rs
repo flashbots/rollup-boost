@@ -337,7 +337,10 @@ impl RpcClient {
     }
 
     pub async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
-        todo!()
+        Ok(self
+            .auth_client
+            .set_max_da_size(max_tx_size, max_block_size)
+            .await?)
     }
 }
 
