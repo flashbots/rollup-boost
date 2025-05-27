@@ -14,7 +14,7 @@ use moka::future::Cache;
 use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::Arc;
 
 use crate::debug_api::ExecutionMode;
 use alloy_rpc_types_engine::{
@@ -33,7 +33,6 @@ use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
-use tokio::{sync::watch, task::JoinHandle};
 use tracing::{info, instrument};
 
 const CACHE_SIZE: u64 = 100;
@@ -139,7 +138,7 @@ pub struct RollupBoostServer {
     pub payload_trace_context: Arc<PayloadTraceContext>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
-    set_max_da_size_manager: ConsistentRequest<()>,
+    set_max_da_size_manager: ConsistentRequest<bool>,
 }
 
 const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
@@ -161,7 +160,7 @@ impl RollupBoostServer {
         }
         .spawn();
 
-        let set_max_da_size_manager = ConsistentRequest::<()>::new(
+        let set_max_da_size_manager = ConsistentRequest::<bool>::new(
             MINER_SET_MAX_DA_SIZE.to_string(),
             l2_client.clone(),
             builder_client.clone(),
@@ -485,11 +484,7 @@ impl MinerApiExtServer for RollupBoostServer {
     async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
         let req = move |client: RpcClient| {
             // let client = client.clone();
-            async move {
-                client.set_max_da_size(max_tx_size, max_block_size).await;
-                Ok(())
-            }
-            .boxed()
+            async move { Ok(client.set_max_da_size(max_tx_size, max_block_size).await?) }.boxed()
         };
         self.clone()
             .set_max_da_size_manager
@@ -890,8 +885,6 @@ mod tests {
                         jwt_secret,
                         builder_auth_rpc,
                         jwt_secret,
-                        probes,
-                        execution_mode.clone(),
                     ));
 
             let server = Server::builder()

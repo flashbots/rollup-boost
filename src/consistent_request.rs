@@ -10,14 +10,14 @@ use std::{
 
 use eyre::{Result as EyreResult, bail};
 use futures::Future;
-use jsonrpsee::core::ClientError;
+use jsonrpsee::core::BoxError;
 use parking_lot::Mutex;
 use tokio::{sync::watch, task::JoinHandle};
 use tracing::{error, info, warn};
 
 use crate::{ExecutionMode, Health, Probes, RpcClient};
 
-pub type BoxFutureResult<U> = Pin<Box<dyn Future<Output = Result<U, ClientError>> + Send + 'static>>;
+pub type BoxFutureResult<U> = Pin<Box<dyn Future<Output = Result<U, BoxError>> + Send + 'static>>;
 pub type RequestFn<U> = Arc<dyn Fn(RpcClient) -> BoxFutureResult<U> + Send + Sync>;
 
 /// Executes every request once against the L2 and once against the builder,
@@ -35,7 +35,7 @@ where
     has_disabled_execution_mode: Arc<AtomicBool>,
 
     req_tx: watch::Sender<Option<RequestFn<U>>>,
-    res_rx: watch::Receiver<Option<Result<U, ClientError>>>,
+    res_rx: watch::Receiver<Option<Result<U, BoxError>>>,
 
     probes: Arc<Probes>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
@@ -53,7 +53,7 @@ where
         execution_mode: Arc<Mutex<ExecutionMode>>,
     ) -> Self {
         let (req_tx, mut req_rx) = watch::channel::<Option<RequestFn<U>>>(None);
-        let (res_tx, mut res_rx) = watch::channel::<Option<Result<U, ClientError>>>(None);
+        let (res_tx, mut res_rx) = watch::channel::<Option<Result<U, BoxError>>>(None);
         req_rx.mark_unchanged();
         res_rx.mark_unchanged();
 
@@ -114,7 +114,7 @@ where
     async fn send_with_retry_cancel_safe(
         &mut self,
         req_fn: RequestFn<U>,
-        res_tx: watch::Sender<Option<Result<U, ClientError>>>,
+        res_tx: watch::Sender<Option<Result<U, BoxError>>>,
     ) -> EyreResult<()> {
         // 1️⃣  Fire L2 call (fail-fast on error).
         let mut manager_for_l2 = self.clone();
@@ -142,7 +142,7 @@ where
     async fn send_to_l2(
         &mut self,
         req_fn: RequestFn<U>,
-        res_tx: watch::Sender<Option<Result<U, ClientError>>>,
+        res_tx: watch::Sender<Option<Result<U, BoxError>>>,
     ) -> EyreResult<()> {
         let l2_res = (req_fn)(self.l2_client.clone()).await;
         res_tx.send(Some(l2_res))?;
@@ -194,7 +194,7 @@ where
 
     /// Public API: run the same request on both clients and return
     /// the **L2** result once it’s available.
-    pub async fn send(&mut self, req_fn: RequestFn<U>) -> Result<U, ClientError> {
+    pub async fn send(&mut self, req_fn: RequestFn<U>) -> Result<U, BoxError> {
         self.req_tx.send(Some(req_fn))?;
 
         self.res_rx.changed().await?;

@@ -1,20 +1,15 @@
 use crate::client::http::HttpClient;
-use crate::consistent_request::ConsistentRequest;
 use crate::server::PayloadSource;
-use crate::{
-    ExecutionMode, Probes, Request, Response, from_buffered_request, into_buffered_request,
-};
+use crate::{Request, Response, from_buffered_request, into_buffered_request};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
-use http_body_util::{BodyExt as _, Collected};
-use jsonrpsee::core::{BoxError, http_helpers};
-use jsonrpsee::server::{HttpBody, HttpRequest, HttpResponse};
-use parking_lot::Mutex;
-use std::sync::Arc;
+use http_body_util::{BodyExt as _, Full};
+use jsonrpsee::core::BoxError;
+use jsonrpsee::server::HttpBody;
+use jsonrpsee::types::error::METHOD_NOT_FOUND_CODE;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
-use tracing::info;
 
 /// Requests that should be forwarded to both the builder and default execution client
 const FORWARD_REQUESTS: [&str; 5] = [
@@ -25,16 +20,12 @@ const FORWARD_REQUESTS: [&str; 5] = [
     "miner_setGasLimit",
 ];
 
-const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
-
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
     l2_auth_rpc: Uri,
     l2_auth_secret: JwtSecret,
     builder_auth_rpc: Uri,
     builder_auth_secret: JwtSecret,
-    probes: Arc<Probes>,
-    execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 impl ProxyLayer {
@@ -43,16 +34,12 @@ impl ProxyLayer {
         l2_auth_secret: JwtSecret,
         builder_auth_rpc: Uri,
         builder_auth_secret: JwtSecret,
-        probes: Arc<Probes>,
-        execution_mode: Arc<Mutex<ExecutionMode>>,
     ) -> Self {
         ProxyLayer {
             l2_auth_rpc,
             l2_auth_secret,
             builder_auth_rpc,
             builder_auth_secret,
-            probes,
-            execution_mode,
         }
     }
 }
@@ -112,33 +99,42 @@ where
             method: &'a str,
         }
 
+        #[derive(serde::Deserialize, Debug)]
+        struct RpcResponse {
+            code: Option<i32>,
+        }
+
         // See https://github.com/tower-rs/tower/blob/abb375d08cf0ba34c1fe76f66f1aba3dc4341013/tower-service/src/lib.rs#L276
         // for an explanation of this pattern
         let mut service = self.clone();
         service.inner = std::mem::replace(&mut self.inner, service.inner);
 
         let fut = async move {
+            // First we'll check if the request should be handled by the inner service.
             let buffered = into_buffered_request(req).await?;
             let inner_res = service
                 .inner
                 .call(from_buffered_request(buffered.clone()))
                 .await
                 .map_err(|e| e.into());
-            match &inner_res {
-                Ok(res) if res.status() == http::StatusCode::METHOD_NOT_ALLOWED => {}
-                _ => {
-                    // If the response is successful, return it directly
-                    return inner_res;
-                }
+
+            let (parts, body) = inner_res?.into_parts();
+            let bytes = body.collect().await?.to_bytes();
+            let code = serde_json::from_slice::<RpcResponse>(&bytes)?.code;
+            if code != Some(METHOD_NOT_FOUND_CODE) {
+                // If the inner service handled the request, return its response
+                println!("body: {}", String::from_utf8_lossy(&bytes));
+                return Ok(Response::from_parts(
+                    parts,
+                    HttpBody::new(Full::from(bytes)),
+                ));
             }
 
-            // Deserialize the bytes to find the method
             let bytes = buffered.clone().into_parts().1.collect().await?.to_bytes();
             let method = serde_json::from_slice::<RpcRequest>(&bytes)?
                 .method
                 .to_string();
 
-            // If the request is an Engine API method, call the inner RollupBoostServer
             if FORWARD_REQUESTS.contains(&method.as_str()) {
                 // If the request should be forwarded, send to both the
                 // default execution client and the builder
@@ -186,6 +182,7 @@ mod tests {
         rpc_params,
         server::{ServerBuilder, ServerHandle},
     };
+    use parking_lot::Mutex;
     use serde_json::json;
     use std::{
         net::{IpAddr, SocketAddr},
@@ -216,15 +213,11 @@ mod tests {
         async fn new() -> eyre::Result<Self> {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
-            let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
-            let probes = Arc::new(Probes::default());
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
-                probes.clone(),
-                execution_mode.clone(),
             ));
 
             let temp_listener = TcpListener::bind("0.0.0.0:0").await?;
@@ -412,8 +405,7 @@ mod tests {
     }
 
     async fn health_check() {
-        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
-        let proxy_server = spawn_proxy_server(execution_mode).await;
+        let proxy_server = spawn_proxy_server().await;
         // Create a new HTTP client
         let client: Client<HttpConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build_http();
@@ -430,9 +422,8 @@ mod tests {
     }
 
     async fn send_request(method: &str) -> Result<String, ClientError> {
-        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
         let server = spawn_server().await;
-        let proxy_server = spawn_proxy_server(execution_mode).await;
+        let proxy_server = spawn_proxy_server().await;
         let proxy_client = HttpClient::builder()
             .build(format!("http://{ADDR}:{PORT}"))
             .unwrap();
@@ -469,7 +460,7 @@ mod tests {
     }
 
     /// Spawn a new RPC server with a proxy layer.
-    async fn spawn_proxy_server(execution_mode: Arc<Mutex<ExecutionMode>>) -> ServerHandle {
+    async fn spawn_proxy_server() -> ServerHandle {
         let addr = format!("{ADDR}:{PORT}");
 
         let jwt = JwtSecret::random();
@@ -480,16 +471,9 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let (probe_layer, probes) = ProbeLayer::new();
+        let (probe_layer, _probes) = ProbeLayer::new();
 
-        let proxy_layer = ProxyLayer::new(
-            l2_auth_uri.clone(),
-            jwt,
-            l2_auth_uri,
-            jwt,
-            probes,
-            execution_mode,
-        );
+        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
 
         // Create a layered server
         let server = ServerBuilder::default()
@@ -515,6 +499,9 @@ mod tests {
             .unwrap();
         module
             .register_method("non_existent_method", |_, _, _| "no proxy response")
+            .unwrap();
+        module
+            .register_method("greet_melkor", |_, _, _| "You are the dark lord")
             .unwrap();
 
         server.start(module)

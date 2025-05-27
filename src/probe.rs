@@ -113,11 +113,11 @@ where
         async move {
             match request.uri().path() {
                 // Return health status
-                "/healthz" => return Ok(service.probes.health().into()),
+                "/healthz" => Ok(service.probes.health().into()),
                 // Service is responding, and therefor ready
-                "/readyz" => return Ok(ok()),
+                "/readyz" => Ok(ok()),
                 // Service is responding, and therefor live
-                "/livez" => return Ok(ok()),
+                "/livez" => Ok(ok()),
                 // Forward the request to the inner service
                 _ => service.inner.call(request).await.map_err(|e| e.into()),
             }
