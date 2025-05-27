@@ -31,6 +31,7 @@ use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{info, instrument};
 
@@ -226,13 +227,40 @@ impl RollupBoostServer {
         Ok(payload)
     }
 
-    fn process_miner_api(&self) -> JoinHandle<()> {
+    fn process_miner_api(&self, mut rx: UnboundedReceiver<(U64, U64)>) -> JoinHandle<()> {
+        let builder_client = self.builder_client.clone();
+        let probes = self.probes.clone();
+        let exectuion_mode = self.execution_mode.clone();
+
         tokio::spawn(async move {
-            // TODO: create var to store latest max da size call
+            let mut retry: Option<(U64, U64)> = None;
             loop {
-                // TODO: select! either if new item enters queue or set_max_da_size completes
-                // if set max da size call is error, log and retry
-                // if new item enters the queue,
+                tokio::select! {
+                    biased;
+                    Some((max_tx_size, max_block_size)) = rx.recv() => {
+                        if let Err(e) = builder_client.set_max_da_size(max_tx_size, max_block_size).await {
+                            // TODO: log err
+                            *exectuion_mode.lock() = ExecutionMode::Disabled;
+                            probes.set_health(Health::PartialContent);
+                            retry = Some((max_tx_size, max_block_size));
+                        } else{
+                            retry = None;
+                        }
+                    }
+
+                    _ = async {
+                        let (max_tx_size, max_block_size) = retry.unwrap();
+
+                        if builder_client.set_max_da_size(max_tx_size, max_block_size).await.is_ok() {
+                            // TODO: log
+                            *exectuion_mode.lock() = ExecutionMode::Enabled;
+                        } else {
+                            tokio::time::sleep(Duration::from_secs(1));
+                        }
+                    }, if retry.is_some() => {}
+
+                }
+
                 todo!()
             }
         })
@@ -503,6 +531,7 @@ impl MinerApiExtServer for RollupBoostServer {
         self.l2_client
             .set_max_da_size(max_tx_size, max_block_size)
             .await?;
+
         // TODO: enqueue the request to the process_miner_api queue
 
         todo!()
