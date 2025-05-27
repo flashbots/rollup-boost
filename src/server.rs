@@ -31,7 +31,7 @@ use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{info, instrument};
 
@@ -40,6 +40,7 @@ pub struct RollupBoostServer {
     pub builder_client: Arc<RpcClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
+    miner_api_tx: UnboundedSender<(U64, U64)>,
     health_handle: JoinHandle<()>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
@@ -63,15 +64,21 @@ impl RollupBoostServer {
         }
         .spawn();
 
-        Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        let server = Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
             block_selection_policy,
+            miner_api_tx: tx,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
             probes,
             health_handle,
-        }
+        };
+
+        server.process_miner_api(rx);
+        server
     }
 
     pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
@@ -529,13 +536,13 @@ impl EngineApiServer for RollupBoostServer {
 
 impl MinerApiExtServer for RollupBoostServer {
     async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        self.miner_api_tx
+            .send((max_tx_size, max_block_size))
+            .expect("TODO: handle this");
+
         self.l2_client
             .set_max_da_size(max_tx_size, max_block_size)
-            .await?;
-
-        // TODO: enqueue the request to the process_miner_api queue
-
-        todo!()
+            .await
     }
 }
 
