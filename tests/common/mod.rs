@@ -151,6 +151,13 @@ impl EngineApi {
         )
         .await?)
     }
+
+    pub async fn set_max_da_size(&self, max_da_size: u64, max_da_gas: u64) -> eyre::Result<bool> {
+        Ok(
+            MinerApiClient::set_max_da_size(&self.engine_api_client, max_da_size, max_da_gas)
+                .await?,
+        )
+    }
 }
 
 #[rpc(client, namespace = "eth")]
@@ -161,6 +168,12 @@ pub trait BlockApi {
         block_number: BlockNumberOrTag,
         include_txs: bool,
     ) -> RpcResult<Option<alloy_rpc_types_eth::Block>>;
+}
+
+#[rpc(client, namespace = "miner")]
+pub trait MinerApi {
+    #[method(name = "setMaxDASize")]
+    async fn set_max_da_size(&self, max_da_size: u64, max_da_gas: u64) -> RpcResult<bool>;
 }
 
 #[derive(Clone)]
@@ -371,6 +384,10 @@ impl RollupBoostTestHarness {
             SimpleBlockGenerator::new(validator, engine_api, self.genesis.clone());
         block_creator.init().await?;
         Ok(block_creator)
+    }
+
+    pub fn engine_api(&self) -> eyre::Result<EngineApi> {
+        EngineApi::new(&self.rollup_boost.rpc_endpoint(), JWT_SECRET)
     }
 
     pub async fn debug_client(&self) -> DebugClient {
