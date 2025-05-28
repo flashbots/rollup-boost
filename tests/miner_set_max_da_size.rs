@@ -71,7 +71,6 @@ async fn miner_set_max_da_size() -> eyre::Result<()> {
     // restart the builder
     client.unpause_container(harness.builder.id()).await?;
 
-    // let _res = engine_api.set_max_da_size(val, val).await?;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let found = handler.get_found_max_da_value();
     assert_eq!(found, second_val);
