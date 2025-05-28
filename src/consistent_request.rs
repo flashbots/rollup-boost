@@ -130,8 +130,16 @@ impl ConsistentRequest {
         res_tx: watch::Sender<Option<Result<BufferedResponse, BoxError>>>,
     ) -> EyreResult<()> {
         let l2_res = self.l2_client.forward(req, self.method.clone()).await;
-        res_tx.send(Some(l2_res))?;
-        Ok(())
+        match l2_res {
+            Ok(_) => {
+                res_tx.send(Some(l2_res))?;
+                Ok(())
+            }
+            Err(_) => {
+                res_tx.send(Some(l2_res))?;
+                Err(eyre::eyre!("failed to send request to L2 client"))
+            }
+        }
     }
 
     async fn send_to_builder(&mut self, req: BufferedRequest) -> EyreResult<()> {

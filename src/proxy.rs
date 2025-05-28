@@ -152,6 +152,7 @@ where
             // so we ensure that the responses receive from the L2 and builder
             // are consistent.
             if method == MINER_SET_MAX_DA_SIZE {
+                println!("here");
                 return service.set_max_da_size_manager.send(buffered).await;
             }
 
@@ -274,7 +275,7 @@ mod tests {
 
     struct MockHttpServer {
         addr: SocketAddr,
-        requests: Arc<Mutex<Vec<serde_json::Value>>>,
+        requests: Arc<tokio::sync::Mutex<Vec<serde_json::Value>>>,
         join_handle: JoinHandle<()>,
     }
 
@@ -288,7 +289,7 @@ mod tests {
         async fn serve() -> eyre::Result<Self> {
             let listener = TcpListener::bind("127.0.0.1:0").await?;
             let addr = listener.local_addr()?;
-            let requests = Arc::new(Mutex::new(vec![]));
+            let requests = Arc::new(tokio::sync::Mutex::new(vec![]));
 
             let requests_clone = requests.clone();
             let handle = tokio::spawn(async move {
@@ -326,7 +327,7 @@ mod tests {
 
         async fn handle_request(
             req: hyper::Request<hyper::body::Incoming>,
-            requests: Arc<Mutex<Vec<serde_json::Value>>>,
+            requests: Arc<tokio::sync::Mutex<Vec<serde_json::Value>>>,
         ) -> Result<hyper::Response<String>, hyper::Error> {
             let body_bytes = match req.into_body().collect().await {
                 Ok(buf) => buf.to_bytes(),
@@ -352,7 +353,14 @@ mod tests {
                 }
             };
 
-            requests.lock().push(request_body.clone());
+            // spawn and await so that the requests will eventually be processed
+            // even after the request is cancelled
+            let request_body_clone = request_body.clone();
+            tokio::spawn(async move {
+                requests.lock().await.push(request_body_clone);
+            })
+            .await
+            .unwrap();
 
             let method = request_body["method"].as_str().unwrap_or_default();
 
@@ -559,7 +567,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
+        let builder_requests = builder.requests.lock().await;
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -568,12 +576,79 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
+        let l2_requests = l2.requests.lock().await;
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
         assert_eq!(l2_req["params"][0], expected_tx_size);
         assert_eq!(builder_req["params"][1], expected_block_size);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set_max_da_size_no_l2() -> eyre::Result<()> {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        let test_harness = TestHarness::new().await?;
+
+        let max_tx_size = U64::MAX;
+        let max_block_size = U64::MAX;
+
+        // Kill the l2 and ensure the builder doesn't receive the request
+        test_harness.l2.join_handle.abort();
+
+        let _ = test_harness
+            .proxy_client
+            .request::<serde_json::Value, _>("miner_setMaxDASize", (max_tx_size, max_block_size))
+            .await;
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        // Assert the builder received the correct payload
+        let builder = &test_harness.builder;
+        let builder_requests = builder.requests.lock().await;
+        assert_eq!(builder_requests.len(), 0);
+
+        // Assert the l2 received the correct payload
+        let l2 = &test_harness.l2;
+        let l2_requests = l2.requests.lock().await;
+        assert_eq!(l2_requests.len(), 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set_max_da_size_no_builder() -> eyre::Result<()> {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        let test_harness = TestHarness::new().await?;
+
+        let max_tx_size = U64::MAX;
+        let max_block_size = U64::MAX;
+
+        // Lock the builder
+        let guard = test_harness.builder.requests.lock().await;
+
+        // Chech that the l2 response is received eventh the builder is locked
+        test_harness
+            .proxy_client
+            .request::<serde_json::Value, _>("miner_setMaxDASize", (max_tx_size, max_block_size))
+            .await?;
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        // Assert the l2 received the correct payload
+        let l2 = &test_harness.l2;
+        let l2_requests = l2.requests.lock().await;
+        assert_eq!(l2_requests.len(), 1);
+
+        drop(guard);
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        // Assert the builder received multiple requests
+        let builder = &test_harness.builder;
+        let builder_requests = builder.requests.lock().await;
+        assert!(builder_requests.len() > 2);
 
         Ok(())
     }
@@ -595,7 +670,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
+        let builder_requests = builder.requests.lock().await;
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -603,7 +678,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
+        let l2_requests = l2.requests.lock().await;
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -632,7 +707,7 @@ mod tests {
         let expected_conditionals = json!(transact_conditionals);
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
+        let builder_requests = builder.requests.lock().await;
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -641,7 +716,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
+        let l2_requests = l2.requests.lock().await;
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -668,7 +743,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
+        let builder_requests = builder.requests.lock().await;
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -676,7 +751,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
+        let l2_requests = l2.requests.lock().await;
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -702,7 +777,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
+        let builder_requests = builder.requests.lock().await;
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -710,7 +785,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
+        let l2_requests = l2.requests.lock().await;
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -737,7 +812,7 @@ mod tests {
 
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
+        let builder_requests = builder.requests.lock().await;
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);
@@ -745,7 +820,7 @@ mod tests {
 
         // Assert the l2 received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
+        let l2_requests = l2.requests.lock().await;
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);
@@ -771,12 +846,12 @@ mod tests {
 
         // Assert the builder has not received the payload
         let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock();
+        let builder_requests = builder.requests.lock().await;
         assert_eq!(builder_requests.len(), 0);
 
         // Assert the l2 auth received the correct payload
         let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock();
+        let l2_requests = l2.requests.lock().await;
         let l2_req = l2_requests.first().unwrap();
         assert_eq!(l2_requests.len(), 1);
         assert_eq!(l2_req["method"], expected_method);

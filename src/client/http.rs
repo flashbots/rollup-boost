@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::client::auth::AuthLayer;
 use crate::payload::PayloadSource;
 use alloy_primitives::bytes::Bytes;
@@ -12,13 +14,17 @@ use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
 use opentelemetry::trace::SpanKind;
-use tower::{Service as _, ServiceBuilder, ServiceExt};
+use tower::{
+    Service as _, ServiceBuilder, ServiceExt,
+    timeout::{Timeout, TimeoutLayer},
+};
 use tower_http::decompression::{Decompression, DecompressionLayer};
 use tracing::{debug, error, instrument};
 
 use super::auth::Auth;
 
-pub type HttpClientService = Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>;
+pub type HttpClientService =
+    Timeout<Decompression<Auth<Client<HttpsConnector<HttpConnector>, HttpBody>>>>;
 
 #[derive(Clone, Debug)]
 pub struct HttpClient {
@@ -40,6 +46,7 @@ impl HttpClient {
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
         let client = ServiceBuilder::new()
+            .layer(TimeoutLayer::new(Duration::from_secs(1)))
             .layer(DecompressionLayer::new())
             .layer(AuthLayer::new(secret))
             .service(client);
