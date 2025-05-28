@@ -165,11 +165,10 @@ impl Args {
             builder_client,
             execution_mode.clone(),
             self.block_selection_policy,
-            probes.clone(),
-            self.health_check_interval,
-            self.max_unsafe_interval,
+            probes,
         );
 
+        rollup_boost.spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
         // Spawn the debug server
         rollup_boost.start_debug_server(debug_addr.as_str()).await?;
 
