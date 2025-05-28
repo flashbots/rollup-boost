@@ -98,13 +98,17 @@ pub struct FlashblocksArgs {
     #[arg(long, env, default_value = "false")]
     pub flashblocks: bool,
 
-    /// Flashblocks WebSocket URL
+    /// Flashblocks Builder WebSocket URL
     #[arg(long, env, default_value = "ws://localhost:1111")]
-    pub flashblocks_url: String,
+    pub flashblocks_builder_url: String,
 
-    /// Flashblocks outbound WebSocket URL
-    #[arg(long, env, default_value = "127.0.0.1:1112")]
-    pub flashblocks_outbound_url: String,
+    /// Flashblocks WebSocket host for outbound connections
+    #[arg(long, env, default_value = "127.0.0.1")]
+    pub flashblocks_host: String,
+
+    /// Flashblocks WebSocket port for outbound connections
+    #[arg(long, env, default_value = "1112")]
+    pub flashblocks_port: u16,
 }
 
 impl Args {
@@ -177,8 +181,11 @@ impl Args {
         let (probe_layer, probes) = ProbeLayer::new();
 
         let flashblocks_client = if self.flashblocks.flashblocks {
-            let inbound_url = self.flashblocks.flashblocks_url;
-            let outbound_url = self.flashblocks.flashblocks_outbound_url;
+            let inbound_url = self.flashblocks.flashblocks_builder_url;
+            let outbound_url = format!(
+                "{}:{}",
+                self.flashblocks.flashblocks_host, self.flashblocks.flashblocks_port
+            );
 
             Some(Flashblocks::run(inbound_url, outbound_url).unwrap())
         } else {

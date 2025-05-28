@@ -105,8 +105,10 @@ Flashblocks is an extension to rollup-boost that enables partial blocks of up to
 ### Commandline Options
 
 - `--flashblocks`: Enables flashblocks for rollup-boost with a flashblocks compatible builder
-- `--flashblocks-url <URL>`: URL for rollup-boost to receive flashblocks from the builder
-- `--flashblocks-outbound-url <URL>`: URL for the websocket server on rollup-boost to stream flashblocks to clients
+- `--flashblocks-builder-url <URL>`: URL for rollup-boost to receive flashblocks from the builder (default: ws://localhost:1111)
+- `--flashblocks-host <HOST>`: Host on rollup-boost for the websocket server on rollup-boost to stream flashblocks to clients (default: 127.0.0.1)
+- `--flashblocks-port <PORT>`: Port on rollup-boost for the websocket server on rollup-boost to stream flashblocks to clients (default: 1112)
+
 
 #### Example
 
