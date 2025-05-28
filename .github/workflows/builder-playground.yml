@@ -1,0 +1,70 @@
+name: Builder Playground Integration Tests
+
+on:
+  # Allow manual trigger
+  workflow_dispatch:
+  # Run nightly at 00:00 UTC
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  integration-tests:
+    name: Run Builder Playground Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+    
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24
+    
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+      
+      - name: Install Just
+        uses: taiki-e/install-action@just
+
+      - name: Install Contender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev libfontconfig1-dev libfontconfig
+          cargo install --git https://github.com/flashbots/contender --bin contender --force
+
+      - name: Install op-rbuilder
+        run: |
+          cargo install --git https://github.com/flashbots/op-rbuilder --bin op-rbuilder --force
+
+      - name: Setup Builder Playground
+        shell: bash
+        run: |
+            go get github.com/flashbots/builder-playground
+            go install github.com/flashbots/builder-playground 
+  
+      - name: Run Builder Playground
+        shell: bash
+        run: |
+            op-rbuilder -- node --builder.playground
+            builder-playground cook opstack --external-builder http://host.docker.internal:4444 
+  
+      - name: Cleanup
+        shell: bash
+        run: |
+            rm -rf ~/.local/share/reth
+            rm -rf ~/.playground
