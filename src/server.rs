@@ -537,13 +537,16 @@ impl EngineApiServer for RollupBoostServer {
 #[async_trait]
 impl MinerApiExtServer for RollupBoostServer {
     async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        let l2_resp = self
+            .l2_client
+            .set_max_da_size(max_tx_size, max_block_size)
+            .await?;
+
         self.miner_api_tx
             .send((max_tx_size, max_block_size))
             .expect("TODO: handle this");
 
-        self.l2_client
-            .set_max_da_size(max_tx_size, max_block_size)
-            .await
+        Ok(l2_resp)
     }
 }
 
