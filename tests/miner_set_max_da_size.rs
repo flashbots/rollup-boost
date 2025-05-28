@@ -48,7 +48,6 @@ async fn miner_set_max_da_size() -> eyre::Result<()> {
     let mut block_generator = harness.block_generator().await?;
     block_generator.generate_builder_blocks(1).await?;
 
-    /*
     let engine_api = harness.engine_api()?;
 
     // send a max da size request
@@ -56,7 +55,6 @@ async fn miner_set_max_da_size() -> eyre::Result<()> {
     println!("res: {:?}", res);
     let found = handler.get_found_max_da_value();
     println!("found: {}", found);
-    */
 
     Ok(())
 }
