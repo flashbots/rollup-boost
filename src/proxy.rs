@@ -140,7 +140,6 @@ where
 
             // If the request is an Engine API method, call the inner RollupBoostServer
             if method.starts_with(ENGINE_METHOD) {
-                // let req = Request::from_parts(parts, HttpBody::from(body_bytes));
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
                 return service
                     .inner
