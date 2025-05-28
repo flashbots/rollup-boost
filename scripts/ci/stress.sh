@@ -62,7 +62,7 @@ run() {
     docker run --rm --network host -v /tmp/.contender:/root/.contender contender setup -p $PREFUNDED_PRIV_KEY scenario:stress.toml -r $ROLLUP_BOOST_SOCKET --optimism
 
     # Run the fill-block scenario on the builder
-    docker run --rm --network host -v /tmp/.contender:/root/.contender contender spam --tps 50 --min-balance 0.1eth -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
+    docker run --rm --network host -v /tmp/.contender:/root/.contender contender spam --tps 50 --min-balance 0.2eth -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
 }
 
 clean() {
