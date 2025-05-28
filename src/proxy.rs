@@ -149,6 +149,9 @@ where
                     .map_err(|e| e.into());
             }
 
+            // We need to handle the `miner_setMaxDASize` method carefully,
+            // so we ensure that the responses receive from the L2 and builder
+            // are consistent.
             if method == MINER_SET_MAX_DA_SIZE {
                 return service.set_max_da_size_manager.send(buffered).await;
             }
