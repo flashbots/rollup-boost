@@ -15,6 +15,9 @@ pub struct Metrics {
     #[metric(describe = "Count of number of connections closed")]
     pub closed_connections: Counter,
 
+    #[metric(describe = "Count the number of connections which lagged and then disconnected")]
+    pub lagged_connections: Counter,
+
     #[metric(describe = "Number of client connections currently open")]
     pub active_connections: Gauge,
 
