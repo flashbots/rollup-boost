@@ -35,13 +35,13 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{info, instrument};
 
+#[derive(Clone)]
 pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<RpcClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
     miner_api_tx: UnboundedSender<(U64, U64)>,
-    health_handle: JoinHandle<()>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
 }
@@ -53,17 +53,7 @@ impl RollupBoostServer {
         initial_execution_mode: ExecutionMode,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
-        health_check_interval: u64,
-        max_unsafe_interval: u64,
     ) -> Self {
-        let health_handle = HealthHandle {
-            probes: probes.clone(),
-            builder_client: Arc::new(builder_client.clone()),
-            health_check_interval: Duration::from_secs(health_check_interval),
-            max_unsafe_interval,
-        }
-        .spawn();
-
         let (tx, rx) = mpsc::unbounded_channel();
 
         let server = Self {
@@ -74,11 +64,24 @@ impl RollupBoostServer {
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
             probes,
-            health_handle,
         };
 
         server.process_miner_api(rx);
         server
+    }
+
+    pub fn spawn_health_check(
+        &self,
+        health_check_interval: u64,
+        max_unsafe_interval: u64,
+    ) -> JoinHandle<()> {
+        HealthHandle {
+            probes: self.probes.clone(),
+            builder_client: self.builder_client.clone(),
+            health_check_interval: Duration::from_secs(health_check_interval),
+            max_unsafe_interval,
+        }
+        .spawn()
     }
 
     pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
@@ -89,10 +92,6 @@ impl RollupBoostServer {
 
     pub fn execution_mode(&self) -> ExecutionMode {
         *self.execution_mode.lock()
-    }
-
-    pub fn health_handle(&self) -> &JoinHandle<()> {
-        &self.health_handle
     }
 
     async fn new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
@@ -293,8 +292,8 @@ impl TryInto<RpcModule<()>> for RollupBoostServer {
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
         let mut module: RpcModule<()> = RpcModule::new(());
-        module.merge(EngineApiServer::into_rpc(self))?;
-
+        module.merge(EngineApiServer::into_rpc(self.clone()))?;
+        module.merge(MinerApiExtServer::into_rpc(self))?;
         // TODO: merge MinerApiExt
 
         for method in module.method_names() {
@@ -689,8 +688,6 @@ mod tests {
                 ExecutionMode::Enabled,
                 None,
                 probes,
-                60,
-                5,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
