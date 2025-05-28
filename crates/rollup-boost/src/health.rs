@@ -10,16 +10,19 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::{Health, Probes, RpcClient};
+use crate::{EngineApiExt, Health, Probes};
 
-pub struct HealthHandle {
+pub struct HealthHandle<BuilderClient> {
     pub probes: Arc<Probes>,
-    pub builder_client: Arc<RpcClient>,
+    pub builder_client: Arc<BuilderClient>,
     pub health_check_interval: Duration,
     pub max_unsafe_interval: u64,
 }
 
-impl HealthHandle {
+impl<BuilderClient> HealthHandle<BuilderClient>
+where
+    BuilderClient: EngineApiExt + Send + Sync + 'static,
+{
     /// Periodically checks that the latest unsafe block timestamp is not older than the
     /// the current time minus the max_unsafe_interval.
     pub fn spawn(self) -> JoinHandle<()> {
@@ -107,6 +110,7 @@ mod tests {
     use alloy_consensus::Header;
     use alloy_rpc_types_eth::{Block, Header as EthHeader, Transaction};
 
+    use crate::RpcClient;
     use http::Uri;
     use http_body_util::BodyExt;
     use hyper::service::service_fn;

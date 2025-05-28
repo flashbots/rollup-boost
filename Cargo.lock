@@ -1765,6 +1765,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "flashblocks"
+version = "0.1.0"
+
+[[package]]
 name = "flashblocks-websocket-proxy"
 version = "0.1.0"
 dependencies = [

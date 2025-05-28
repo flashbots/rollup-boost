@@ -1,5 +1,5 @@
-use crate::BlockSelectionPolicy;
 use crate::debug_api::ExecutionMode;
+use crate::{BlockSelectionPolicy, EngineApiExt};
 use crate::{
     HealthHandle,
     client::rpc::RpcClient,
@@ -43,19 +43,22 @@ pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
 pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
 #[derive(Clone)]
-pub struct RollupBoostServer {
+pub struct RollupBoostServer<BuilderClient> {
     pub l2_client: Arc<RpcClient>,
-    pub builder_client: Arc<RpcClient>,
+    pub builder_client: Arc<BuilderClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
 }
 
-impl RollupBoostServer {
+impl<BuilderClient> RollupBoostServer<BuilderClient>
+where
+    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
+{
     pub fn new(
         l2_client: RpcClient,
-        builder_client: RpcClient,
+        builder_client: BuilderClient,
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
@@ -241,7 +244,10 @@ impl RollupBoostServer {
     }
 }
 
-impl TryInto<RpcModule<()>> for RollupBoostServer {
+impl<BuilderClient> TryInto<RpcModule<()>> for RollupBoostServer<BuilderClient>
+where
+    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
+{
     type Error = RegisterMethodError;
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
@@ -299,7 +305,10 @@ pub trait EngineApi {
 }
 
 #[async_trait]
-impl EngineApiServer for RollupBoostServer {
+impl<BuilderClient> EngineApiServer for RollupBoostServer<BuilderClient>
+where
+    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
+{
     #[instrument(
         skip_all,
         err,
