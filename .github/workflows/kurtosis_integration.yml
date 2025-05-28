@@ -36,10 +36,6 @@ jobs:
       - name: Install Just
         uses: taiki-e/install-action@just
 
-      - name: Install Contender
-        run: |
-          ./scripts/ci/stress.sh install-contender
-
       - name: Setup Kurtosis
         shell: bash
         run: |

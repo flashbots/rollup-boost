@@ -19,17 +19,6 @@ install() {
     fi
 }
 
-install_contender() {
-    docker pull flashbots/contender:latest
-    docker tag flashbots/contender:latest contender
-    if docker run --rm contender --version > /dev/null; then
-        echo "✅ Contender installation completed and verified!"
-    else
-        echo "❌ Contender installation failed. 'contender' command not found in Docker container"
-        return 1
-    fi
-}
-
 run() {
     # Note we use `rollup-boost` in combination with `op-geth-builder` as the JSON RPC servers to assert transaction relaying functionality
     # as well as inclusion of transactions that have only been sent to the builder (verifying the builder's payloads are being included in the canonical chain)
@@ -59,10 +48,10 @@ run() {
 
     # Deploy the contract with contender, this should be enough to check that the
     # builder is working as expected
-    docker run --rm --network host -v /tmp/.contender:/root/.contender contender setup -p $PREFUNDED_PRIV_KEY scenario:stress.toml -r $ROLLUP_BOOST_SOCKET --optimism
+    docker run --rm --network host -v /tmp/.contender:/root/.contender flashbots/contender:latest setup -p $PREFUNDED_PRIV_KEY scenario:stress.toml -r $ROLLUP_BOOST_SOCKET --optimism
 
     # Run the fill-block scenario on the builder
-    docker run --rm --network host -v /tmp/.contender:/root/.contender contender spam --tps 50 --min-balance 0.2eth -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
+    docker run --rm --network host -v /tmp/.contender:/root/.contender flashbots/contender:latest spam --tps 50 --min-balance 0.2eth -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
 }
 
 clean() {
@@ -76,9 +65,6 @@ case "$1" in
     "install")
         install
         ;;
-    "install-contender")
-        install_contender
-        ;;
     "run")
         run
         ;;
@@ -86,10 +72,9 @@ case "$1" in
         clean
         ;;
     *)
-        echo "Usage: $0 {install|install-contender|deploy|run|clean}"
+        echo "Usage: $0 {install|deploy|run|clean}"
         echo "Commands:"
         echo "  install - Install Kurtosis CLI"
-        echo "  install-contender - Install Contender"
         echo "  deploy  - Deploy the Optimism package"
         echo "  run     - Run the Optimism package"
         echo "  clean   - Clean up the Kurtosis environment"
