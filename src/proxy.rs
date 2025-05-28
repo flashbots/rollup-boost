@@ -138,8 +138,6 @@ where
                 .method
                 .to_string();
 
-            println!("method internally: {:?}", method);
-
             // If the request is an Engine API method, call the inner RollupBoostServer
             if method.starts_with(ENGINE_METHOD) {
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
@@ -154,7 +152,6 @@ where
             // so we ensure that the responses receive from the L2 and builder
             // are consistent.
             if method == MINER_SET_MAX_DA_SIZE {
-                println!("here");
                 return service.set_max_da_size_manager.send(buffered).await;
             }
 
