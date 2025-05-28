@@ -138,6 +138,8 @@ where
                 .method
                 .to_string();
 
+            println!("method internally: {:?}", method);
+
             // If the request is an Engine API method, call the inner RollupBoostServer
             if method.starts_with(ENGINE_METHOD) {
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
