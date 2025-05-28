@@ -7,7 +7,7 @@ Rollup Boost is a block builder sidecar for Optimism Stack chains to enable exte
 Run the rollup-boost server using the following command:
 
 ```
-cargo run -- [OPTIONS]
+cargo run --bin rollup-boost -- [OPTIONS]
 ```
 
 ### Command-line Options
@@ -18,12 +18,13 @@ cargo run -- [OPTIONS]
 - `--builder-url <URL>`: URL of the builder execution engine (required)
 - `--builder-jwt-token <TOKEN>`: JWT token for builder authentication (required)
 - `--builder-jwt-path <PATH>`: Path to the builder JWT secret file (required if `--builder-jwt-token` is not provided)
-- `--rpc-host <HOST>`: Host to run the server on (default: 0.0.0.0)
+- `--rpc-host <HOST>`: Host to run the server on (default: 127.0.0.1)
 - `--rpc-port <PORT>`: Port to run the server on (default: 8081)
 - `--tracing`: Enable tracing (default: false)
 - `--log-level <LEVEL>`: Log level (default: info)
 - `--log-format <FORMAT>`: Log format (default: text)
 - `--metrics`: Enable metrics (default: false)
+- `--metrics-host <METRICS_HOST>`: Host to run the metrics server on (default: 127.0.0.1)
 - `--debug-host <HOST>`: Host to run the server on (default: 127.0.0.1)
 - `--debug-server-port <PORT>`: Port to run the debug server on (default: 5555)
 
@@ -34,7 +35,7 @@ You can also set the options using environment variables. See .env.example to us
 ### Example
 
 ```
-cargo run --l2-jwt-token your_jwt_token --l2-url http://localhost:8545 --builder-jwt-token your_jwt_token --builder-url http://localhost:8546
+cargo run --bin rollup-boost -- --l2-jwt-token your_jwt_token --l2-url http://localhost:8545 --builder-jwt-token your_jwt_token --builder-url http://localhost:8546
 ```
 
 ## Core System Workflow
@@ -225,7 +226,7 @@ To stop the devnet run:
 just devnet-down
 ```
 
-To run a stress test against the devnet with [contender](https://github.com/flashbots/contender) first make sure you have contender installed.
+To run a stress test against the devnet with [contender](https://github.com/flashbots/contender) first make sure you have docker installed.
 
 Then run the following command:
 

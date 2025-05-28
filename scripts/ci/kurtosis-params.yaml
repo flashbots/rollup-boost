@@ -15,14 +15,14 @@ optimism_package:
         granite_time_offset: 0
         isthmus_time_offset: 5
       mev_params:
-        rollup_boost_image: "flashbots/rollup-boost:develop"
+        image: "flashbots/rollup-boost:develop"
       additional_services: 
         - rollup-boost
         - blockscout
 ethereum_package:
   participants:
   - el_type: geth
-    cl_type: lighthouse
+    cl_type: teku
   network_params:
     preset: minimal
     genesis_delay: 5
