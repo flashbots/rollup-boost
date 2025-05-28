@@ -31,7 +31,7 @@ use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::watch::{self, Receiver};
 use tokio::task::JoinHandle;
 use tracing::{info, instrument};
 
@@ -41,7 +41,7 @@ pub struct RollupBoostServer {
     pub builder_client: Arc<RpcClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
-    miner_api_tx: UnboundedSender<(U64, U64)>,
+    miner_api_tx: watch::Sender<(U64, U64)>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
 }
@@ -54,7 +54,7 @@ impl RollupBoostServer {
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
     ) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = tokio::sync::watch::channel((U64::ZERO, U64::ZERO));
 
         let server = Self {
             l2_client: Arc::new(l2_client),
@@ -233,54 +233,83 @@ impl RollupBoostServer {
         Ok(payload)
     }
 
-    fn process_miner_api(&self, mut rx: UnboundedReceiver<(U64, U64)>) -> JoinHandle<()> {
+    fn process_miner_api(&self, mut rx: Receiver<(U64, U64)>) -> JoinHandle<()> {
         let builder_client = self.builder_client.clone();
         let probes = self.probes.clone();
         let execution_mode = self.execution_mode.clone();
         let mut exec_mode_toggled = false;
+        let mut retry = false;
 
         tokio::spawn(async move {
-            let mut retry: Option<(U64, U64)> = None;
-
             loop {
-                tokio::select! {
-                    biased;
+                if rx.has_changed().expect("Channel has been closed") {
+                    let (max_tx_size, max_block_size) = *rx.borrow_and_update();
+                    match builder_client
+                        .set_max_da_size(max_tx_size, max_block_size)
+                        .await
+                    {
+                        Ok(_) => {
+                            retry = false;
+                            tracing::info!(
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize successful"
+                            );
+                            if exec_mode_toggled {
+                                tracing::info!("Re-enabling execution mode");
+                                *execution_mode.lock() = ExecutionMode::Enabled;
+                                exec_mode_toggled = false;
+                            }
+                        }
 
-                    Some((max_tx_size, max_block_size)) = rx.recv() => {
-                        if let Err(e) = builder_client.set_max_da_size(max_tx_size, max_block_size).await {
-                            // TODO: log error
-
-                            if execution_mode.lock().is_enabled(){
+                        Err(e) => {
+                            tracing::error!(
+                                error = ?e,
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize failed, retrying"
+                            );
+                            if execution_mode.lock().is_enabled() {
+                                tracing::warn!("Disabling execution mode");
                                 exec_mode_toggled = true;
                                 *execution_mode.lock() = ExecutionMode::Disabled;
                                 probes.set_health(Health::PartialContent);
                             }
-
-                            retry = Some((max_tx_size, max_block_size));
-
-                        } else{
-                            retry = None;
+                            retry = true;
                         }
                     }
-
-                    _ = async {
-                        if let Some((max_tx_size, max_block_size)) = retry {
-                            if builder_client.set_max_da_size(max_tx_size, max_block_size).await.is_ok() {
-                                tracing::info!("Recovered: miner_setMaxDASize successful after retry");
-                                if exec_mode_toggled {
-                                    tracing::info!("Re-enabling execution mode");
-                                    *execution_mode.lock() = ExecutionMode::Enabled;
-                                    exec_mode_toggled = false;
-                                }
-                            } else {
-                                // TODO: log error
-                                tokio::time::sleep(Duration::from_secs(1)).await;
+                } else if retry {
+                    let (max_tx_size, max_block_size) = *rx.borrow();
+                    match builder_client
+                        .set_max_da_size(max_tx_size, max_block_size)
+                        .await
+                    {
+                        Ok(_) => {
+                            retry = false;
+                            tracing::info!(
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize successful"
+                            );
+                            if exec_mode_toggled {
+                                tracing::info!("Re-enabling execution mode");
+                                *execution_mode.lock() = ExecutionMode::Enabled;
+                                exec_mode_toggled = false;
                             }
-                        } else {
+                        }
+
+                        Err(e) => {
+                            tracing::error!(
+                                error = ?e,
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize failed, retrying"
+                            );
                             tokio::time::sleep(Duration::from_secs(1)).await;
                         }
-                    } => {}
-
+                    }
+                } else {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
         })
@@ -294,7 +323,6 @@ impl TryInto<RpcModule<()>> for RollupBoostServer {
         let mut module: RpcModule<()> = RpcModule::new(());
         module.merge(EngineApiServer::into_rpc(self.clone()))?;
         module.merge(MinerApiExtServer::into_rpc(self))?;
-        // TODO: merge MinerApiExt
 
         for method in module.method_names() {
             info!(?method, "method registered");
@@ -576,10 +604,12 @@ mod tests {
     use alloy_rpc_types_engine::{
         BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, PayloadStatusEnum,
     };
+
     use http::{StatusCode, Uri};
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
+    use op_alloy_rpc_jsonrpsee::traits::MinerApiExtClient;
     use parking_lot::Mutex;
     use std::net::SocketAddr;
     use std::str::FromStr;
@@ -1074,5 +1104,24 @@ mod tests {
             .fork_choice_updated_v3(fcu, Some(payload_attributes))
             .await;
         assert!(fcu_response.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_miner_set_max_da_size() {
+        let test_harness = TestHarness::new(None, None).await;
+        let max_tx_size = U64::from(100_000);
+        let max_block_size = U64::from(100_000_000);
+
+        let result = test_harness
+            .rpc_client
+            .set_max_da_size(max_tx_size, max_block_size)
+            .await;
+
+        dbg!(&result);
+
+        assert!(result.is_ok());
+        assert!(result.unwrap(), "setMaxDASize failed");
+
+        test_harness.cleanup().await;
     }
 }
