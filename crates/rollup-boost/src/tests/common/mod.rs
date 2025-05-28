@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use crate::DebugClient;
 use crate::{AuthLayer, AuthService};
-use crate::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
+use crate::{EngineApiClient, OpExecutionPayloadEnvelope, PayloadVersion};
 use crate::{NewPayload, PayloadSource};
 use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
@@ -20,12 +20,7 @@ use jsonrpsee::proc_macros::rpc;
 use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
-use proxy::{ProxyHandler, start_proxy_server};
 use proxy::{BuilderProxyHandler, start_proxy_server};
-use rollup_boost::DebugClient;
-use rollup_boost::EngineApiClient;
-use rollup_boost::{AuthLayer, AuthService};
-use rollup_boost::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};

@@ -1,7 +1,5 @@
-use super::common::RollupBoostTestHarnessBuilder;
-use super::common::proxy::ProxyHandler;
+use super::common::{RollupBoostTestHarnessBuilder, proxy::BuilderProxyHandler};
 use crate::ExecutionMode;
-use common::proxy::BuilderProxyHandler;
 use futures::FutureExt as _;
 use serde_json::Value;
 use std::pin::Pin;
