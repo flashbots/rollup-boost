@@ -1,5 +1,9 @@
 use super::common::RollupBoostTestHarnessBuilder;
 use super::common::proxy::ProxyHandler;
+mod common;
+
+use common::RollupBoostTestHarnessBuilder;
+use common::proxy::BuilderProxyHandler;
 use futures::FutureExt;
 use serde_json::Value;
 use std::pin::Pin;
@@ -17,7 +21,7 @@ impl DelayHandler {
     }
 }
 
-impl ProxyHandler for DelayHandler {
+impl BuilderProxyHandler for DelayHandler {
     fn handle(
         &self,
         _method: String,

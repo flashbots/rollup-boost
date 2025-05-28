@@ -1,6 +1,7 @@
 use super::common::RollupBoostTestHarnessBuilder;
 use super::common::proxy::ProxyHandler;
 use crate::ExecutionMode;
+use common::proxy::BuilderProxyHandler;
 use futures::FutureExt as _;
 use serde_json::Value;
 use std::pin::Pin;
@@ -11,7 +12,7 @@ struct CounterHandler {
     counter: Arc<Mutex<u32>>,
 }
 
-impl ProxyHandler for CounterHandler {
+impl BuilderProxyHandler for CounterHandler {
     fn handle(
         &self,
         _method: String,

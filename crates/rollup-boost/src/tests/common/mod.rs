@@ -12,6 +12,7 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use bytes::BytesMut;
+use eyre::{Context, ContextCompat};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
@@ -20,6 +21,11 @@ use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
 use proxy::{ProxyHandler, start_proxy_server};
+use proxy::{BuilderProxyHandler, start_proxy_server};
+use rollup_boost::DebugClient;
+use rollup_boost::EngineApiClient;
+use rollup_boost::{AuthLayer, AuthService};
+use rollup_boost::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
@@ -82,7 +88,7 @@ impl EngineApi {
         let client = jsonrpsee::http_client::HttpClientBuilder::default()
             .set_http_middleware(middleware)
             .build(url)
-            .expect("Failed to create http client");
+            .context("Failed to create http client")?;
 
         Ok(Self {
             engine_api_client: client,
@@ -91,14 +97,14 @@ impl EngineApi {
 
     pub async fn get_payload(
         &self,
-        version: Version,
+        version: PayloadVersion,
         payload_id: PayloadId,
     ) -> eyre::Result<OpExecutionPayloadEnvelope> {
         match version {
-            Version::V3 => Ok(OpExecutionPayloadEnvelope::V3(
+            PayloadVersion::V3 => Ok(OpExecutionPayloadEnvelope::V3(
                 EngineApiClient::get_payload_v3(&self.engine_api_client, payload_id).await?,
             )),
-            Version::V4 => Ok(OpExecutionPayloadEnvelope::V4(
+            PayloadVersion::V4 => Ok(OpExecutionPayloadEnvelope::V4(
                 EngineApiClient::get_payload_v4(&self.engine_api_client, payload_id).await?,
             )),
         }
@@ -150,6 +156,13 @@ impl EngineApi {
         )
         .await?)
     }
+
+    pub async fn set_max_da_size(&self, max_da_size: u64, max_da_gas: u64) -> eyre::Result<bool> {
+        Ok(
+            MinerApiClient::set_max_da_size(&self.engine_api_client, max_da_size, max_da_gas)
+                .await?,
+        )
+    }
 }
 
 #[rpc(client, namespace = "eth")]
@@ -160,6 +173,12 @@ pub trait BlockApi {
         block_number: BlockNumberOrTag,
         include_txs: bool,
     ) -> RpcResult<Option<alloy_rpc_types_eth::Block>>;
+}
+
+#[rpc(client, namespace = "miner")]
+pub trait MinerApi {
+    #[method(name = "setMaxDASize")]
+    async fn set_max_da_size(&self, max_da_size: u64, max_da_gas: u64) -> RpcResult<bool>;
 }
 
 #[derive(Clone)]
@@ -211,7 +230,7 @@ pub struct RollupBoostTestHarness {
 
 pub struct RollupBoostTestHarnessBuilder {
     test_name: String,
-    proxy_handler: Option<Arc<dyn ProxyHandler>>,
+    proxy_handler: Option<Arc<dyn BuilderProxyHandler>>,
     isthmus_block: Option<u64>,
     block_time: u64,
 }
@@ -268,7 +287,7 @@ impl RollupBoostTestHarnessBuilder {
         })
     }
 
-    pub fn proxy_handler(mut self, proxy_handler: Arc<dyn ProxyHandler>) -> Self {
+    pub fn proxy_handler(mut self, proxy_handler: Arc<dyn BuilderProxyHandler>) -> Self {
         self.proxy_handler = Some(proxy_handler);
         self
     }
@@ -372,6 +391,10 @@ impl RollupBoostTestHarness {
         Ok(block_creator)
     }
 
+    pub fn engine_api(&self) -> eyre::Result<EngineApi> {
+        EngineApi::new(&self.rollup_boost.rpc_endpoint(), JWT_SECRET)
+    }
+
     pub async fn debug_client(&self) -> DebugClient {
         DebugClient::new(&self.rollup_boost.debug_endpoint()).unwrap()
     }
@@ -411,7 +434,7 @@ impl SimpleBlockGenerator {
 
     /// Initialize the block generator by fetching the latest block
     pub async fn init(&mut self) -> eyre::Result<()> {
-        let latest_block = self.engine_api.latest().await?.expect("block not found");
+        let latest_block = self.engine_api.latest().await?.context("block not found")?;
         self.latest_hash = latest_block.header.hash;
         self.timestamp = latest_block.header.timestamp;
         Ok(())
@@ -428,16 +451,16 @@ impl SimpleBlockGenerator {
         let version = match self.genesis.isthmus_block {
             Some(num) => {
                 if self.current_block_number < num {
-                    Version::V3
+                    PayloadVersion::V3
                 } else {
-                    Version::V4
+                    PayloadVersion::V4
                 }
             }
-            None => Version::V3,
+            None => PayloadVersion::V3,
         };
 
         let txns = match version {
-            Version::V4 => {
+            PayloadVersion::V4 => {
                 // Starting on the Ishtmus hardfork, the payload attributes must include a "BlockInfo"
                 // transaction which is a deposit transaction with info about the gas fees on L1.
                 // Op-Reth will fail to process the block if the state resulting from executing this transaction
@@ -470,7 +493,7 @@ impl SimpleBlockGenerator {
             )
             .await?;
 
-        let payload_id = result.payload_id.expect("missing payload id");
+        let payload_id = result.payload_id.context("missing payload id")?;
 
         if !empty_blocks {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -505,7 +528,7 @@ impl SimpleBlockGenerator {
             .validator
             .get_block_creator(new_block_hash)
             .await?
-            .expect("block creator not found");
+            .context("block creator not found")?;
 
         Ok((new_block_hash, block_creator))
     }
