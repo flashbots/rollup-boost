@@ -263,6 +263,7 @@ impl RollupBoostServer {
 
         tokio::spawn(async move {
             loop {
+                // If the setMaxDASize values have been updated, forward to the builder
                 if rx.has_changed().expect("Channel has been closed") {
                     let (max_tx_size, max_block_size) = *rx.borrow_and_update();
                     match builder_client
@@ -276,6 +277,10 @@ impl RollupBoostServer {
                                 ?max_block_size,
                                 "setMaxDASize successful"
                             );
+
+                            // If a previous setMaxDASize call failed and execution mode was disabled,
+                            // and we received updated values before the retry succeeded,
+                            // re-enable execution mode now that the latest call has succeeded
                             if exec_mode_toggled {
                                 tracing::info!("Re-enabling execution mode");
                                 *execution_mode.lock() = ExecutionMode::Enabled;
@@ -290,6 +295,7 @@ impl RollupBoostServer {
                                 ?max_block_size,
                                 "setMaxDASize failed, retrying"
                             );
+
                             if execution_mode.lock().is_enabled() {
                                 tracing::warn!("Disabling execution mode");
                                 exec_mode_toggled = true;
@@ -300,6 +306,8 @@ impl RollupBoostServer {
                         }
                     }
                 } else if retry {
+                    // If the latest setMaxDASize values have not changed but the previous call
+                    // failed, try to send the call to the builder again
                     let (max_tx_size, max_block_size) = *rx.borrow();
                     match builder_client
                         .set_max_da_size(max_tx_size, max_block_size)
@@ -330,6 +338,8 @@ impl RollupBoostServer {
                         }
                     }
                 } else {
+                    // If the latest setMaxDASize values have not been updated and no retry is
+                    // needed, sleep and loop again
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
