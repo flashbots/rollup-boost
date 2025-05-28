@@ -56,8 +56,14 @@ async fn miner_set_max_da_size() -> eyre::Result<()> {
     client.pause_container(harness.builder.id()).await?;
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let val = 1000000;
-    let _res = engine_api.set_max_da_size(val, val).await?;
+    let first_val = 1000000;
+    let _res = engine_api.set_max_da_size(first_val, first_val).await;
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let found = handler.get_found_max_da_value();
+    assert_eq!(found, 0);
+
+    let second_val = 2000000;
+    let _res = engine_api.set_max_da_size(second_val, second_val).await;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let found = handler.get_found_max_da_value();
     assert_eq!(found, 0);
@@ -68,7 +74,7 @@ async fn miner_set_max_da_size() -> eyre::Result<()> {
     // let _res = engine_api.set_max_da_size(val, val).await?;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let found = handler.get_found_max_da_value();
-    assert_eq!(found, val);
+    assert_eq!(found, second_val);
 
     Ok(())
 }
