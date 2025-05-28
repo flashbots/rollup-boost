@@ -47,8 +47,7 @@ impl Registry {
                     }
                     Err(RecvError::Lagged(_)) => {
                         info!(message = "client is lagging", client = client.id());
-                        metrics.lag_events.increment(1);
-                        receiver = receiver.resubscribe();
+                        break;
                     }
                 }
             }

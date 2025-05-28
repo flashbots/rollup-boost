@@ -21,9 +21,6 @@ pub struct Metrics {
     #[metric(describe = "Count of rate limited request")]
     pub rate_limited_requests: Counter,
 
-    #[metric(describe = "Count of times that a client lagged")]
-    pub lag_events: Counter,
-
     #[metric(describe = "Count of times upstream receiver was closed/errored")]
     pub upstream_errors: Counter,
 
