@@ -1,6 +1,5 @@
 //! consistent_request.rs
 use std::{
-    pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -9,47 +8,39 @@ use std::{
 };
 
 use eyre::{Result as EyreResult, bail};
-use futures::Future;
-use jsonrpsee::core::BoxError;
+use jsonrpsee::{core::BoxError, http_client::HttpBody};
 use parking_lot::Mutex;
 use tokio::{sync::watch, task::JoinHandle};
 use tracing::{error, info, warn};
 
-use crate::{ExecutionMode, Health, Probes, RpcClient};
-
-pub type BoxFutureResult<U> = Pin<Box<dyn Future<Output = Result<U, BoxError>> + Send + 'static>>;
-pub type RequestFn<U> = Arc<dyn Fn(RpcClient) -> BoxFutureResult<U> + Send + Sync>;
+use crate::{
+    BufferedRequest, BufferedResponse, ExecutionMode, Health, HttpClient, Probes, Response,
+};
 
 /// A request manager that ensures requests are sent consistently
 /// across both the builder and l2 client.
 #[derive(Clone)]
-pub struct ConsistentRequest<U>
-where
-    U: Clone + Send + Sync + 'static,
-{
+pub struct ConsistentRequest {
     method: String,
-    l2_client: RpcClient,
-    builder_client: RpcClient,
+    l2_client: HttpClient,
+    builder_client: HttpClient,
     has_disabled_execution_mode: Arc<AtomicBool>,
-    req_tx: watch::Sender<Option<RequestFn<U>>>,
-    res_rx: watch::Receiver<Option<Result<U, BoxError>>>,
+    req_tx: watch::Sender<Option<BufferedRequest>>,
+    res_rx: watch::Receiver<Option<Result<BufferedResponse, BoxError>>>,
     probes: Arc<Probes>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
-impl<U> ConsistentRequest<U>
-where
-    U: Clone + Send + Sync + 'static,
-{
+impl ConsistentRequest {
     pub fn new(
         method: String,
-        l2_client: RpcClient,
-        builder_client: RpcClient,
+        l2_client: HttpClient,
+        builder_client: HttpClient,
         probes: Arc<Probes>,
         execution_mode: Arc<Mutex<ExecutionMode>>,
     ) -> Self {
-        let (req_tx, mut req_rx) = watch::channel::<Option<RequestFn<U>>>(None);
-        let (res_tx, mut res_rx) = watch::channel::<Option<Result<U, BoxError>>>(None);
+        let (req_tx, mut req_rx) = watch::channel(None);
+        let (res_tx, mut res_rx) = watch::channel(None);
         req_rx.mark_unchanged();
         res_rx.mark_unchanged();
 
@@ -74,9 +65,9 @@ where
                 req_rx
                     .changed()
                     .await
-                    .expect("watch channel should stay open");
+                    .expect("channel should always be open");
 
-                if let Some(attempt) = attempt.take() {
+                if let Some(attempt) = attempt {
                     if !attempt.is_finished() {
                         error!(
                             target: "proxy::call",
@@ -87,18 +78,16 @@ where
                     }
                 }
 
-                let req_fn = req_rx
+                let req = req_rx
                     .borrow_and_update()
                     .as_ref()
-                    .expect("value is always Some")
+                    .expect("value should always be Some")
                     .clone();
 
-                let mut clone_for_task = clone.clone();
+                let mut clone = clone.clone();
                 let res_tx_clone = res_tx.clone();
                 attempt = Some(tokio::spawn(async move {
-                    clone_for_task
-                        .send_with_retry_cancel_safe(req_fn, res_tx_clone)
-                        .await
+                    clone.send_with_retry_cancel_safe(req, res_tx_clone).await
                 }));
             }
         });
@@ -109,8 +98,8 @@ where
     /// This function may be cancelled at any time from an incoming request.
     async fn send_with_retry_cancel_safe(
         &mut self,
-        req_fn: RequestFn<U>,
-        res_tx: watch::Sender<Option<Result<U, BoxError>>>,
+        req: BufferedRequest,
+        res_tx: watch::Sender<Option<Result<BufferedResponse, BoxError>>>,
     ) -> EyreResult<()> {
         // We send the l2 request first, because we need to avoid the situation where the
         // l2 fails and the builder succeeds. If this were to happen, it would be too dangerous to
@@ -118,21 +107,17 @@ where
         // invalid state. We can return early if the l2 request fails. Note we're specifically
         // spawning new tasks here to avoid any issues with cancellation. We should ensure we're
         // in a valid state at all await points.
-        let mut manager_for_l2 = self.clone();
+        let mut manager = self.clone();
         let res_tx_clone = res_tx.clone();
-        let req_fn_l2 = req_fn.clone();
-        tokio::spawn(async move { manager_for_l2.send_to_l2(req_fn_l2, res_tx_clone).await })
-            .await??;
+        let req_clone = req.clone();
+        tokio::spawn(async move { manager.send_to_l2(req_clone, res_tx_clone).await }).await??;
 
-        // 2️⃣  Retry builder until it works.
         loop {
-            let mut manager_for_builder = self.clone();
-            let req_fn_builder = req_fn.clone();
+            let mut manager_clone = self.clone();
+            let req_clone = req.clone();
 
-            match tokio::spawn(
-                async move { manager_for_builder.send_to_builder(req_fn_builder).await },
-            )
-            .await?
+            match tokio::spawn(async move { manager_clone.send_to_builder(req_clone).await })
+                .await?
             {
                 Ok(_) => return Ok(()),
                 Err(_) => tokio::time::sleep(Duration::from_millis(200)).await,
@@ -142,16 +127,16 @@ where
 
     async fn send_to_l2(
         &mut self,
-        req_fn: RequestFn<U>,
-        res_tx: watch::Sender<Option<Result<U, BoxError>>>,
+        req: BufferedRequest,
+        res_tx: watch::Sender<Option<Result<BufferedResponse, BoxError>>>,
     ) -> EyreResult<()> {
-        let l2_res = (req_fn)(self.l2_client.clone()).await;
+        let l2_res = self.l2_client.forward(req, self.method.clone()).await;
         res_tx.send(Some(l2_res))?;
         Ok(())
     }
 
-    async fn send_to_builder(&mut self, req_fn: RequestFn<U>) -> EyreResult<()> {
-        match (req_fn)(self.builder_client.clone()).await {
+    async fn send_to_builder(&mut self, req: BufferedRequest) -> EyreResult<()> {
+        match self.builder_client.forward(req, self.method.clone()).await {
             Ok(_) => {
                 if self.has_disabled_execution_mode.load(Ordering::SeqCst) {
                     let mut mode = self.execution_mode.lock();
@@ -199,12 +184,16 @@ where
     }
 
     // Send a request, ensuring consistent responses from both the builder and l2 client.
-    pub async fn send(&mut self, req_fn: RequestFn<U>) -> Result<U, BoxError> {
-        self.req_tx.send(Some(req_fn))?;
-
+    pub async fn send(&mut self, req: BufferedRequest) -> Result<Response, BoxError> {
+        self.req_tx.send(Some(req))?;
         self.res_rx.changed().await?;
-        match self.res_rx.borrow_and_update().as_ref().unwrap() {
-            Ok(v) => Ok(v.clone()),
+        match self
+            .res_rx
+            .borrow_and_update()
+            .as_ref()
+            .expect("value should always be Some")
+        {
+            Ok(v) => Ok(v.clone().map(HttpBody::new)),
             Err(e) => Err(format!("error sending consistent request: {e}").into()),
         }
     }

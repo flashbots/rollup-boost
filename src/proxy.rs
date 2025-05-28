@@ -1,11 +1,16 @@
 use crate::client::http::HttpClient;
+use crate::consistent_request::ConsistentRequest;
 use crate::server::PayloadSource;
-use crate::{Request, Response, from_buffered_request, into_buffered_request};
+use crate::{
+    ExecutionMode, Probes, Request, Response, from_buffered_request, into_buffered_request,
+};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
 use http_body_util::BodyExt as _;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
+use parking_lot::Mutex;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
@@ -30,6 +35,8 @@ pub struct ProxyLayer {
     l2_auth_secret: JwtSecret,
     builder_auth_rpc: Uri,
     builder_auth_secret: JwtSecret,
+    probes: Arc<Probes>,
+    execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 impl ProxyLayer {
@@ -38,12 +45,16 @@ impl ProxyLayer {
         l2_auth_secret: JwtSecret,
         builder_auth_rpc: Uri,
         builder_auth_secret: JwtSecret,
+        probes: Arc<Probes>,
+        execution_mode: Arc<Mutex<ExecutionMode>>,
     ) -> Self {
         ProxyLayer {
             l2_auth_rpc,
             l2_auth_secret,
             builder_auth_rpc,
             builder_auth_secret,
+            probes,
+            execution_mode,
         }
     }
 }
@@ -64,10 +75,19 @@ impl<S> Layer<S> for ProxyLayer {
             PayloadSource::Builder,
         );
 
+        let set_max_da_size_manager = ConsistentRequest::new(
+            MINER_SET_MAX_DA_SIZE.to_string(),
+            l2_client.clone(),
+            builder_client.clone(),
+            self.probes.clone(),
+            self.execution_mode.clone(),
+        );
+
         ProxyService {
             inner,
             l2_client,
             builder_client,
+            set_max_da_size_manager,
         }
     }
 }
@@ -77,6 +97,7 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
+    set_max_da_size_manager: ConsistentRequest,
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
@@ -118,7 +139,7 @@ where
                 .to_string();
 
             // If the request is an Engine API method, call the inner RollupBoostServer
-            if method.starts_with(ENGINE_METHOD) || method == MINER_SET_MAX_DA_SIZE {
+            if method.starts_with(ENGINE_METHOD) {
                 // let req = Request::from_parts(parts, HttpBody::from(body_bytes));
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
                 return service
@@ -126,6 +147,10 @@ where
                     .call(from_buffered_request(buffered))
                     .await
                     .map_err(|e| e.into());
+            }
+
+            if method == MINER_SET_MAX_DA_SIZE {
+                return service.set_max_da_size_manager.send(buffered).await;
             }
 
             if FORWARD_REQUESTS.contains(&method.as_str()) {
@@ -207,11 +232,15 @@ mod tests {
         async fn new() -> eyre::Result<Self> {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
+            let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
+            let probes = Arc::new(Probes::default());
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
+                probes.clone(),
+                execution_mode.clone(),
             ));
 
             let temp_listener = TcpListener::bind("0.0.0.0:0").await?;
@@ -399,7 +428,8 @@ mod tests {
     }
 
     async fn health_check() {
-        let proxy_server = spawn_proxy_server().await;
+        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
+        let proxy_server = spawn_proxy_server(execution_mode).await;
         // Create a new HTTP client
         let client: Client<HttpConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build_http();
@@ -416,8 +446,9 @@ mod tests {
     }
 
     async fn send_request(method: &str) -> Result<String, ClientError> {
+        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
         let server = spawn_server().await;
-        let proxy_server = spawn_proxy_server().await;
+        let proxy_server = spawn_proxy_server(execution_mode).await;
         let proxy_client = HttpClient::builder()
             .build(format!("http://{ADDR}:{PORT}"))
             .unwrap();
@@ -454,7 +485,7 @@ mod tests {
     }
 
     /// Spawn a new RPC server with a proxy layer.
-    async fn spawn_proxy_server() -> ServerHandle {
+    async fn spawn_proxy_server(execution_mode: Arc<Mutex<ExecutionMode>>) -> ServerHandle {
         let addr = format!("{ADDR}:{PORT}");
 
         let jwt = JwtSecret::random();
@@ -465,9 +496,16 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let (probe_layer, _probes) = ProbeLayer::new();
+        let (probe_layer, probes) = ProbeLayer::new();
 
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, l2_auth_uri, jwt);
+        let proxy_layer = ProxyLayer::new(
+            l2_auth_uri.clone(),
+            jwt,
+            l2_auth_uri,
+            jwt,
+            probes,
+            execution_mode,
+        );
 
         // Create a layered server
         let server = ServerBuilder::default()
@@ -506,16 +544,34 @@ mod tests {
         let max_tx_size = U64::MAX;
         let max_block_size = U64::MAX;
 
-        assert!(
-            test_harness
-                .proxy_client
-                .request::<serde_json::Value, _>(
-                    "miner_setMaxDASize",
-                    (max_tx_size, max_block_size)
-                )
-                .await
-                .is_err()
-        );
+        test_harness
+            .proxy_client
+            .request::<serde_json::Value, _>("miner_setMaxDASize", (max_tx_size, max_block_size))
+            .await?;
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        let expected_method = "miner_setMaxDASize";
+        let expected_tx_size = json!(max_tx_size);
+        let expected_block_size = json!(max_block_size);
+
+        // Assert the builder received the correct payload
+        let builder = &test_harness.builder;
+        let builder_requests = builder.requests.lock();
+        let builder_req = builder_requests.first().unwrap();
+        assert_eq!(builder_requests.len(), 1);
+        assert_eq!(builder_req["method"], expected_method);
+        assert_eq!(builder_req["params"][0], expected_tx_size);
+        assert_eq!(builder_req["params"][1], expected_block_size);
+
+        // Assert the l2 received the correct payload
+        let l2 = &test_harness.l2;
+        let l2_requests = l2.requests.lock();
+        let l2_req = l2_requests.first().unwrap();
+        assert_eq!(l2_requests.len(), 1);
+        assert_eq!(l2_req["method"], expected_method);
+        assert_eq!(l2_req["params"][0], expected_tx_size);
+        assert_eq!(builder_req["params"][1], expected_block_size);
 
         Ok(())
     }

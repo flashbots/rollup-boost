@@ -1,17 +1,15 @@
 use crate::{
-    HealthHandle, MINER_SET_MAX_DA_SIZE,
+    HealthHandle,
     client::rpc::RpcClient,
-    consistent_request::ConsistentRequest,
     debug_api::DebugServer,
     probe::{Health, Probes},
 };
-use alloy_primitives::{B256, Bytes, U64, bytes};
+use alloy_primitives::{B256, Bytes, bytes};
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use futures::{FutureExt, StreamExt as _, stream};
+use futures::{StreamExt as _, stream};
 use http_body_util::{BodyExt, Full};
 use metrics::counter;
 use moka::future::Cache;
-use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -138,7 +136,6 @@ pub struct RollupBoostServer {
     pub payload_trace_context: Arc<PayloadTraceContext>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
-    set_max_da_size_manager: ConsistentRequest<bool>,
 }
 
 impl RollupBoostServer {
@@ -158,21 +155,12 @@ impl RollupBoostServer {
         }
         .spawn();
 
-        let set_max_da_size_manager = ConsistentRequest::<bool>::new(
-            MINER_SET_MAX_DA_SIZE.to_string(),
-            l2_client.clone(),
-            builder_client.clone(),
-            probes.clone(),
-            initial_execution_mode.clone(),
-        );
-
         Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
             probes,
-            set_max_da_size_manager,
         }
     }
 
@@ -469,34 +457,6 @@ impl EngineApiServer for RollupBoostServer {
 
     async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block> {
         Ok(self.l2_client.get_block_by_number(number, full).await?)
-    }
-}
-
-#[async_trait]
-impl MinerApiExtServer for RollupBoostServer {
-    #[instrument(
-        skip(self),
-        err,
-        fields(otel.kind = ?SpanKind::Server)
-    )]
-    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
-        let req = move |client: RpcClient| {
-            // let client = client.clone();
-            async move { Ok(client.set_max_da_size(max_tx_size, max_block_size).await?) }.boxed()
-        };
-        self.clone()
-            .set_max_da_size_manager
-            .send(Arc::new(req))
-            .await
-            .map_err(|e| {
-                ErrorObject::owned(
-                    INVALID_REQUEST_CODE,
-                    format!("Failed to set max DA size: {}", e),
-                    None::<String>,
-                )
-            })?;
-
-        todo!()
     }
 }
 
@@ -883,6 +843,8 @@ mod tests {
                         jwt_secret,
                         builder_auth_rpc,
                         jwt_secret,
+                        probes,
+                        execution_mode.clone(),
                     ));
 
             let server = Server::builder()
