@@ -60,7 +60,6 @@ impl ConsistentRequest {
         let clone = manager.clone();
         tokio::spawn(async move {
             let mut attempt: Option<JoinHandle<_>> = None;
-
             loop {
                 req_rx
                     .changed()
@@ -144,10 +143,7 @@ impl ConsistentRequest {
                     drop(mode);
                     self.has_disabled_execution_mode
                         .store(false, Ordering::SeqCst);
-                    info!(
-                        target: "proxy::call",
-                        "setting execution mode to Enabled"
-                    );
+                    info!(target: "proxy::call", message = "setting execution mode to Enabled");
                 }
                 Ok(())
             }
@@ -155,24 +151,15 @@ impl ConsistentRequest {
                 // l2 request succeeded, but builder request failed
                 // This state can only be recovered from if either the builder is restarted
                 // or if a retry eventually goes through.
-                error!(
-                    target: "proxy::call",
-                    method = self.method,
-                    "inconsistent responses from builder and L2"
-                );
-
+                error!(target: "proxy::call", method = self.method, "inconsistent responses from builder and L2");
                 let mut mode = self.execution_mode.lock();
                 if *mode == ExecutionMode::Enabled {
                     *mode = ExecutionMode::Disabled;
                     // Drop before aquiring health lock
                     drop(mode);
-
                     self.has_disabled_execution_mode
                         .store(true, Ordering::SeqCst);
-                    warn!(
-                        target: "proxy::call",
-                        "setting execution mode to Disabled"
-                    );
+                    warn!(target: "proxy::call", "setting execution mode to Disabled");
                     // This health status will likely be later set back to healthy
                     // but this should be enough to trigger a new leader election.
                     self.probes.set_health(Health::PartialContent);
