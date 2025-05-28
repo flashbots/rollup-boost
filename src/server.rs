@@ -237,7 +237,7 @@ impl RollupBoostServer {
     fn process_miner_api(&self, mut rx: UnboundedReceiver<(U64, U64)>) -> JoinHandle<()> {
         let builder_client = self.builder_client.clone();
         let probes = self.probes.clone();
-        let exectuion_mode = self.execution_mode.clone();
+        let execution_mode = self.execution_mode.clone();
         let mut exec_mode_toggled = false;
 
         tokio::spawn(async move {
@@ -249,11 +249,16 @@ impl RollupBoostServer {
 
                     Some((max_tx_size, max_block_size)) = rx.recv() => {
                         if let Err(e) = builder_client.set_max_da_size(max_tx_size, max_block_size).await {
-                            tracing::error!(%e, "Failed to set builder max DA size, disabling execution mode and scheduling retry");
-                            exec_mode_toggled = true;
-                            *exectuion_mode.lock() = ExecutionMode::Disabled;
-                            probes.set_health(Health::PartialContent);
+                            // TODO: log error
+
+                            if execution_mode.lock().is_enabled(){
+                                exec_mode_toggled = true;
+                                *execution_mode.lock() = ExecutionMode::Disabled;
+                                probes.set_health(Health::PartialContent);
+                            }
+
                             retry = Some((max_tx_size, max_block_size));
+
                         } else{
                             retry = None;
                         }
@@ -265,7 +270,7 @@ impl RollupBoostServer {
                                 tracing::info!("Recovered: miner_setMaxDASize successful after retry");
                                 if exec_mode_toggled {
                                     tracing::info!("Re-enabling execution mode");
-                                    *exectuion_mode.lock() = ExecutionMode::Enabled;
+                                    *execution_mode.lock() = ExecutionMode::Enabled;
                                     exec_mode_toggled = false;
                                 }
                             } else {
