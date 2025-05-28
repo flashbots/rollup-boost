@@ -32,7 +32,7 @@ run() {
     # the transactions will be included in the canonical blocks and finalized.
 
     # Figure out first the builder's JSON-RPC URL
-    ROLLUP_BOOST_SOCKET=$(kurtosis port print op-rollup-boost op-rollup-boost-2151908-1-op-kurtosis rpc)
+    ROLLUP_BOOST_SOCKET=$(kurtosis port print op-rollup-boost op-mev-rollup-boost-2151908-op-kurtosis rpc)
     OP_RETH_BUILDER_SOCKET=$(kurtosis port print op-rollup-boost op-el-builder-2151908-1-op-reth-op-node-op-kurtosis rpc)
 
     # Private key with prefunded balance
@@ -58,7 +58,7 @@ run() {
     contender setup -p $PREFUNDED_PRIV_KEY "/tmp/scenario.toml" -r $ROLLUP_BOOST_SOCKET --optimism
 
     # Run the scenario on the builder
-    contender run -p $PREFUNDED_PRIV_KEY fill-block -r $OP_RETH_BUILDER_SOCKET --optimism
+    contender spam --tps 50 -p $PREFUNDED_PRIV_KEY -r $OP_RETH_BUILDER_SOCKET --optimism fill-block
 }
 
 clean() {

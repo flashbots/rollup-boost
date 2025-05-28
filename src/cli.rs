@@ -9,10 +9,11 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    DebugClient, PayloadSource, ProxyLayer, RollupBoostServer, RpcClient,
+    BlockSelectionPolicy, DebugClient, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     init_metrics, init_tracing,
+    payload::PayloadSource,
     probe::ProbeLayer,
 };
 
@@ -37,7 +38,7 @@ pub struct Args {
     pub max_unsafe_interval: u64,
 
     /// Host to run the server on
-    #[arg(long, env, default_value = "0.0.0.0")]
+    #[arg(long, env, default_value = "127.0.0.1")]
     pub rpc_host: String,
 
     /// Port to run the server on
@@ -53,7 +54,7 @@ pub struct Args {
     pub metrics: bool,
 
     /// Host to run the metrics server on
-    #[arg(long, env, default_value = "0.0.0.0")]
+    #[arg(long, env, default_value = "127.0.0.1")]
     pub metrics_host: String,
 
     /// Port to run the metrics server on
@@ -87,24 +88,25 @@ pub struct Args {
     /// Execution mode to start rollup boost with
     #[arg(long, env, default_value = "enabled")]
     pub execution_mode: ExecutionMode,
+
+    #[arg(long, env)]
+    pub block_selection_policy: Option<BlockSelectionPolicy>,
 }
 
 impl Args {
     pub async fn run(self) -> eyre::Result<()> {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .expect("Failed to install TLS ring CryptoProvider");
+        let _ = rustls::crypto::ring::default_provider().install_default();
 
         let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
 
         // Handle commands if present
         if let Some(cmd) = self.command {
-            let debug_addr = format!("http://{}", debug_addr);
+            let debug_addr = format!("http://{debug_addr}");
             return match cmd {
                 Commands::Debug { command } => match command {
                     DebugCommands::SetExecutionMode { execution_mode } => {
                         let client = DebugClient::new(debug_addr.as_str())?;
-                        let result = client.set_execution_mode(execution_mode).await.unwrap();
+                        let result = client.set_execution_mode(execution_mode).await?;
                         println!("Response: {:?}", result.execution_mode);
 
                         Ok(())
@@ -163,6 +165,7 @@ impl Args {
             l2_client,
             builder_client,
             execution_mode.clone(),
+            self.block_selection_policy,
             probes.clone(),
             self.health_check_interval,
             self.max_unsafe_interval,

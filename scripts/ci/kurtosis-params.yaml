@@ -15,7 +15,24 @@ optimism_package:
         granite_time_offset: 0
         isthmus_time_offset: 5
       mev_params:
-        rollup_boost_image: "flashbots/rollup-boost:develop"
+        image: "flashbots/rollup-boost:develop"
       additional_services: 
         - rollup-boost
         - blockscout
+ethereum_package:
+  participants:
+  - el_type: geth
+    cl_type: teku
+  network_params:
+    preset: minimal
+    genesis_delay: 5
+    additional_preloaded_contracts: '
+      {
+        "0x4e59b44847b379578588920cA78FbF26c0B4956C": {
+          "balance": "0ETH",
+          "code": "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3",
+          "storage": {},
+          "nonce": "1"
+        }
+      }
+    '

@@ -1,6 +1,6 @@
 use crate::client::http::HttpClient;
 use crate::consistent_request::ConsistentRequest;
-use crate::server::PayloadSource;
+use crate::payload::PayloadSource;
 use crate::{
     ExecutionMode, Probes, Request, Response, from_buffered_request, into_buffered_request,
 };
@@ -246,7 +246,7 @@ mod tests {
                 execution_mode.clone(),
             ));
 
-            let temp_listener = TcpListener::bind("0.0.0.0:0").await?;
+            let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
             let server_addr = temp_listener.local_addr()?;
             drop(temp_listener);
 
@@ -287,7 +287,7 @@ mod tests {
 
     impl MockHttpServer {
         async fn serve() -> eyre::Result<Self> {
-            let listener = TcpListener::bind("0.0.0.0:0").await?;
+            let listener = TcpListener::bind("127.0.0.1:0").await?;
             let addr = listener.local_addr()?;
             let requests = Arc::new(Mutex::new(vec![]));
 

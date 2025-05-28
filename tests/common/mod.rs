@@ -8,6 +8,7 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use bytes::BytesMut;
+use eyre::{Context, ContextCompat};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
@@ -17,9 +18,9 @@ use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
 use proxy::{ProxyHandler, start_proxy_server};
 use rollup_boost::DebugClient;
+use rollup_boost::EngineApiClient;
 use rollup_boost::{AuthLayer, AuthService};
-use rollup_boost::{EngineApiClient, OpExecutionPayloadEnvelope, Version};
-use rollup_boost::{NewPayload, PayloadSource};
+use rollup_boost::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
@@ -28,7 +29,7 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use std::{fs::File, io::BufReader, time::UNIX_EPOCH};
 use testcontainers::core::ContainerPort;
 use testcontainers::core::client::docker_client_instance;
@@ -82,7 +83,7 @@ impl EngineApi {
         let client = jsonrpsee::http_client::HttpClientBuilder::default()
             .set_http_middleware(middleware)
             .build(url)
-            .expect("Failed to create http client");
+            .context("Failed to create http client")?;
 
         Ok(Self {
             engine_api_client: client,
@@ -91,14 +92,14 @@ impl EngineApi {
 
     pub async fn get_payload(
         &self,
-        version: Version,
+        version: PayloadVersion,
         payload_id: PayloadId,
     ) -> eyre::Result<OpExecutionPayloadEnvelope> {
         match version {
-            Version::V3 => Ok(OpExecutionPayloadEnvelope::V3(
+            PayloadVersion::V3 => Ok(OpExecutionPayloadEnvelope::V3(
                 EngineApiClient::get_payload_v3(&self.engine_api_client, payload_id).await?,
             )),
-            Version::V4 => Ok(OpExecutionPayloadEnvelope::V4(
+            PayloadVersion::V4 => Ok(OpExecutionPayloadEnvelope::V4(
                 EngineApiClient::get_payload_v4(&self.engine_api_client, payload_id).await?,
             )),
         }
@@ -385,6 +386,7 @@ pub struct SimpleBlockGenerator {
     timestamp: u64,
     genesis: Genesis,
     current_block_number: u64,
+    block_time: Duration,
 }
 
 impl SimpleBlockGenerator {
@@ -400,12 +402,17 @@ impl SimpleBlockGenerator {
             timestamp: genesis.timestamp,
             genesis,
             current_block_number: 0,
+            block_time: Duration::from_secs(1),
         }
+    }
+
+    pub fn set_block_time(&mut self, block_time: Duration) {
+        self.block_time = block_time;
     }
 
     /// Initialize the block generator by fetching the latest block
     pub async fn init(&mut self) -> eyre::Result<()> {
-        let latest_block = self.engine_api.latest().await?.expect("block not found");
+        let latest_block = self.engine_api.latest().await?.context("block not found")?;
         self.latest_hash = latest_block.header.hash;
         self.timestamp = latest_block.header.timestamp;
         Ok(())
@@ -422,16 +429,16 @@ impl SimpleBlockGenerator {
         let version = match self.genesis.isthmus_block {
             Some(num) => {
                 if self.current_block_number < num {
-                    Version::V3
+                    PayloadVersion::V3
                 } else {
-                    Version::V4
+                    PayloadVersion::V4
                 }
             }
-            None => Version::V3,
+            None => PayloadVersion::V3,
         };
 
         let txns = match version {
-            Version::V4 => {
+            PayloadVersion::V4 => {
                 // Starting on the Ishtmus hardfork, the payload attributes must include a "BlockInfo"
                 // transaction which is a deposit transaction with info about the gas fees on L1.
                 // Op-Reth will fail to process the block if the state resulting from executing this transaction
@@ -464,7 +471,7 @@ impl SimpleBlockGenerator {
             )
             .await?;
 
-        let payload_id = result.payload_id.expect("missing payload id");
+        let payload_id = result.payload_id.context("missing payload id")?;
 
         if !empty_blocks {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -499,7 +506,7 @@ impl SimpleBlockGenerator {
             .validator
             .get_block_creator(new_block_hash)
             .await?
-            .expect("block creator not found");
+            .context("block creator not found")?;
 
         Ok((new_block_hash, block_creator))
     }

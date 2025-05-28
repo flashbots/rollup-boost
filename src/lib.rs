@@ -1,6 +1,4 @@
-#![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![allow(clippy::complexity)]
-use dotenv as _;
 
 mod client;
 pub use client::{auth::*, http::*, rpc::*};
@@ -28,5 +26,11 @@ pub use probe::*;
 
 mod health;
 pub use health::*;
+
+mod payload;
+pub use payload::*;
+
+mod selection;
+pub use selection::*;
 
 mod consistent_request;
