@@ -16,7 +16,7 @@ use jsonrpsee::proc_macros::rpc;
 use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
-use proxy::{ProxyHandler, start_proxy_server};
+use proxy::{BuilderProxyHandler, start_proxy_server};
 use rollup_boost::DebugClient;
 use rollup_boost::EngineApiClient;
 use rollup_boost::{AuthLayer, AuthService};
@@ -225,7 +225,7 @@ pub struct RollupBoostTestHarness {
 
 pub struct RollupBoostTestHarnessBuilder {
     test_name: String,
-    proxy_handler: Option<Arc<dyn ProxyHandler>>,
+    proxy_handler: Option<Arc<dyn BuilderProxyHandler>>,
     isthmus_block: Option<u64>,
     block_time: u64,
 }
@@ -282,7 +282,7 @@ impl RollupBoostTestHarnessBuilder {
         })
     }
 
-    pub fn proxy_handler(mut self, proxy_handler: Arc<dyn ProxyHandler>) -> Self {
+    pub fn proxy_handler(mut self, proxy_handler: Arc<dyn BuilderProxyHandler>) -> Self {
         self.proxy_handler = Some(proxy_handler);
         self
     }

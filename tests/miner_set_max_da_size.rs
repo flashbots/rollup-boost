@@ -1,8 +1,10 @@
-use common::{RollupBoostTestHarnessBuilder, proxy::ProxyHandler};
+use common::{RollupBoostTestHarnessBuilder, proxy::BuilderProxyHandler};
 use futures::FutureExt as _;
 use serde_json::Value;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use testcontainers::core::client::docker_client_instance;
 
 mod common;
 
@@ -17,14 +19,14 @@ impl MaxDaSizeHandler {
     }
 }
 
-impl ProxyHandler for MaxDaSizeHandler {
+impl BuilderProxyHandler for MaxDaSizeHandler {
     fn handle(
         &self,
         method: String,
         params: Value,
         _result: Value,
     ) -> Pin<Box<dyn Future<Output = Option<Value>> + Send>> {
-        println!("method: {:?}", method);
+        println!("method: {method:?}");
         if method == "miner_setMaxDASize" {
             // decode the params
             let params: Vec<u64> = serde_json::from_value(params).unwrap();
@@ -49,9 +51,21 @@ async fn miner_set_max_da_size() -> eyre::Result<()> {
 
     let engine_api = harness.engine_api()?;
 
-    // send a max da size request
+    // stop the builder
+    let client = docker_client_instance().await?;
+    client.pause_container(harness.builder.id()).await?;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
     let val = 1000000;
     let _res = engine_api.set_max_da_size(val, val).await?;
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let found = handler.get_found_max_da_value();
+    assert_eq!(found, 0);
+
+    // restart the builder
+    client.unpause_container(harness.builder.id()).await?;
+
+    // let _res = engine_api.set_max_da_size(val, val).await?;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let found = handler.get_found_max_da_value();
     assert_eq!(found, val);
