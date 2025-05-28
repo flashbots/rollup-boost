@@ -295,6 +295,8 @@ impl TryInto<RpcModule<()>> for RollupBoostServer {
         let mut module: RpcModule<()> = RpcModule::new(());
         module.merge(EngineApiServer::into_rpc(self))?;
 
+        // TODO: merge MinerApiExt
+
         for method in module.method_names() {
             info!(?method, "method registered");
         }
