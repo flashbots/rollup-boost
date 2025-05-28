@@ -239,15 +239,18 @@ impl RollupBoostServer {
         let probes = self.probes.clone();
         let exectuion_mode = self.execution_mode.clone();
 
+        let mut exec_mode_toggled = false;
         tokio::spawn(async move {
             let mut retry: Option<(U64, U64)> = None;
+
             loop {
                 tokio::select! {
                     biased;
 
                     Some((max_tx_size, max_block_size)) = rx.recv() => {
                         if let Err(e) = builder_client.set_max_da_size(max_tx_size, max_block_size).await {
-                            // TODO: log err
+                            tracing::error!(%e, "Failed to set builder max DA size, disabling execution mode and scheduling retry");
+                            exec_mode_toggled = true;
                             *exectuion_mode.lock() = ExecutionMode::Disabled;
                             probes.set_health(Health::PartialContent);
                             retry = Some((max_tx_size, max_block_size));
@@ -259,9 +262,14 @@ impl RollupBoostServer {
                     _ = async {
                         if let Some((max_tx_size, max_block_size)) = retry {
                             if builder_client.set_max_da_size(max_tx_size, max_block_size).await.is_ok() {
-                                // TODO: log
-                                *exectuion_mode.lock() = ExecutionMode::Enabled;
+                                tracing::info!("Recovered: miner_setMaxDASize successful after retry");
+                                if exec_mode_toggled {
+                                    tracing::info!("Re-enabling execution mode");
+                                    *exectuion_mode.lock() = ExecutionMode::Enabled;
+                                    exec_mode_toggled = false;
+                                }
                             } else {
+                                // TODO: log error
                                 tokio::time::sleep(Duration::from_secs(1)).await;
                             }
                         } else {
