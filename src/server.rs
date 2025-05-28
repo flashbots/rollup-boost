@@ -262,10 +262,10 @@ impl RollupBoostServer {
                                 // TODO: log
                                 *exectuion_mode.lock() = ExecutionMode::Enabled;
                             } else {
-                                tokio::time::sleep(Duration::from_secs(1));
+                                tokio::time::sleep(Duration::from_secs(1)).await;
                             }
                         } else {
-                            tokio::time::sleep(Duration::from_secs(1));
+                            tokio::time::sleep(Duration::from_secs(1)).await;
                         }
                     } => {}
 
