@@ -238,8 +238,8 @@ impl RollupBoostServer {
         let builder_client = self.builder_client.clone();
         let probes = self.probes.clone();
         let exectuion_mode = self.execution_mode.clone();
-
         let mut exec_mode_toggled = false;
+
         tokio::spawn(async move {
             let mut retry: Option<(U64, U64)> = None;
 
