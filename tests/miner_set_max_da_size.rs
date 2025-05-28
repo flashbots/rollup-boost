@@ -29,7 +29,6 @@ impl ProxyHandler for MaxDaSizeHandler {
             // decode the params
             let params: Vec<u64> = serde_json::from_value(params).unwrap();
             assert_eq!(params.len(), 2);
-            println!("params: {:?}", params);
             *self.found_max_da_value.lock().unwrap() = params[0];
         }
         async move { None }.boxed()
@@ -51,10 +50,11 @@ async fn miner_set_max_da_size() -> eyre::Result<()> {
     let engine_api = harness.engine_api()?;
 
     // send a max da size request
-    let res = engine_api.set_max_da_size(1000000, 1000000).await?;
-    println!("res: {:?}", res);
+    let val = 1000000;
+    let _res = engine_api.set_max_da_size(val, val).await?;
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let found = handler.get_found_max_da_value();
-    println!("found: {}", found);
+    assert_eq!(found, val);
 
     Ok(())
 }
