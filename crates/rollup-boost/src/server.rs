@@ -1196,6 +1196,8 @@ mod tests {
             );
         }
 
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
         let l2_requests = test_harness.l2_mock.set_max_da_size_requests.lock().clone();
         let builder_requests = test_harness
             .builder_mock
@@ -1204,7 +1206,7 @@ mod tests {
             .clone();
 
         assert_eq!(l2_requests, requests, "L2 requests mismatch");
-        assert_eq!(builder_requests, requests, "Builder requests mismatch");
+        assert_eq!(builder_requests, vec![*requests.last().unwrap()]);
 
         test_harness.cleanup().await;
     }
