@@ -675,7 +675,7 @@ mod tests {
         new_payload_response: RpcResult<PayloadStatus>,
         set_max_da_size_response: RpcResult<bool>,
         pub override_payload_id: Option<PayloadId>,
-        pub disable: Arc<AtomicBool>,
+        pub disabled: Arc<AtomicBool>,
     }
 
     impl MockEngineServer {
@@ -722,7 +722,7 @@ mod tests {
             override_payload_id: None,
             new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
             set_max_da_size_response: Ok(true),
-            disable: Arc::new(AtomicBool::new(false)),
+            disabled: Arc::new(AtomicBool::new(false)),
         }
         }
     }
@@ -1007,7 +1007,7 @@ mod tests {
         module
             .register_method("miner_setMaxDASize", move |params, _, _| {
                 let params: (U64, U64) = params.parse()?;
-                if !mock_engine_server.disable.load(Ordering::SeqCst) {
+                if !mock_engine_server.disabled.load(Ordering::SeqCst) {
                     let mut max_da_size_requests =
                         mock_engine_server.set_max_da_size_requests.lock();
                     max_da_size_requests.push(params);
@@ -1221,7 +1221,7 @@ mod tests {
     #[tokio::test]
     async fn test_set_max_da_size_no_builder() -> eyre::Result<()> {
         let builder_mock = MockEngineServer::new();
-        let disable_builder = builder_mock.disable.clone();
+        let disable_builder = builder_mock.disabled.clone();
         let test_harness = TestHarness::new(None, Some(builder_mock)).await;
         disable_builder.store(true, Ordering::SeqCst);
 
