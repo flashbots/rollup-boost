@@ -72,7 +72,7 @@ impl RollupBoostServer {
 
         Self {
             l2_client: Arc::new(l2_client),
-            builder_client: builder_client,
+            builder_client,
             block_selection_policy,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
