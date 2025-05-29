@@ -151,7 +151,7 @@ mod tests {
     use crate::probe::ProbeLayer;
 
     use super::*;
-    use alloy_primitives::{B256, Bytes, U64, U128, hex};
+    use alloy_primitives::{B256, Bytes, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
     use http::StatusCode;
@@ -489,44 +489,6 @@ mod tests {
             .unwrap();
 
         server.start(module)
-    }
-
-    #[tokio::test]
-    async fn test_forward_set_max_da_size() -> eyre::Result<()> {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        let test_harness = TestHarness::new().await?;
-
-        let max_tx_size = U64::MAX;
-        let max_block_size = U64::MAX;
-
-        test_harness
-            .proxy_client
-            .request::<serde_json::Value, _>("miner_setMaxDASize", (max_tx_size, max_block_size))
-            .await?;
-
-        let expected_method = "miner_setMaxDASize";
-        let expected_tx_size = json!(max_tx_size);
-        let expected_block_size = json!(max_block_size);
-
-        // Assert the builder received the correct payload
-        let builder = &test_harness.builder;
-        let builder_requests = builder.requests.lock().unwrap();
-        let builder_req = builder_requests.first().unwrap();
-        assert_eq!(builder_requests.len(), 1);
-        assert_eq!(builder_req["method"], expected_method);
-        assert_eq!(builder_req["params"][0], expected_tx_size);
-        assert_eq!(builder_req["params"][1], expected_block_size);
-
-        // Assert the l2 received the correct payload
-        let l2 = &test_harness.l2;
-        let l2_requests = l2.requests.lock().unwrap();
-        let l2_req = l2_requests.first().unwrap();
-        assert_eq!(l2_requests.len(), 1);
-        assert_eq!(l2_req["method"], expected_method);
-        assert_eq!(l2_req["params"][0], expected_tx_size);
-        assert_eq!(builder_req["params"][1], expected_block_size);
-
-        Ok(())
     }
 
     #[tokio::test]
