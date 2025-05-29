@@ -661,6 +661,7 @@ mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::time::sleep;
 
     #[derive(Debug, Clone)]
@@ -674,6 +675,7 @@ mod tests {
         new_payload_response: RpcResult<PayloadStatus>,
         set_max_da_size_response: RpcResult<bool>,
         pub override_payload_id: Option<PayloadId>,
+        pub disable: Arc<AtomicBool>,
     }
 
     impl MockEngineServer {
@@ -720,6 +722,7 @@ mod tests {
             override_payload_id: None,
             new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
             set_max_da_size_response: Ok(true),
+            disable: Arc::new(AtomicBool::new(false)),
         }
         }
     }
@@ -1004,8 +1007,11 @@ mod tests {
         module
             .register_method("miner_setMaxDASize", move |params, _, _| {
                 let params: (U64, U64) = params.parse()?;
-                let mut max_da_size_requests = mock_engine_server.set_max_da_size_requests.lock();
-                max_da_size_requests.push(params);
+                if !mock_engine_server.disable.load(Ordering::SeqCst) {
+                    let mut max_da_size_requests =
+                        mock_engine_server.set_max_da_size_requests.lock();
+                    max_da_size_requests.push(params);
+                }
 
                 mock_engine_server.set_max_da_size_response.clone()
             })
@@ -1210,5 +1216,61 @@ mod tests {
         assert_eq!(builder_requests, vec![*requests.last().unwrap()]);
 
         test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn test_set_max_da_size_no_builder() -> eyre::Result<()> {
+        let builder_mock = MockEngineServer::new();
+        let disable_builder = builder_mock.disable.clone();
+        let test_harness = TestHarness::new(None, Some(builder_mock)).await;
+        disable_builder.store(true, Ordering::SeqCst);
+
+        let mut rng = rand::rng();
+        let requests: Vec<(U64, U64)> = (0..1)
+            .map(|_| {
+                (
+                    U64::from(rng.random_range(1..200_000_000)),
+                    U64::from(rng.random_range(1..200_000_000)),
+                )
+            })
+            .collect();
+
+        for (max_tx_size, max_block_size) in &requests {
+            let result = test_harness
+                .rpc_client
+                .set_max_da_size(*max_tx_size, *max_block_size)
+                .await;
+
+            assert!(
+                result.is_ok(),
+                "setMaxDASize failed for ({}, {})",
+                max_tx_size,
+                max_block_size
+            );
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let l2_requests = test_harness.l2_mock.set_max_da_size_requests.lock().clone();
+        let builder_requests = test_harness
+            .builder_mock
+            .set_max_da_size_requests
+            .lock()
+            .clone();
+
+        assert_eq!(l2_requests, requests, "L2 requests mismatch");
+        assert_eq!(builder_requests, vec![]);
+
+        disable_builder.store(false, Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let builder_requests = test_harness
+            .builder_mock
+            .set_max_da_size_requests
+            .lock()
+            .clone();
+
+        assert_eq!(builder_requests, vec![*requests.last().unwrap()]);
+        test_harness.cleanup().await;
+
+        Ok(())
     }
 }
