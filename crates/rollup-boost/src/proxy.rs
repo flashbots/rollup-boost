@@ -184,7 +184,7 @@ mod tests {
     use crate::probe::ProbeLayer;
 
     use super::*;
-    use alloy_primitives::{B256, Bytes, U128, hex};
+    use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
     use http::StatusCode;
@@ -545,7 +545,6 @@ mod tests {
     }
 
     #[tokio::test]
-<<<<<<< HEAD:crates/rollup-boost/src/proxy.rs
     async fn test_forward_set_max_da_size() -> eyre::Result<()> {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         let test_harness = TestHarness::new().await?;

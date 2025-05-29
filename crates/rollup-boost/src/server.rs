@@ -611,7 +611,6 @@ impl EngineApiServer for RollupBoostServer {
     }
 }
 
-<<<<<<< HEAD:crates/rollup-boost/src/server.rs
 pub async fn into_buffered_request(req: HttpRequest) -> Result<BufferedRequest, BoxError> {
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
