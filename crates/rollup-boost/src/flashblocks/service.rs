@@ -1,8 +1,11 @@
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
-use crate::{ClientResult, EngineApiExt, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient};
-use alloy_primitives::{B256, Bytes, U256};
+use crate::RpcClientError;
+use crate::{
+    ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
+};
+use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
 };
@@ -19,6 +22,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::error;
+
 #[derive(Debug, Error)]
 pub enum FlashblocksError {
     #[error("Missing base payload for initial flashblock")]
@@ -31,6 +35,12 @@ pub enum FlashblocksError {
     InvalidIndex,
     #[error("Missing payload")]
     MissingPayload,
+}
+
+impl From<FlashblocksError> for RpcClientError {
+    fn from(err: FlashblocksError) -> Self {
+        RpcClientError::InvalidPayload(err.to_string())
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -261,40 +271,38 @@ impl EngineApiExt for FlashblocksService {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
-        panic!("Not implemented");
+        let result = self
+            .client
+            .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+            .await?;
+
+        if let Some(payload_id) = result.payload_id {
+            tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
+            self.set_current_payload_id(payload_id).await;
+        } else {
+            tracing::debug!(message = "Forkchoice updated with no payload ID");
+        }
+        Ok(result)
     }
 
-    async fn new_payload_v3(
-        &self,
-        payload: ExecutionPayloadV3,
-        versioned_hashes: Vec<B256>,
-        parent_beacon_block_root: B256,
-    ) -> ClientResult<PayloadStatus> {
-        panic!("Not implemented");
+    async fn new_payload(&self, new_payload: NewPayload) -> ClientResult<PayloadStatus> {
+        self.client.new_payload(new_payload).await
     }
 
-    async fn new_payload_v4(
-        &self,
-        payload: OpExecutionPayloadV4,
-        versioned_hashes: Vec<B256>,
-        parent_beacon_block_root: B256,
-        execution_requests: Vec<Bytes>,
-    ) -> ClientResult<PayloadStatus> {
-        panic!("Not implemented");
-    }
-
-    async fn get_payload_v3(
+    async fn get_payload(
         &self,
         payload_id: PayloadId,
-    ) -> ClientResult<OpExecutionPayloadEnvelopeV3> {
-        panic!("Not implemented");
-    }
+        version: PayloadVersion,
+    ) -> ClientResult<OpExecutionPayloadEnvelope> {
+        let fb_payload = self.get_best_payload(version).await?;
+        if let Some(payload) = fb_payload {
+            tracing::info!(message = "Returning fb payload", payload_id = %payload_id);
+            return Ok(payload);
+        }
 
-    async fn get_payload_v4(
-        &self,
-        payload_id: PayloadId,
-    ) -> ClientResult<OpExecutionPayloadEnvelopeV4> {
-        panic!("Not implemented");
+        tracing::info!(message = "No flashblocks payload available, fetching from client", payload_id = %payload_id);
+        let result = self.client.get_payload(payload_id, version).await?;
+        Ok(result)
     }
 
     async fn get_block_by_number(
@@ -302,6 +310,6 @@ impl EngineApiExt for FlashblocksService {
         number: BlockNumberOrTag,
         full: bool,
     ) -> ClientResult<Block> {
-        panic!("Not implemented");
+        self.client.get_block_by_number(number, full).await
     }
 }

@@ -12,17 +12,14 @@ use tracing::warn;
 
 use crate::{EngineApiExt, Health, Probes};
 
-pub struct HealthHandle<BuilderClient> {
+pub struct HealthHandle {
     pub probes: Arc<Probes>,
-    pub builder_client: Arc<BuilderClient>,
+    pub builder_client: Arc<dyn EngineApiExt>,
     pub health_check_interval: Duration,
     pub max_unsafe_interval: u64,
 }
 
-impl<BuilderClient> HealthHandle<BuilderClient>
-where
-    BuilderClient: EngineApiExt + Send + Sync + 'static,
-{
+impl HealthHandle {
     /// Periodically checks that the latest unsafe block timestamp is not older than the
     /// the current time minus the max_unsafe_interval.
     pub fn spawn(self) -> JoinHandle<()> {

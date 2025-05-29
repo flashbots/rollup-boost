@@ -163,20 +163,20 @@ impl Args {
 
         let (probe_layer, probes) = ProbeLayer::new();
 
-        let builder_client: Box<dyn EngineApiExt> = if self.flashblocks.flashblocks {
+        let builder_client: Arc<dyn EngineApiExt> = if self.flashblocks.flashblocks {
             let inbound_url = self.flashblocks.flashblocks_builder_url;
             let outbound_url = format!(
                 "{}:{}",
                 self.flashblocks.flashblocks_host, self.flashblocks.flashblocks_port
             );
 
-            Box::new(Flashblocks::run(
+            Arc::new(Flashblocks::run(
                 builder_client.clone(),
                 inbound_url,
                 outbound_url,
             )?)
         } else {
-            Box::new(builder_client)
+            Arc::new(builder_client)
         };
 
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));

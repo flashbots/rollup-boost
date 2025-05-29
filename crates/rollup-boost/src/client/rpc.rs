@@ -348,44 +348,16 @@ impl EngineApiExt for RpcClient {
             .await
     }
 
-    async fn new_payload_v3(
-        &self,
-        payload: ExecutionPayloadV3,
-        versioned_hashes: Vec<B256>,
-        parent_beacon_block_root: B256,
-    ) -> ClientResult<PayloadStatus> {
-        self.new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
-            .await
+    async fn new_payload(&self, new_payload: NewPayload) -> ClientResult<PayloadStatus> {
+        self.new_payload(new_payload).await
     }
 
-    async fn new_payload_v4(
-        &self,
-        payload: OpExecutionPayloadV4,
-        versioned_hashes: Vec<B256>,
-        parent_beacon_block_root: B256,
-        execution_requests: Vec<Bytes>,
-    ) -> ClientResult<PayloadStatus> {
-        self.new_payload_v4(
-            payload,
-            versioned_hashes,
-            parent_beacon_block_root,
-            execution_requests,
-        )
-        .await
-    }
-
-    async fn get_payload_v3(
+    async fn get_payload(
         &self,
         payload_id: PayloadId,
-    ) -> ClientResult<OpExecutionPayloadEnvelopeV3> {
-        self.get_payload_v3(payload_id).await
-    }
-
-    async fn get_payload_v4(
-        &self,
-        payload_id: PayloadId,
-    ) -> ClientResult<OpExecutionPayloadEnvelopeV4> {
-        self.get_payload_v4(payload_id).await
+        version: PayloadVersion,
+    ) -> ClientResult<OpExecutionPayloadEnvelope> {
+        self.get_payload(payload_id, version).await
     }
 
     async fn get_block_by_number(

@@ -1,9 +1,9 @@
 use crate::debug_api::ExecutionMode;
 use crate::{BlockSelectionPolicy, EngineApiExt};
 use crate::{
-    HealthHandle,
     client::rpc::RpcClient,
     debug_api::DebugServer,
+    health::HealthHandle,
     payload::{
         NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope, PayloadSource,
         PayloadTraceContext, PayloadVersion,
@@ -43,22 +43,19 @@ pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
 pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
 #[derive(Clone)]
-pub struct RollupBoostServer<BuilderClient> {
+pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
-    pub builder_client: Arc<BuilderClient>,
+    pub builder_client: Arc<dyn EngineApiExt>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
 }
 
-impl<BuilderClient> RollupBoostServer<BuilderClient>
-where
-    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
-{
+impl RollupBoostServer {
     pub fn new(
         l2_client: RpcClient,
-        builder_client: BuilderClient,
+        builder_client: Arc<dyn EngineApiExt>,
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
@@ -67,7 +64,7 @@ where
     ) -> Self {
         HealthHandle {
             probes: probes.clone(),
-            builder_client: Arc::new(builder_client.clone()),
+            builder_client: builder_client.clone(),
             health_check_interval: Duration::from_secs(health_check_interval),
             max_unsafe_interval,
         }
@@ -75,7 +72,7 @@ where
 
         Self {
             l2_client: Arc::new(l2_client),
-            builder_client: Arc::new(builder_client),
+            builder_client: builder_client,
             block_selection_policy,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
@@ -244,10 +241,7 @@ where
     }
 }
 
-impl<BuilderClient> TryInto<RpcModule<()>> for RollupBoostServer<BuilderClient>
-where
-    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
-{
+impl TryInto<RpcModule<()>> for RollupBoostServer {
     type Error = RegisterMethodError;
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
@@ -305,10 +299,7 @@ pub trait EngineApi {
 }
 
 #[async_trait]
-impl<BuilderClient> EngineApiServer for RollupBoostServer<BuilderClient>
-where
-    BuilderClient: Clone + Sync + Send + EngineApiExt + 'static,
-{
+impl EngineApiServer for RollupBoostServer {
     #[instrument(
         skip_all,
         err,
@@ -632,13 +623,15 @@ mod tests {
                 RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
-            let builder_client = RpcClient::new(
-                builder_auth_rpc.clone(),
-                jwt_secret,
-                2000,
-                PayloadSource::Builder,
-            )
-            .unwrap();
+            let builder_client = Arc::new(
+                RpcClient::new(
+                    builder_auth_rpc.clone(),
+                    jwt_secret,
+                    2000,
+                    PayloadSource::Builder,
+                )
+                .unwrap(),
+            );
 
             let (probe_layer, probes) = ProbeLayer::new();
             let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
