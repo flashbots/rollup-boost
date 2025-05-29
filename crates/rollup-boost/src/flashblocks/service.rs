@@ -1,3 +1,4 @@
+use super::outbound::WebSocketPublisher;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
@@ -190,18 +191,20 @@ pub struct FlashblocksService {
     // flashblocks payload being constructed
     best_payload: Arc<RwLock<FlashblockBuilder>>,
 
-    // outbound sender for valid messages
-    outbound: mpsc::Sender<FlashblocksPayloadV1>,
+    // websocket publisher for sending valid preconfirmations to clients
+    ws_pub: Arc<WebSocketPublisher>,
 }
 
 impl FlashblocksService {
-    pub fn new(client: RpcClient, outbound: mpsc::Sender<FlashblocksPayloadV1>) -> Self {
-        Self {
+    pub fn new(client: RpcClient, outbound_addr: String) -> eyre::Result<Self> {
+        let ws_pub = WebSocketPublisher::new(outbound_addr.parse().unwrap())?.into();
+
+        Ok(Self {
             client,
             current_payload_id: Arc::new(RwLock::new(PayloadId::default())),
             best_payload: Arc::new(RwLock::new(FlashblockBuilder::new())),
-            outbound,
-        }
+            ws_pub,
+        })
     }
 
     pub async fn get_best_payload(
@@ -242,7 +245,7 @@ impl FlashblocksService {
                     error!(message = "Failed to extend payload", error = %e);
                 } else {
                     // Broadcast the valid message
-                    if let Err(e) = self.outbound.send(payload).await {
+                    if let Err(e) = self.ws_pub.publish(&payload) {
                         error!(message = "Failed to broadcast payload", error = %e);
                     }
                 }
