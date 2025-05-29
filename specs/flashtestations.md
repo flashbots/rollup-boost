@@ -15,7 +15,7 @@
     - [**`TDXQuote`**](#tdxquote)
     - [**`TDReport`**](#tdreport)
     - [**`DCAPEndorsements`**](#dcapendorsements)
-    - [**`TDXMeasurements`**](#tdxmeasurements)
+    - [**`WorkloadID`**](#workloadid)
   - [System Architecture](#system-architecture)
   - [TEE Attestation Mechanism](#tee-attestation-mechanism)
     - [Intel TDX DCAP Attestation](#intel-tdx-dcap-attestation)
@@ -147,7 +147,7 @@ The terms in this section are used consistently throughout the specification doc
 
 **DCAP ([Data Center Attestation Primitives](https://download.01.org/intel-sgx/latest/dcap-latest/linux/docs/Intel_TDX_DCAP_Quoting_Library_API.pdf))**: Intel's attestation system designed for data centers that enables verification without requiring direct communication with Intel for each attestation check.
 
-**Quote**: The cryptographically signed data structure produced during attestation, containing measurement registers and report data fields that uniquely identify the TEE and its contents. Flashtestations supports the DCAP v5 Quote format.
+**Quote**: The cryptographically signed data structure produced during attestation, containing measurement registers and report data fields that uniquely identify the TEE and its contents. Flashtestations scope currently only supports the DCAP v4 Quote format for TDX.
 
 **Intel DCAP endorsements**: Data provided by Intel that serves as the trust anchor for attestation verification. This includes QE Identity information, TCB Info, certificates, and related data. Also referred to as "Endorsements" in some contexts.
 
@@ -155,9 +155,9 @@ The terms in this section are used consistently throughout the specification doc
 
 **TCB (Trusted Computing Base)**: The set of hardware, firmware, and software components critical to a system's security. In TDX, the TCB includes Intel CPU hardware, microcode, and firmware components that must be at approved security levels.
 
-**Measurement Registers**: Hardware-enforced registers within the TEE (MRTD, RTMRs, MROWNER, etc.) that capture cryptographic hashes of code, data, and configuration loaded into the environment. These registers form the basis for workload identity.
+**Measurement Registers**: Hardware-enforced registers within the TEE (MRTD, RTMRs, MROWNER, etc.) that capture cryptographic hashes of code, data, and configuration loaded into the environment. These registers take part in forming the workload identity.
 
-**REPORTDATA**: A 64-byte field in the attestation quote containing user-defined data. In Flashtestations, this contains the public part of a TEE-controlled address key pair that the TEE workload controls.
+**REPORTDATA**: A 64-byte field in the attestation quote containing user-defined data. In Flashtestations, this contains the public part of a TEE-controlled address key pair that is generated within the TEE, and whose private key never leaves its boundaries. Also see `TEE-controlled address`.
 
 **Quote Enclave (QE)**: Intel-provided enclave responsible for signing attestation quotes using Intel-provisioned keys. The QE creates the cryptographic binding between measurement registers and the attestation signature.
 
@@ -173,7 +173,7 @@ The terms in this section are used consistently throughout the specification doc
 
 ### Flashtestations Protocol Components
 
-**`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived as keccak256(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID || TDAttributes || XFAM).
+**`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived as keccak256(abi.encode(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID || TDAttributes || XFAM)).
 
 **`Endorsement Version`**: The specific version of Intel DCAP endorsements at a point in time. Endorsements change periodically as Intel releases updates or discovers vulnerabilities in hardware or firmware.
 
@@ -202,6 +202,8 @@ The terms in this section are used consistently throughout the specification doc
 **TCB Recovery**: The process that occurs when Intel releases updates to address security vulnerabilities in the TCB components. This typically requires updating the list of secure endorsements.
 
 **Reproducible Build**: A deterministic build process that ensures anyone building the same source code will produce identical binary outputs, enabling verification of expected TEE measurements.
+
+**TEE Infrastructure Operator**: The entity that has control over the TEE deployment, including the ability to set values in measurement registers such as MROWNER, MRCONFIGID, and MROWNER_CONFIG before VM startup.
 
 ## Data Structures
 
@@ -252,9 +254,9 @@ class TDReport():
 
 **Field descriptions:**
 
-- `MRTD`: Measurement register for the TD (initial code/data).
-- `RTMR`: Runtime measurement registers.
-- `MROWNER`: Measurement register that takes arbitrary information and can be set by the infrastructure operator during before startup of the VM
+- `MRTD`: Initial TD measurement (boot loader, initial data).
+- `RTMR`: Runtime measurements (linux kernel, initramfs, etc.).
+- `MROWNER`: Measurement register that takes arbitrary information and can be set by the TEE infrastructure operator before the startup of the VM
 - `MRCONFIGID`: same as `MROWNER`
 - `MROWNER_CONFIG`: same as `MROWNER`
 - `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain.
@@ -278,30 +280,22 @@ class DCAPEndorsements():
 - `TCBInfo`: Trusted Computing Base information.
 - `QECertificationData`: Certification data for the attestation key.
 
-### **`TDXMeasurements`**
+### **`WorkloadID`**
 
-A structured representation of the TDX measurement registers.
+A structured representation of the TDX workloadId.
 
 ```python
-class TDXMeasurements():
-    MRTD: Bytes
-    RTMR: List[Bytes]  // Size 4
-    MROWNER: Bytes
-    MRCONFIGID: Bytes
-    MROWNERCONFIG: Bytes
-    TDAttributes: Bytes
-    XFAM: Bytes
+class WorkloadID():
+    MRTD: Bytes48
+    RTMR: List[Bytes48]  // Size 4
+    MROWNER: Bytes48
+    MRCONFIGID: Bytes48
+    MROWNER_CONFIG: Bytes48
+    TDAttributes: Bytes8
+    XFAM: Bytes8
 ```
 
-**Field descriptions:**
-
-- `MRTD`: Initial TD measurement (boot loader, initial data).
-- `RTMR`: Runtime measurements (extended at runtime).
-- `MROWNER`: Contains the infrastructure operator's public key (Ethereum address or other identifier).
-- `MRCONFIGID`: Hash of service configuration stored onchain and fetched on boot.
-- `MROWNERCONFIG`: Contains unique instance ID chosen by the operator.
-- `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain.
-- `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain.
+**Field descriptions:** See [TDReport](#tdreport) section
 
 ## TEE Attestation Mechanism
 
@@ -322,7 +316,7 @@ The attestation process follows these steps:
 The following code sample illustrates how DCAP attestation verification is performed onchain, and how the key components (workloadId, quote, and TEE-controlled address) are extracted and registered in the Flashtestations registry:
 
 ```solidity
-// External function - anyone can submit a TEE attestation for verification
+// External function - anyone can submit a TEE attestation quote for verification
 function registerTEEService(bytes calldata rawQuote) external {
     // Verify the DCAP quote onchain using Automata's verifier
     // Note: The verifier internally checks the quote against current endorsements
@@ -354,7 +348,7 @@ This implementation highlights several key aspects:
 
 ### Workload Identity Derivation
 
-A TEE's workload identity is derived from a combination of its measurement registers. The TDX platform provides several registers that capture different aspects of the workload through the [TDXMeasurements](#tdxmeasurements) structure.
+A TEE's workload identity is derived from a combination of its measurement registers. The TDX platform provides several registers that capture different aspects of the workload through the [WorkloadID](#workloadid) structure.
 
 The workload identity computation takes these registers into account:
 
@@ -362,15 +356,7 @@ The workload identity computation takes these registers into account:
 keccak256(abi.encodePacked(MRTD, RTMR0, RTMR1, RTMR2, RTMR3, MROWNER, MROWNERCONFIG, MRCONFIGID, TDAttributes, XFAM)))
 ```
 
-These measurement registers serve specific purposes in the permissioned attestation model:
-
-- **MROWNER**: Contains the operator's public key (Ethereum address or other identifier), establishing who is authorized to run this instance
-- **MROWNERCONFIG**: Contains a unique instance ID chosen by the operator, which the operator must sign to authenticate itself
-- **MRCONFIGID**: Contains a hash of the actual service configuration that is stored onchain and fetched during boot
-- **TDAttributes**: Captures the security properties and configuration of the Trust Domain, ensuring workload identity reflects the TEE's security posture
-- **XFAM**: Captures which CPU extended features are enabled, ensuring workload identity reflects the available hardware capabilities
-
-All of these values are captured in the workload identity hash, ensuring that any change to the code, configuration, operator, security properties, or hardware features results in a different identity that must be explicitly authorized through governance.
+All of these values are captured in the workload identity hash, ensuring that any change to the code, configuration, TEE infrastructure operator controlled registries, security properties, or hardware features results in a different identity that must be explicitly authorized (i.e. through governance).
 
 **Note on Reproducible Builds**: To establish trust in expected measurements, TEE workloads must use reproducible build processes where source code, build environment, and instructions are published, allowing independent verification that expected measurements correspond to the published source code.
 
@@ -389,22 +375,22 @@ At its most abstract level within this specification, the Flashtestation Registr
 
 The registry operates on these key abstractions:
 
-1. **TEE-controlled address**: The address extracted from the attestation's report data field ([TDReport.ReportData](#tdreport)), whose private key was generated inside the TEE and is used to interact with onchain contracts.
+1. **TEE-controlled address**: The address extracted from the quote's report data field ([TDReport.ReportData](#tdreport)), whose private key was generated inside the TEE and is used to interact with onchain contracts.
 
-2. **Parsed Attestation**: A struct containing the verified and attested data. It contains the quote in its raw form as well as extracted values which are often used and required such as the workloadId.
+2. **Parsed Quote**: A struct containing the verified and attested data. It contains the quote in its raw form as well as extracted values which are often used and required such as the workloadId.
 
-2.1 **Attestation Quote**: The raw attestation data provided during registration that contains the cryptographic proof of the TEE's state. This quote is stored alongside the address for later verification and revocation.
+2.1 **Attestation Quote**: The raw attestation data provided during registration that contains the cryptographic proof of the TEE's state. This quote is stored in the parse quote struct for later verification and revocation.
 
-2.2 **Workload Identity (`workloadId`)**: A 32-byte hash derived from TDX measurement registers (as defined in [Workload Identity Derivation](#workload-identity-derivation)) that uniquely identifies a specific piece of code running in a TDX environment.
+2.2 **Workload Identity (`workloadId`)**: A 32-byte hash derived from TDX measurement registers (as defined in [Workload Identity Derivation](#workload-identity-derivation)) that uniquely identifies a specific piece of code and its configuration running in a TDX environment.
 
 ### Key Relationship Model
 
 The Flashtestation Registry maintains a 1:1 mapping between these entities:
 
-1. The TEE-controlled address is the key element in the 1:1 mapping to the parsed attestation struct
-2. Each address maps to exactly one attestation struct, the data element for an address can be overwritten with new valid attestations
-3. The registry will only accept adding an attestation where the msg.sender matches the quote report data (proving control of the address)
-4. The registry tracks whether each entry is currently a valid attestation or has been marked as outdated
+1. The TEE-controlled address is the mapping key in the 1:1 mapping to the parsed quote struct
+2. Each address maps to exactly one parsed quote struct, the mapping value for an address can be overwritten when providing a new _valid_ quote
+3. The registry will only accept adding a quote where the msg.sender matches the quote report data (proving control of the address)
+4. The registry tracks whether each struct currently contains a valid quote or has been marked as outdated
 
 ### Fundamental Operations
 
@@ -419,10 +405,10 @@ function isValidWorkload(workloadId, teeAddress) → boolean
 ```
 
 This function operates by:
-1. Retrieving the stored attestation struct for the given TEE-controlled address
-2. Extracting the workloadId from that attestation
+1. Retrieving the parsed quote struct for the given TEE-controlled address
+2. Extracting the workloadId from that quote
 3. Comparing it with the provided workloadId parameter
-4. Returning true if they match and the attestation has not been marked as outdated
+4. Returning true if they match and the quote has not been marked as outdated
 
 This operation must be highly gas-efficient as it may run on every block.
 
@@ -436,23 +422,25 @@ function _recordValidAttestation(workloadId, teeAddress, quote) internal
 
 This internal operation:
 1. Records that this TEE-controlled address has been validated for this workload
-2. Stores the raw attestation quote for future reference and verification
+2. Stores the raw attestation quote in the mapping for future reference and verification
 3. If the address was previously registered, the old entry is replaced
 4. Can only be called internally after successful attestation verification and sender validation
 
 #### 3. Attestation Verification
 
-To verify if an attestation is still valid against current endorsements:
+To reverify if an attestation is still valid against current endorsements:
 
 ```
-function verifyAttestation(teeAddress) → boolean
+function reverifyAttestation(teeAddress) → boolean
 ```
 
 This operation:
-1. Retrieves the stored attestation quote for the TEE-controlled address
-2. Verifies it against current Intel endorsements
-3. If verification fails, marks the address as outdated in the registry
-4. Returns the verification result
+1. The endpoint accepts a TEE-controlled address as input
+2. Retrieves the stored attestation quote for the TEE-controlled address
+3. It runs the verification against current Intel endorsements
+4. If verification fails, marks the address as outdated in the registry
+5. The address remains in the registry but will fail the `isValidWorkload` check
+6. Returns the verification result
 
 #### 4. Quote Retrieval
 
@@ -468,13 +456,11 @@ This operation returns the raw attestation quote that was used to register the T
 
 1. **Simple Storage Model**: The registry maintains a simple mapping between TEE-controlled addresses, workloadIds, and their attestation quotes without tracking complex endorsement relationships.
 
-2. **Individual Verification**: Instead of batch removal based on endorsement bundles, attestations are verified individually when needed, allowing for more granular management.
+2. **Quote Storage**: The system maintains a copy of the attestation quote used to register each address, supporting external verification and auditability.
 
-3. **Quote Storage**: The system maintains a copy of the attestation quote used to register each address, supporting external verification and auditability.
+3. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1) gas costs) regardless of the number of addresses stored.
 
-4. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1) gas costs) regardless of the number of addresses stored.
-
-5. **Reliance on Off-Chain Observation (Initial Version)**: In its current design, the protocol relies on an honest off-chain service (e.g., operated by TEE operators or other trusted entities) to monitor attestations and their associated collateral. This service is expected to call `verifyAttestation` to mark an attestation as stale if the underlying collateral is updated or becomes invalid. This implies a trust assumption in these off-chain entities to maintain the integrity of the registry's "valid" attestations.
+4. **Reliance on Off-Chain Observation (Initial Version)**: In its current design, the protocol relies on an honest off-chain service (e.g., operated by the TEE infrastructure operators or other trusted entities) to monitor attestations and their associated collateral. This service is expected to call `verifyAttestation` to mark an attestation as stale if the underlying collateral is updated or becomes invalid. This implies a trust assumption in these off-chain entities to maintain the integrity of the registry's "valid" attestations.
 
 ### Attestation Verification Endpoint
 
@@ -482,19 +468,9 @@ The attestation verification endpoint provides a mechanism to validate stored at
 
 1. **On-demand Verification**: Verification happens only when needed, rather than requiring constant maintenance. This is typically triggered by an off-chain service.
 
-2. **Simple Management**: When Intel updates its endorsements, the system automatically adapts during verification.
+2. **Smooth Transitions**: TEE-controlled addresses are marked as outdated only when their verification actually fails.
 
-3. **Smooth Transitions**: TEE-controlled addresses are marked as outdated only when their verification actually fails.
-
-The verification process works as follows:
-
-1. The endpoint accepts a TEE-controlled address as input
-2. It retrieves the stored attestation quote for that address
-3. It runs the verification against current Intel endorsements
-4. If verification fails, it marks the address as outdated in the registry
-5. The address remains in the registry but will fail the `isValidWorkload` check
-
-This approach provides a clean, straightforward way to manage attestation validity over time, **though it currently relies on external actors to initiate the `verifyAttestation` call for attestations that may have become stale due to collateral changes.**
+This approach provides a clean, straightforward way to manage attestation validity over time, **though it currently relies on external actors to initiate the `reverifyAttestation` call for attestations that may have become stale due to collateral changes.**
 
 ## Policy Layer: Flexible Authorization
 
