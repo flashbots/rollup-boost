@@ -18,6 +18,9 @@ pub use proxy::*;
 mod server;
 pub use server::*;
 
+mod flashblocks;
+pub use flashblocks::*;
+
 mod tracing;
 pub use tracing::*;
 

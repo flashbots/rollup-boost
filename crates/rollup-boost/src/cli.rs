@@ -9,7 +9,8 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, DebugClient, ProxyLayer, RollupBoostServer, RpcClient,
+    BlockSelectionPolicy, DebugClient, EngineApiExt, Flashblocks, FlashblocksArgs, ProxyLayer,
+    RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     init_metrics,
@@ -91,6 +92,9 @@ pub struct Args {
 
     #[arg(long, env)]
     pub block_selection_policy: Option<BlockSelectionPolicy>,
+
+    #[clap(flatten)]
+    pub flashblocks: FlashblocksArgs,
 }
 
 impl Args {
@@ -158,6 +162,22 @@ impl Args {
         )?;
 
         let (probe_layer, probes) = ProbeLayer::new();
+
+        let builder_client: Box<dyn EngineApiExt> = if self.flashblocks.flashblocks {
+            let inbound_url = self.flashblocks.flashblocks_builder_url;
+            let outbound_url = format!(
+                "{}:{}",
+                self.flashblocks.flashblocks_host, self.flashblocks.flashblocks_port
+            );
+
+            Box::new(Flashblocks::run(
+                builder_client.clone(),
+                inbound_url,
+                outbound_url,
+            )?)
+        } else {
+            Box::new(builder_client)
+        };
 
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));
         let rollup_boost = RollupBoostServer::new(
