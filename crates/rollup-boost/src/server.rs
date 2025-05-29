@@ -657,6 +657,7 @@ mod tests {
     use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
     use op_alloy_rpc_jsonrpsee::traits::MinerApiExtClient;
     use parking_lot::Mutex;
+    use rand::Rng;
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
@@ -667,10 +668,11 @@ mod tests {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
         get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
+        set_max_da_size_requests: Arc<Mutex<Vec<(U64, U64)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
         get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
         new_payload_response: RpcResult<PayloadStatus>,
-
+        set_max_da_size_response: RpcResult<bool>,
         pub override_payload_id: Option<PayloadId>,
     }
 
@@ -680,6 +682,7 @@ mod tests {
                 fcu_requests: Arc::new(Mutex::new(vec![])),
                 get_payload_requests: Arc::new(Mutex::new(vec![])),
                 new_payload_requests: Arc::new(Mutex::new(vec![])),
+                set_max_da_size_requests: Arc::new(Mutex::new(vec![])),
                 fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))),
                 get_payload_response: Ok(OpExecutionPayloadEnvelopeV3{
                     execution_payload: ExecutionPayloadV3 {
@@ -716,6 +719,7 @@ mod tests {
             }),
             override_payload_id: None,
             new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
+            set_max_da_size_response: Ok(true),
         }
         }
     }
@@ -996,6 +1000,16 @@ mod tests {
             })
             .unwrap();
 
+        module
+            .register_method("miner_setMaxDASize", move |params, _, _| {
+                let params: (U64, U64) = params.parse()?;
+                let mut max_da_size_requests = mock_engine_server.set_max_da_size_requests.lock();
+                max_da_size_requests.push(params);
+
+                mock_engine_server.set_max_da_size_response.clone()
+            })
+            .unwrap();
+
         (server.start(module), server_addr)
     }
 
@@ -1158,18 +1172,39 @@ mod tests {
     #[tokio::test]
     async fn test_miner_set_max_da_size() {
         let test_harness = TestHarness::new(None, None).await;
-        let max_tx_size = U64::from(100_000);
-        let max_block_size = U64::from(100_000_000);
+        let mut rng = rand::rng();
+        let requests: Vec<(U64, U64)> = (0..25)
+            .map(|_| {
+                (
+                    U64::from(rng.random_range(1..200_000_000)),
+                    U64::from(rng.random_range(1..200_000_000)),
+                )
+            })
+            .collect();
 
-        let result = test_harness
-            .rpc_client
-            .set_max_da_size(max_tx_size, max_block_size)
-            .await;
+        for (max_tx_size, max_block_size) in &requests {
+            let result = test_harness
+                .rpc_client
+                .set_max_da_size(*max_tx_size, *max_block_size)
+                .await;
 
-        dbg!(&result);
+            assert!(
+                result.is_ok(),
+                "setMaxDASize failed for ({}, {})",
+                max_tx_size,
+                max_block_size
+            );
+        }
 
-        assert!(result.is_ok());
-        assert!(result.unwrap(), "setMaxDASize failed");
+        let l2_requests = test_harness.l2_mock.set_max_da_size_requests.lock().clone();
+        let builder_requests = test_harness
+            .builder_mock
+            .set_max_da_size_requests
+            .lock()
+            .clone();
+
+        assert_eq!(l2_requests, requests, "L2 requests mismatch");
+        assert_eq!(builder_requests, requests, "Builder requests mismatch");
 
         test_harness.cleanup().await;
     }
