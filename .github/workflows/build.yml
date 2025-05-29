@@ -1,10 +1,13 @@
-name: Release
+name: Build Docker Image
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: "0 2 * * *"
 
 permissions:
   contents: write
@@ -103,6 +106,7 @@ jobs:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
             type=sha
+            type=schedule,pattern=nightly
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
@@ -113,4 +117,3 @@ jobs:
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
-
