@@ -10,7 +10,7 @@ use crate::{
     },
     probe::{Health, Probes},
 };
-use alloy_primitives::{B256, Bytes, bytes};
+use alloy_primitives::{B256, Bytes, U64, bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
@@ -27,6 +27,7 @@ use jsonrpsee::server::HttpResponse;
 use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use metrics::counter;
+use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -35,6 +36,8 @@ use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::watch::{self, Receiver};
+use tokio::task::JoinHandle;
 use tracing::{info, instrument};
 
 pub type Request = HttpRequest;
@@ -48,6 +51,7 @@ pub struct RollupBoostServer {
     pub builder_client: Arc<RpcClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
+    miner_api_tx: watch::Sender<(U64, U64)>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
 }
@@ -59,25 +63,35 @@ impl RollupBoostServer {
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
-        health_check_interval: u64,
-        max_unsafe_interval: u64,
     ) -> Self {
-        HealthHandle {
-            probes: probes.clone(),
-            builder_client: Arc::new(builder_client.clone()),
-            health_check_interval: Duration::from_secs(health_check_interval),
-            max_unsafe_interval,
-        }
-        .spawn();
+        let (tx, rx) = tokio::sync::watch::channel((U64::ZERO, U64::ZERO));
 
-        Self {
+        let server = Self {
             l2_client: Arc::new(l2_client),
             builder_client: Arc::new(builder_client),
             block_selection_policy,
+            miner_api_tx: tx,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
             probes,
+        };
+
+        server.process_miner_api(rx);
+        server
+    }
+
+    pub fn spawn_health_check(
+        &self,
+        health_check_interval: u64,
+        max_unsafe_interval: u64,
+    ) -> JoinHandle<()> {
+        HealthHandle {
+            probes: self.probes.clone(),
+            builder_client: self.builder_client.clone(),
+            health_check_interval: Duration::from_secs(health_check_interval),
+            max_unsafe_interval,
         }
+        .spawn()
     }
 
     pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
@@ -239,6 +253,98 @@ impl RollupBoostServer {
         );
         Ok(payload)
     }
+
+    fn process_miner_api(&self, mut rx: Receiver<(U64, U64)>) -> JoinHandle<()> {
+        let builder_client = self.builder_client.clone();
+        let probes = self.probes.clone();
+        let execution_mode = self.execution_mode.clone();
+        let mut exec_mode_toggled = false;
+        let mut retry = false;
+
+        tokio::spawn(async move {
+            loop {
+                // If the setMaxDASize values have been updated, forward to the builder
+                if rx.has_changed().expect("Channel has been closed") {
+                    let (max_tx_size, max_block_size) = *rx.borrow_and_update();
+                    match builder_client
+                        .set_max_da_size(max_tx_size, max_block_size)
+                        .await
+                    {
+                        Ok(_) => {
+                            retry = false;
+                            tracing::info!(
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize successful"
+                            );
+
+                            // If a previous setMaxDASize call failed and execution mode was disabled,
+                            // and we received updated values before the retry succeeded,
+                            // re-enable execution mode now that the latest call has succeeded
+                            if exec_mode_toggled {
+                                tracing::info!("Re-enabling execution mode");
+                                *execution_mode.lock() = ExecutionMode::Enabled;
+                                exec_mode_toggled = false;
+                            }
+                        }
+
+                        Err(e) => {
+                            tracing::error!(
+                                error = ?e,
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize failed, retrying"
+                            );
+
+                            if execution_mode.lock().is_enabled() {
+                                tracing::warn!("Disabling execution mode");
+                                exec_mode_toggled = true;
+                                *execution_mode.lock() = ExecutionMode::Disabled;
+                                probes.set_health(Health::PartialContent);
+                            }
+                            retry = true;
+                        }
+                    }
+                } else if retry {
+                    // If the latest setMaxDASize values have not changed but the previous call
+                    // failed, try to send the call to the builder again
+                    let (max_tx_size, max_block_size) = *rx.borrow();
+                    match builder_client
+                        .set_max_da_size(max_tx_size, max_block_size)
+                        .await
+                    {
+                        Ok(_) => {
+                            retry = false;
+                            tracing::info!(
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize successful"
+                            );
+                            if exec_mode_toggled {
+                                tracing::info!("Re-enabling execution mode");
+                                *execution_mode.lock() = ExecutionMode::Enabled;
+                                exec_mode_toggled = false;
+                            }
+                        }
+
+                        Err(e) => {
+                            tracing::error!(
+                                error = ?e,
+                                ?max_tx_size,
+                                ?max_block_size,
+                                "setMaxDASize failed, retrying"
+                            );
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+                } else {
+                    // If the latest setMaxDASize values have not been updated and no retry is
+                    // needed, sleep and loop again
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        })
+    }
 }
 
 impl TryInto<RpcModule<()>> for RollupBoostServer {
@@ -246,7 +352,8 @@ impl TryInto<RpcModule<()>> for RollupBoostServer {
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
         let mut module: RpcModule<()> = RpcModule::new(());
-        module.merge(EngineApiServer::into_rpc(self))?;
+        module.merge(EngineApiServer::into_rpc(self.clone()))?;
+        module.merge(MinerApiExtServer::into_rpc(self))?;
 
         for method in module.method_names() {
             info!(?method, "method registered");
@@ -515,6 +622,22 @@ pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
     req.map(HttpBody::new)
 }
 
+#[async_trait]
+impl MinerApiExtServer for RollupBoostServer {
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        let l2_resp = self
+            .l2_client
+            .set_max_da_size(max_tx_size, max_block_size)
+            .await?;
+
+        self.miner_api_tx
+            .send((max_tx_size, max_block_size))
+            .expect("TODO: handle this");
+
+        Ok(l2_resp)
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::complexity)]
 mod tests {
@@ -527,14 +650,18 @@ mod tests {
     use alloy_rpc_types_engine::{
         BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, PayloadStatusEnum,
     };
+
     use http::{StatusCode, Uri};
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
+    use op_alloy_rpc_jsonrpsee::traits::MinerApiExtClient;
     use parking_lot::Mutex;
+    use rand::Rng;
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::time::sleep;
 
     #[derive(Debug, Clone)]
@@ -542,11 +669,13 @@ mod tests {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
         get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
+        set_max_da_size_requests: Arc<Mutex<Vec<(U64, U64)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
         get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
         new_payload_response: RpcResult<PayloadStatus>,
-
+        set_max_da_size_response: RpcResult<bool>,
         pub override_payload_id: Option<PayloadId>,
+        pub disabled: Arc<AtomicBool>,
     }
 
     impl MockEngineServer {
@@ -555,6 +684,7 @@ mod tests {
                 fcu_requests: Arc::new(Mutex::new(vec![])),
                 get_payload_requests: Arc::new(Mutex::new(vec![])),
                 new_payload_requests: Arc::new(Mutex::new(vec![])),
+                set_max_da_size_requests: Arc::new(Mutex::new(vec![])),
                 fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))),
                 get_payload_response: Ok(OpExecutionPayloadEnvelopeV3{
                     execution_payload: ExecutionPayloadV3 {
@@ -591,6 +721,8 @@ mod tests {
             }),
             override_payload_id: None,
             new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
+            set_max_da_size_response: Ok(true),
+            disabled: Arc::new(AtomicBool::new(false)),
         }
         }
     }
@@ -634,14 +766,13 @@ mod tests {
             let (probe_layer, probes) = ProbeLayer::new();
             let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
+            let server_probes = probes.clone();
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
                 execution_mode.clone(),
                 None,
-                probes.clone(),
-                60,
-                5,
+                server_probes,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
@@ -873,6 +1004,19 @@ mod tests {
             })
             .unwrap();
 
+        module
+            .register_method("miner_setMaxDASize", move |params, _, _| {
+                let params: (U64, U64) = params.parse()?;
+                if !mock_engine_server.disabled.load(Ordering::SeqCst) {
+                    let mut max_da_size_requests =
+                        mock_engine_server.set_max_da_size_requests.lock();
+                    max_da_size_requests.push(params);
+                }
+
+                mock_engine_server.set_max_da_size_response.clone()
+            })
+            .unwrap();
+
         (server.start(module), server_addr)
     }
 
@@ -1030,5 +1174,103 @@ mod tests {
             .fork_choice_updated_v3(fcu, Some(payload_attributes))
             .await;
         assert!(fcu_response.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_miner_set_max_da_size() {
+        let test_harness = TestHarness::new(None, None).await;
+        let mut rng = rand::rng();
+        let requests: Vec<(U64, U64)> = (0..25)
+            .map(|_| {
+                (
+                    U64::from(rng.random_range(1..200_000_000)),
+                    U64::from(rng.random_range(1..200_000_000)),
+                )
+            })
+            .collect();
+
+        for (max_tx_size, max_block_size) in &requests {
+            let result = test_harness
+                .rpc_client
+                .set_max_da_size(*max_tx_size, *max_block_size)
+                .await;
+
+            assert!(
+                result.is_ok(),
+                "setMaxDASize failed for ({}, {})",
+                max_tx_size,
+                max_block_size
+            );
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let l2_requests = test_harness.l2_mock.set_max_da_size_requests.lock().clone();
+        let builder_requests = test_harness
+            .builder_mock
+            .set_max_da_size_requests
+            .lock()
+            .clone();
+
+        assert_eq!(l2_requests, requests, "L2 requests mismatch");
+        assert_eq!(builder_requests, vec![*requests.last().unwrap()]);
+
+        test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn test_set_max_da_size_no_builder() -> eyre::Result<()> {
+        let builder_mock = MockEngineServer::new();
+        let disable_builder = builder_mock.disabled.clone();
+        let test_harness = TestHarness::new(None, Some(builder_mock)).await;
+        disable_builder.store(true, Ordering::SeqCst);
+
+        let mut rng = rand::rng();
+        let requests: Vec<(U64, U64)> = (0..1)
+            .map(|_| {
+                (
+                    U64::from(rng.random_range(1..200_000_000)),
+                    U64::from(rng.random_range(1..200_000_000)),
+                )
+            })
+            .collect();
+
+        for (max_tx_size, max_block_size) in &requests {
+            let result = test_harness
+                .rpc_client
+                .set_max_da_size(*max_tx_size, *max_block_size)
+                .await;
+
+            assert!(
+                result.is_ok(),
+                "setMaxDASize failed for ({}, {})",
+                max_tx_size,
+                max_block_size
+            );
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let l2_requests = test_harness.l2_mock.set_max_da_size_requests.lock().clone();
+        let builder_requests = test_harness
+            .builder_mock
+            .set_max_da_size_requests
+            .lock()
+            .clone();
+
+        assert_eq!(l2_requests, requests, "L2 requests mismatch");
+        assert_eq!(builder_requests, vec![]);
+
+        disable_builder.store(false, Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let builder_requests = test_harness
+            .builder_mock
+            .set_max_da_size_requests
+            .lock()
+            .clone();
+
+        assert_eq!(builder_requests, vec![*requests.last().unwrap()]);
+        test_harness.cleanup().await;
+
+        Ok(())
     }
 }
