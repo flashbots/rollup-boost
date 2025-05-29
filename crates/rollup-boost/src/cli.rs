@@ -160,12 +160,13 @@ impl Args {
         let (probe_layer, probes) = ProbeLayer::new();
 
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));
+        let server_probes = probes.clone();
         let rollup_boost = RollupBoostServer::new(
             l2_client,
             builder_client,
             execution_mode.clone(),
             self.block_selection_policy,
-            probes,
+            server_probes,
         );
 
         rollup_boost.spawn_health_check(self.health_check_interval, self.max_unsafe_interval);

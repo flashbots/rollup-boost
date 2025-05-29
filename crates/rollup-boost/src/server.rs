@@ -10,7 +10,7 @@ use crate::{
     },
     probe::{Health, Probes},
 };
-use alloy_primitives::{B256, Bytes, bytes, U64};
+use alloy_primitives::{B256, Bytes, U64, bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
@@ -763,12 +763,13 @@ mod tests {
             let (probe_layer, probes) = ProbeLayer::new();
             let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
+            let server_probes = probes.clone();
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
                 execution_mode.clone(),
                 None,
-                probes,
+                server_probes,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();

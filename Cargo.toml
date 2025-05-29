@@ -4,10 +4,11 @@ resolver = "3"
 members = ["crates/rollup-boost", "crates/websocket-proxy"]
 
 [workspace.dependencies]
-[dependencies]
-op-alloy-rpc-types-engine = "0.12.0"
-op-alloy-rpc-jsonrpsee = { version = "0.12.0", features = ["client"] }
-alloy-rpc-types-engine = "0.13.0"
-alloy-rpc-types-eth = "0.13.0"
-alloy-primitives = { version = "0.8.10", features = ["rand"] }
+tracing = "0.1.4"
+tracing-subscriber = { version = "0.3.11", features = ["env-filter", "json"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures = "0.3.31"
+thiserror = "2.0.11"
+serde_json = "1.0.96"
+metrics = "0.24.0"
 tokio = { version = "1", features = ["full"] }

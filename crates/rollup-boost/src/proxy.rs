@@ -8,7 +8,7 @@ use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
 use http_body_util::BodyExt as _;
 use jsonrpsee::core::BoxError;
-use jsonrpsee::server::HttpBody;
+use jsonrpsee::server::{HttpBody, HttpRequest};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -27,8 +27,6 @@ const FORWARD_REQUESTS: [&str; 5] = [
     "miner_setGasPrice",
     "miner_setGasLimit",
 ];
-
-pub const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
@@ -141,7 +139,6 @@ where
 
             // If the request is an Engine API method, call the inner RollupBoostServer
             if method.starts_with(ENGINE_METHOD) || method == MINER_SET_MAX_DA_SIZE {
-                let req = HttpRequest::from_parts(parts, HttpBody::from(body_bytes));
                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
                 return service
                     .inner
@@ -187,7 +184,7 @@ mod tests {
     use crate::probe::ProbeLayer;
 
     use super::*;
-    use alloy_primitives::{B256, Bytes, U128, hex};
+    use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
     use http::StatusCode;
