@@ -1,13 +1,14 @@
 use crate::flashblocks::inbound::FlashblocksReceiverService;
 use crate::{FlashblocksService, RpcClient};
 use tokio::sync::mpsc;
+use url::Url;
 
 pub struct Flashblocks {}
 
 impl Flashblocks {
     pub fn run(
         builder_url: RpcClient,
-        flashblocks_url: String,
+        flashblocks_url: Url,
         outbound_addr: String,
     ) -> eyre::Result<FlashblocksService> {
         let (tx, rx) = mpsc::channel(100);

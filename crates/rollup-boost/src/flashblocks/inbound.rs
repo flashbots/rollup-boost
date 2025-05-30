@@ -12,13 +12,10 @@ pub struct FlashblocksReceiverService {
 
 impl FlashblocksReceiverService {
     pub fn new(
-        url: String,
+        url: Url,
         sender: mpsc::Sender<FlashblocksPayloadV1>,
     ) -> Result<Self, url::ParseError> {
-        Ok(Self {
-            url: Url::parse(&url)?,
-            sender,
-        })
+        Ok(Self { url: url, sender })
     }
 
     pub async fn run(self) {

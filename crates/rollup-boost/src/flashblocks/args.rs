@@ -1,4 +1,5 @@
 use clap::Parser;
+use url::Url;
 
 #[derive(Parser, Clone, Debug)]
 pub struct FlashblocksArgs {
@@ -7,8 +8,8 @@ pub struct FlashblocksArgs {
     pub flashblocks: bool,
 
     /// Flashblocks Builder WebSocket URL
-    #[arg(long, env, default_value = "ws://localhost:1111")]
-    pub flashblocks_builder_url: String,
+    #[arg(long, env, default_value = "ws://127.0.0.1:1111")]
+    pub flashblocks_builder_url: Url,
 
     /// Flashblocks WebSocket host for outbound connections
     #[arg(long, env, default_value = "127.0.0.1")]
