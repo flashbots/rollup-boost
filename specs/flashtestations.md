@@ -46,16 +46,17 @@
   - [Gas Optimization](#gas-optimization)
   - [Separation of Concerns](#separation-of-concerns)
 
+
 # Abstract
 
-Trusted Execution Environments (TEEs) offer a promising approach for running confidential workloads with hardware-enforced security guarantees. However, integrating TEEs with blockchain applications presents significant challenges: How can smart contracts verify that they're interacting with authentic TEE services running expected code? How can this verification scale efficiently onchain? How can we maintain an up-to-date registry of validated services as hardware security requirements evolve?
+Integrating TEEs with dapps presents significant challenges. Flashtestations frames the onchain representation of a TEE through its **`TEE-controlled address`**—an onchain identifier for an entity that can operate as a verifiable offchain smart contract or [**TEE Coprocessor**](https://writings.flashbots.net/suave-tee-coprocessor). For such entities to be trusted and usable by onchain smart contracts, key questions must be addressed: How can their authenticity and the code they run be cryptographically verified? How can this verification scale efficiently onchain and be maintained as hardware security requirements evolve?
 
-Flashtestations addresses these challenges by providing a comprehensive onchain protocol for TEE verification, TEE-controlled address registration, and transparent record-keeping. The protocol enables:
+Flashtestations addresses these challenges by providing a comprehensive onchain protocol for TEE verification, **`TEE-controlled address`** registration, and transparent record-keeping. The protocol enables:
 
-1. Onchain verification of Intel TDX attestations against current Intel endorsements
-2. Maintenance of a curated Registry of TEE-controlled addresses associated with their respective DCAP Attestations
-3. Policy-based authorization for TEE services to securely interact with smart contracts
-4. Transparent logging of all attestation events and endorsement changes
+1.  Onchain verification of Intel TDX attestations against current Intel endorsements.
+2.  Maintenance of a curated Registry of **`TEE-controlled addresses`** associated with their respective DCAP Attestations.
+3.  Policy-based authorization for TEE services (including TEE Coprocessors identified by their **`TEE-controlled address`**) to securely interact with smart contracts.
+4.  Transparent logging of all attestation events and endorsement changes.
 
 # Prerequisites
 
@@ -72,19 +73,24 @@ This document assumes familiarity with the following background material, specif
 
 # Motivation
 
-Flashtestations is designed to achieve the following objectives:
+The integration of Trusted Execution Environments (TEEs) with onchain applications offers transformative potential, particularly for enabling sophisticated **TEE Coprocessors**. These entities, which can function as verifiable offchain smart contracts and are identified onchain by their **`TEE-controlled address`**, can execute complex or confidential tasks. Realizing this potential, however, requires addressing fundamental questions regarding their verification, scalability, and maintainability within the blockchain environment:
 
-1. **Security**: Provide cryptographic proof that a service is running inside a genuine TEE with expected code, with verification resistant to spoofing or replay attacks.
+* How can onchain smart contracts cryptographically verify they are interacting with an authentic TEE (represented by its **`TEE-controlled address`**) running the intended software?
+* How can this verification scale efficiently onchain for regular use?
+* How can an up-to-date registry of validated TEEs be maintained as their underlying hardware security requirements and endorsements (like Intel DCAP endorsements) evolve?
+* How can these processes be transparent to foster trust within the ecosystem?
 
-2. **Efficiency**: Ensure key operations (especially registry lookups) are gas-efficient enough for regular use in smart contracts, with O(1) gas costs regardless of registry size.
+Flashtestations is motivated by the need to solve these fundamental problems of TEE and onchain interaction and provides an onchain protocol that serves as a crucial building block for this interaction. This protocol primarily enables secure **TEE outbound calls** - allowing TEEs to make calls to onchain smart contracts and be verifiably authorized via their **`TEE-controlled address`**. Furthermore, by facilitating the onchain availability of verified TEE public keys (derived from `ReportData` in the attestation quote), it lays a crucial foundation for secure **TEE inbound calls**. This equips users and smart contracts with the trusted information needed to establish secure communication channels with attested TEEs. By providing these foundational elements, Flashtestations empowers the development of a robust ecosystem.
 
-3. **Maintainability**: Support efficient updates as Intel endorsements evolve, without requiring re-verification of all attestations.
+To achieve this, Flashtestations aims for the following objectives:
 
-4. **Flexibility**: Enable policy-based access control that can adapt to different trust requirements without modifying consumer contracts.
+1.  **Security (Verifiable TEE Interaction)**: To provide irrefutable cryptographic proof that a **`TEE-controlled address`**, is backed by a genuine TEE executing specific, measured code (its **`workloadId`**). This ensures all interactions involving TEEs are resistant to spoofing and unauthorized code execution.
 
-5. **Transparency**: Maintain auditable records of all attestations and endorsement changes to support accountability and security analysis.
+2.  **Efficiency (Performant Onchain Integration)**: To ensure that critical onchain operations, particularly the lookup and validation of the TEE's status via its **`TEE-controlled address`**, are highly gas-efficient (aiming for O(1) complexity). This is vital for enabling frequent and cost-effective TEE outbound and TEE inbound calls.
 
-6. **Separation of Concerns**: Clearly separate registry mechanics from policy governance, enabling independent evolution of these components.
+3.  **Maintainability (Dynamic Trust Anchoring)**: To support the efficient updating of the TEE registry as underlying TEE security endorsements evolve. This ensures the trustworthiness of registered TEEs remains aligned with current security standards over time.
+
+4.  **Transparency (Auditable Ecosystem)**: To maintain a publicly accessible and auditable record of TEE attestations (as described in the Transparency Log section), including their **`workloadId`**s, and any changes to their validation status. This fosters accountability and allows for independent security analysis, building broader trust for all TEE-onchain interactions.
 
 # Specification
 
