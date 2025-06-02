@@ -15,20 +15,16 @@ impl FlashblocksReceiverService {
         url: Url,
         sender: mpsc::Sender<FlashblocksPayloadV1>,
     ) -> Result<Self, url::ParseError> {
-        Ok(Self { url: url, sender })
+        Ok(Self { url, sender })
     }
 
     pub async fn run(self) {
         loop {
-            match self.connect_and_handle().await {
-                Ok(()) => break,
-                Err(e) => {
-                    error!(
-                        message = "Flashblocks receiver connection error, retrying in 5 seconds",
-                        error = %e
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                }
+            if let Err(e) = self.connect_and_handle().await {
+                error!("Flashblocks receiver connection error, retrying in 5 seconds: {e}");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            } else {
+                break;
             }
         }
     }
