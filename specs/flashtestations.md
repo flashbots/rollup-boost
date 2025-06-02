@@ -12,7 +12,6 @@
     - [Flashtestations Protocol Components](#flashtestations-protocol-components)
     - [Operational Terms](#operational-terms)
   - [Data Structures](#data-structures)
-    - [**`TDXQuote`**](#tdxquote)
     - [**`TDReport`**](#tdreport)
     - [**`DCAPEndorsements`**](#dcapendorsements)
     - [**`WorkloadID`**](#workloadid)
@@ -157,7 +156,7 @@ The terms in this section are used consistently throughout the specification doc
 
 **Measurement Registers**: Hardware-enforced registers within the TEE (MRTD, RTMRs, MROWNER, etc.) that capture cryptographic hashes of code, data, and configuration loaded into the environment. These registers take part in forming the workload identity.
 
-**REPORTDATA**: A 64-byte field in the attestation quote containing user-defined data. In Flashtestations, this contains the public part of a TEE-controlled address key pair that is generated within the TEE, and whose private key never leaves its boundaries. Also see `TEE-controlled address`.
+**REPORTDATA**: A 64-byte field in the attestation quote containing data defined by the TDX VM-. In Flashtestations, this contains the public part of a TEE-controlled address key pair that is generated within the TEE, and whose private key never leaves its boundaries. Also see `TEE-controlled address`.
 
 **Quote Enclave (QE)**: Intel-provided enclave responsible for signing attestation quotes using Intel-provisioned keys. The QE creates the cryptographic binding between measurement registers and the attestation signature.
 
@@ -203,50 +202,27 @@ The terms in this section are used consistently throughout the specification doc
 
 **Reproducible Build**: A deterministic build process that ensures anyone building the same source code will produce identical binary outputs, enabling verification of expected TEE measurements.
 
-**TEE Infrastructure Operator**: The entity that has control over the TEE deployment, including the ability to set values in measurement registers such as MROWNER, MRCONFIGID, and MROWNER_CONFIG before VM startup.
+**TEE Infrastructure Operator**: The entity that has control over the TEE deployment, including the ability to set values in measurement registers such as MROWNER, MRCONFIGID, and MROWNERCONFIG before VM startup.
 
 ## Data Structures
 
 The protocol defines several key data structures:
 
-### **`TDXQuote`**
-
-The output of the Intel TDX attestation process.
-
-```python
-class TDXQuote():
-    Header: QuoteHeader
-    TDReport: TDReport
-    TEEExtendedProductID: uint16
-    TEESecurityVersion: uint16
-    QESecurityVersion: uint16
-    QEVendorID: Bytes16
-    UserData: Bytes64
-    Signature: Bytes
-```
-
-**Field descriptions:**
-
-- `Header`: Version and attestation key type information.
-- `TDReport`: TD measurement registers.
-- `TEEExtendedProductID`: TEE product identifier.
-- `TEESecurityVersion`: Security patch level of the TEE.
-- `QESecurityVersion`: Security version of the Quoting Enclave.
-- `QEVendorID`: Vendor ID of the Quoting Enclave (Intel).
-- `UserData`: User-defined data included in the quote (e.g., public key).
-- `Signature`: ECDSA signature over the Quote.
-
 ### **`TDReport`**
 
-Contains the measurement registers and report data from the TEE.
+The TD Report includes the core information used for attestation of the TDX Quote. This spec only references elements in the report; a full quote also has a header and signature data.
 
 ```python
 class TDReport():
+    TEETCBSVN: Bytes16
+    MRSEAMSVN: uint16
+    MRSIGNERSEAM: Bytes48
+    MRSEAM: Bytes48
     MRTD: Bytes48
-    RTMR: List[Bytes48]  // Size 4
+    RTMR: List[Bytes48, size=4]
     MROWNER: Bytes48
+    MROWNERCONFIG: Bytes48
     MRCONFIGID: Bytes48
-    MROWNER_CONFIG: Bytes48
     TDAttributes: Bytes8
     XFAM: Bytes8
     ReportData: Bytes64
@@ -254,11 +230,15 @@ class TDReport():
 
 **Field descriptions:**
 
+- `TEETCBSVN`: TEE Trusted Computing Base Security Version Numbers (SVNs); indicates platform patch level.
+- `MRSEAMSVN`: Security Version Number of the TDX module (SEAM).
+- `MRSIGNERSEAM`: Measurement of the TDX SEAM module's signer (Intel).
+- `MRSEAM`: Measurement of the TDX SEAM module itself.
 - `MRTD`: Initial TD measurement (boot loader, initial data).
 - `RTMR`: Runtime measurements (linux kernel, initramfs, etc.).
 - `MROWNER`: Measurement register that takes arbitrary information and can be set by the TEE infrastructure operator before the startup of the VM
+- `MROWNERCONFIG`: same as `MROWNER`
 - `MRCONFIGID`: same as `MROWNER`
-- `MROWNER_CONFIG`: same as `MROWNER`
 - `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain.
 - `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain.
 - `ReportData`: Confidential-VM defined data included in the report (e.g., public key hash).
@@ -289,8 +269,8 @@ class WorkloadID():
     MRTD: Bytes48
     RTMR: List[Bytes48]  // Size 4
     MROWNER: Bytes48
+    MROWNERCONFIG: Bytes48
     MRCONFIGID: Bytes48
-    MROWNER_CONFIG: Bytes48
     TDAttributes: Bytes8
     XFAM: Bytes8
 ```
@@ -303,7 +283,7 @@ Attestation is the process by which a TEE proves its identity and integrity. Thi
 
 ### Intel TDX DCAP Attestation
 
-TDX attestation produces a Quote structure as defined in the [TDXQuote](#tdxquote) and [TDReport](#tdreport) sections.
+TDX attestation produces a Quote structure which among header and signature contains a [TDReport](#tdreport)
 
 The attestation process follows these steps:
 
@@ -460,7 +440,7 @@ This operation returns the raw attestation quote that was used to register the T
 
 3. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1) gas costs) regardless of the number of addresses stored.
 
-4. **Reliance on Off-Chain Observation (Initial Version)**: In its current design, the protocol relies on an honest off-chain service (e.g., operated by the TEE infrastructure operators or other trusted entities) to monitor attestations and their associated collateral. This service is expected to call `verifyAttestation` to mark an attestation as stale if the underlying collateral is updated or becomes invalid. This implies a trust assumption in these off-chain entities to maintain the integrity of the registry's "valid" attestations.
+4. **Reliance on Off-Chain Observation (Initial Version)**: In its current design, the protocol relies on an honest off-chain service (e.g., operated by the TEE infrastructure operators or other trusted entities) to monitor attestations and their associated collateral. This service is expected to call `reverifyAttestation` to mark an attestation as stale if the underlying collateral is updated or becomes invalid. This implies a trust assumption in these off-chain entities to maintain the integrity of the registry's "valid" attestations.
 
 ### Attestation Verification Endpoint
 
@@ -554,9 +534,9 @@ When a contract needs to verify if an operation is authorized:
 
 Intel endorsements change over time, requiring a maintenance process:
 
-1. **Triggered Verification**: When an off-chain service observes that an attestation's collateral has been updated or is no longer valid, it calls the `verifyAttestation(teeAddress)` function. The system then checks if the corresponding stored attestation is still valid against current Intel endorsements.
+1. **Triggered Verification**: When an off-chain service observes that an attestation's collateral has been updated or is no longer valid, it calls the `reverifyAttestation(teeAddress)` function. The system then checks if the corresponding stored attestation is still valid against current Intel endorsements.
 
-2. **Marking as Outdated**: If verification fails (e.g., due to outdated endorsements or collateral issues identified by the off-chain service leading to the `verifyAttestation` call), the address is automatically marked as outdated in the registry.
+2. **Marking as Outdated**: If verification fails (e.g., due to outdated endorsements or collateral issues identified by the off-chain service leading to the `reverifyAttestation` call), the address is automatically marked as outdated in the registry.
 
 3. **Re-attestation**: Addresses marked as outdated must re-attest using current endorsements to regain valid status.
 
