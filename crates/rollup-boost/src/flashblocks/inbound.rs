@@ -11,11 +11,8 @@ pub struct FlashblocksReceiverService {
 }
 
 impl FlashblocksReceiverService {
-    pub fn new(
-        url: Url,
-        sender: mpsc::Sender<FlashblocksPayloadV1>,
-    ) -> Result<Self, url::ParseError> {
-        Ok(Self { url, sender })
+    pub fn new(url: Url, sender: mpsc::Sender<FlashblocksPayloadV1>) -> Self {
+        Self { url, sender }
     }
 
     pub async fn run(self) {
@@ -36,16 +33,10 @@ impl FlashblocksReceiverService {
         info!("Connected to Flashblocks receiver at {}", self.url);
 
         while let Some(msg) = read.next().await {
-            let msg = msg?;
-            match msg {
-                Message::Text(text) => {
-                    if let Ok(flashblocks_msg) = serde_json::from_str::<FlashblocksPayloadV1>(&text)
-                    // TODO: Version this
-                    {
-                        self.sender.send(flashblocks_msg).await?;
-                    }
+            if let Message::Text(text) = msg? {
+                if let Ok(flashblocks_msg) = serde_json::from_str::<FlashblocksPayloadV1>(&text) {
+                    self.sender.send(flashblocks_msg).await?;
                 }
-                _ => continue,
             }
         }
 

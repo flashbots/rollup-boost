@@ -12,6 +12,7 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_engine::{ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus};
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use core::net::SocketAddr;
 use jsonrpsee::core::async_trait;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
@@ -151,11 +152,7 @@ impl FlashblockBuilder {
                 OpExecutionPayloadEnvelopeV3 {
                     parent_beacon_block_root: base.parent_beacon_block_root,
                     block_value: U256::ZERO,
-                    blobs_bundle: BlobsBundleV1 {
-                        commitments: Vec::new(),
-                        proofs: Vec::new(),
-                        blobs: Vec::new(),
-                    },
+                    blobs_bundle: BlobsBundleV1::default(),
                     should_override_builder: false,
                     execution_payload,
                 },
@@ -164,11 +161,7 @@ impl FlashblockBuilder {
                 OpExecutionPayloadEnvelopeV4 {
                     parent_beacon_block_root: base.parent_beacon_block_root,
                     block_value: U256::ZERO,
-                    blobs_bundle: BlobsBundleV1 {
-                        commitments: Vec::new(),
-                        proofs: Vec::new(),
-                        blobs: Vec::new(),
-                    },
+                    blobs_bundle: BlobsBundleV1::default(),
                     should_override_builder: false,
                     execution_payload: OpExecutionPayloadV4 {
                         withdrawals_root,
@@ -196,8 +189,8 @@ pub struct FlashblocksService {
 }
 
 impl FlashblocksService {
-    pub fn new(client: RpcClient, outbound_addr: String) -> eyre::Result<Self> {
-        let ws_pub = WebSocketPublisher::new(outbound_addr.parse().unwrap())?.into();
+    pub fn new(client: RpcClient, outbound_addr: SocketAddr) -> eyre::Result<Self> {
+        let ws_pub = WebSocketPublisher::new(outbound_addr)?.into();
 
         Ok(Self {
             client,
@@ -254,15 +247,9 @@ impl FlashblocksService {
     }
 
     pub async fn run(&mut self, mut stream: mpsc::Receiver<FlashblocksPayloadV1>) {
-        loop {
-            let event = stream.recv().await;
-            match event {
-                Some(event) => {
-                    self.on_event(FlashblocksEngineMessage::FlashblocksPayloadV1(event))
-                        .await
-                }
-                None => break,
-            }
+        while let Some(event) = stream.recv().await {
+            self.on_event(FlashblocksEngineMessage::FlashblocksPayloadV1(event))
+                .await;
         }
     }
 }
