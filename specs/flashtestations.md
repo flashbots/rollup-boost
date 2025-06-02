@@ -411,7 +411,7 @@ This internal operation:
 To reverify if an attestation is still valid against current endorsements:
 
 ```
-function reverifyAttestation(teeAddress) → boolean
+function invalidateAttestation(teeAddress) → boolean
 ```
 
 This operation:
@@ -440,7 +440,7 @@ This operation returns the raw attestation quote that was used to register the T
 
 3. **Gas Efficiency**: The lookup operation must be extremely efficient (O(1) gas costs) regardless of the number of addresses stored.
 
-4. **Reliance on Off-Chain Observation (Initial Version)**: In its current design, the protocol relies on an honest off-chain service (e.g., operated by the TEE infrastructure operators or other trusted entities) to monitor attestations and their associated collateral. This service is expected to call `reverifyAttestation` to mark an attestation as stale if the underlying collateral is updated or becomes invalid. This implies a trust assumption in these off-chain entities to maintain the integrity of the registry's "valid" attestations.
+4. **Reliance on Off-Chain Observation (Initial Version)**: In its current design, the protocol relies on an honest off-chain service (e.g., operated by the TEE infrastructure operators or other trusted entities) to monitor attestations and their associated collateral. This service is expected to call `invalidateAttestation` to mark an attestation as stale if the underlying collateral is updated or becomes invalid. This implies a trust assumption in these off-chain entities to maintain the integrity of the registry's "valid" attestations.
 
 ### Attestation Verification Endpoint
 
@@ -450,7 +450,7 @@ The attestation verification endpoint provides a mechanism to validate stored at
 
 2. **Smooth Transitions**: TEE-controlled addresses are marked as outdated only when their verification actually fails.
 
-This approach provides a clean, straightforward way to manage attestation validity over time, **though it currently relies on external actors to initiate the `reverifyAttestation` call for attestations that may have become stale due to collateral changes.**
+This approach provides a clean, straightforward way to manage attestation validity over time, **though it currently relies on external actors to initiate the `invalidateAttestation` call for attestations that may have become stale due to collateral changes.**
 
 ## Policy Layer: Flexible Authorization
 
@@ -534,9 +534,9 @@ When a contract needs to verify if an operation is authorized:
 
 Intel endorsements change over time, requiring a maintenance process:
 
-1. **Triggered Verification**: When an off-chain service observes that an attestation's collateral has been updated or is no longer valid, it calls the `reverifyAttestation(teeAddress)` function. The system then checks if the corresponding stored attestation is still valid against current Intel endorsements.
+1. **Triggered Verification**: When an off-chain service observes that an attestation's collateral has been updated or is no longer valid, it calls the `invalidateAttestation(teeAddress)` function. The system then checks if the corresponding stored attestation is still valid against current Intel endorsements.
 
-2. **Marking as Outdated**: If verification fails (e.g., due to outdated endorsements or collateral issues identified by the off-chain service leading to the `reverifyAttestation` call), the address is automatically marked as outdated in the registry.
+2. **Marking as Outdated**: If verification fails (e.g., due to outdated endorsements or collateral issues identified by the off-chain service leading to the `invalidateAttestation` call), the address is automatically marked as outdated in the registry.
 
 3. **Re-attestation**: Addresses marked as outdated must re-attest using current endorsements to regain valid status.
 
