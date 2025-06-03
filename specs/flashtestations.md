@@ -636,6 +636,18 @@ While the Flashtestation Registry maintains the current attested state (which TE
 
 This dual approach specified in the protocol enables efficient onchain operations while maintaining complete transparency and auditability.
 
+# Security Assumptions
+
+The Flashtestations protocol's security fundamentally depends on specific behavioral guarantees from the TEE workloads that participate in the system. These assumptions are critical to understand, as violating them would compromise the entire security model:
+
+**Private Key Management**: The TEE workload must generate the TEE-controlled address key pair securely within the TEE boundaries during startup using a cryptographically secure random number generator. The private key must never leave the TEE in plaintext form under any circumstances. The moment this private key is exposed outside the TEE, the entire attestation-based trust model fails, as an attacker could impersonate the TEE without detection.
+
+**Attestation Quote Integrity**: The TEE workload must maintain strict control over attestation quote generation. It must not provide any mechanism—whether intentional or through exploitation—that allows external entities to influence the `ReportData` field of generated quotes. Even if the private key remains secure within the TEE, allowing an attacker to specify arbitrary `ReportData` content would enable them to create attestations for addresses they control, completely undermining the system's security guarantees.
+
+**Reproducible Builds**: To establish trust in the expected workload measurements, TEE workloads must be built using reproducible build processes. The source code, build environment, build instructions, and all dependencies must be publicly available to enable independent verification that the published source code corresponds to the expected measurement values (`workloadId`). Without this reproducibility, there is no way to verify what code is actually running within the TEE.
+
+**Important Note**: Identifying all security requirements and potential attack vectors for TEE-based systems is an ongoing area of research and development. This specification does not claim to have identified all possible corner cases or security considerations. Implementers should conduct thorough security reviews and consider additional safeguards based on their specific use cases and threat models. The security assumptions outlined here represent the minimum requirements for the protocol to function as intended, but additional security measures may be necessary depending on the application context.
+
 # Rationale
 
 The following explains the reasoning behind key design decisions in the Flashtestations protocol:
