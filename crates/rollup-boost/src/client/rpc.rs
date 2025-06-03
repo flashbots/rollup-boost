@@ -9,7 +9,6 @@ use alloy_rpc_types_engine::{
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use clap::{Parser, arg};
 use http::Uri;
-use jsonrpsee::core::RpcResult;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::types::ErrorObjectOwned;
@@ -336,12 +335,15 @@ impl RpcClient {
             .set_code()?)
     }
 
-    pub async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+    pub async fn set_max_da_size(
+        &self,
+        max_tx_size: U64,
+        max_block_size: U64,
+    ) -> ClientResult<bool> {
         Ok(self
             .auth_client
             .set_max_da_size(max_tx_size, max_block_size)
-            .await
-            .expect("TODO: handle error"))
+            .await?)
     }
 }
 

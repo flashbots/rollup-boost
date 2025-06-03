@@ -632,7 +632,7 @@ impl MinerApiExtServer for RollupBoostServer {
 
         self.miner_api_tx
             .send((max_tx_size, max_block_size))
-            .expect("TODO: handle this");
+            .expect("Miner channel dropped");
 
         Ok(l2_resp)
     }
@@ -655,6 +655,7 @@ mod tests {
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
+    use jsonrpsee::types::ErrorObjectOwned;
     use op_alloy_rpc_jsonrpsee::traits::MinerApiExtClient;
     use parking_lot::Mutex;
     use rand::Rng;
@@ -1009,6 +1010,10 @@ mod tests {
                     let mut max_da_size_requests =
                         mock_engine_server.set_max_da_size_requests.lock();
                     max_da_size_requests.push(params);
+                } else {
+                    return Err(ErrorObjectOwned::from(ErrorObject::owned(
+                        -32000, "disabled", None::<()>,
+                    )));
                 }
 
                 mock_engine_server.set_max_da_size_response.clone()
@@ -1259,7 +1264,7 @@ mod tests {
         assert_eq!(builder_requests, vec![]);
 
         disable_builder.store(false, Ordering::SeqCst);
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         let builder_requests = test_harness
             .builder_mock
             .set_max_da_size_requests
