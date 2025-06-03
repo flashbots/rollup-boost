@@ -210,9 +210,13 @@ impl RollupBoostServer {
                 }
             } else {
                 // Only update the health status if the builder payload fails
-                // and execution mode is not set to DryRun
-                if !self.execution_mode().is_dry_run() {
+                // and execution mode is set to Enabled
+                if self.execution_mode().is_enabled() {
                     self.probes.set_health(Health::PartialContent);
+                }
+                else {
+                    warn!(target: "rollup_boost::server", 
+                    message: "Builder payload failed. However, health status is not updated to PartialContent because of the current execution mode");
                 }
                 (l2_payload, PayloadSource::L2)
             }
