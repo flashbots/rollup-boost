@@ -1,5 +1,6 @@
 mod auth;
 mod client;
+mod filter;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
