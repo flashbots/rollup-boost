@@ -35,7 +35,7 @@ use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
@@ -215,8 +215,8 @@ impl RollupBoostServer {
                     self.probes.set_health(Health::PartialContent);
                 }
                 else {
-                    warn!(target: "rollup_boost::server", 
-                    message: "Builder payload failed. However, health status is not updated to PartialContent because of the current execution mode");
+                    warn!(target = "rollup_boost::server", 
+                    message = "Builder payload failed. However, health status is not updated to PartialContent because of the current execution mode");
                 }
                 (l2_payload, PayloadSource::L2)
             }
