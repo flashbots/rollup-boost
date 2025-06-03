@@ -666,7 +666,7 @@ Throughout the entire propagation path, flashblocks are transmitted in binary SS
 
 Since the preconfirmation data originates directly from the Sequencer's Rollup Boost instance, exposing this WebSocket endpoint directly to external parties presents security and scalability concerns. Instead, a reverse proxy should be implemented between Rollup Boost and external RPC providers to relay this information securely.
 
-This mirror simply relays WebSocket data without requiring any Flashblocks-specific knowledge, acting purely as a transport layer that forwards WebSocket messages from Rollup Boost to subscribed RPC providers. You can find an example implementation [here](https://github.com/base/flashblocks-websocket-proxy).
+This mirror simply relays WebSocket data without requiring any Flashblocks-specific knowledge, acting purely as a transport layer that forwards WebSocket messages from Rollup Boost to subscribed RPC providers. You can find an example implementation [here](https://github.com/flashbots/rollup-boost).
 
 ```mermaid
 flowchart TD
