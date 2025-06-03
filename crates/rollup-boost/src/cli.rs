@@ -186,8 +186,6 @@ impl Args {
                     l2_auth_jwt,
                     builder_args.builder_url,
                     builder_auth_jwt,
-                    probes,
-                    execution_mode,
                 ));
 
         let server = Server::builder()

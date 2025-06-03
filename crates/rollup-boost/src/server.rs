@@ -785,8 +785,6 @@ mod tests {
                         jwt_secret,
                         builder_auth_rpc,
                         jwt_secret,
-                        probes,
-                        execution_mode.clone(),
                     ));
 
             let server = Server::builder()

@@ -35,5 +35,3 @@ pub use payload::*;
 
 mod selection;
 pub use selection::*;
-
-mod consistent_request;
