@@ -41,6 +41,7 @@
     - [Logged Information](#logged-information)
     - [Implementation Approach](#implementation-approach)
     - [Relationship with Registry](#relationship-with-registry)
+- [Security Assumptions](#security-assumptions)
 - [Rationale](#rationale)
   - [Replacement Model](#replacement-model)
   - [Gas Optimization](#gas-optimization)
