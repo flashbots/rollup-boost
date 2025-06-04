@@ -25,7 +25,6 @@ struct ServerState {
     metrics: Arc<Metrics>,
     auth: Authentication,
     ip_addr_http_header: String,
-    public_access_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -94,7 +93,6 @@ impl Server {
                 .clone()
                 .unwrap_or_else(Authentication::none),
             ip_addr_http_header: self.ip_addr_http_header.clone(),
-            public_access_enabled: self.public_access_enabled,
         });
 
         let listener = tokio::net::TcpListener::bind(self.listen_addr)
