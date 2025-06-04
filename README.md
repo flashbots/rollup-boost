@@ -227,3 +227,5 @@ The code in this project is free software under the [MIT License](/LICENSE).
 ---
 
 Made with ☀️ by the ⚡🤖 collective.
+
+🎨 For Rollup Boost brand guidelines and to download brand assets, [click here](https://desert-shelf-a90.notion.site/Rollup-Boost-Brand-Guide-1c08490ae44f80ecaafee5975f71228f).
