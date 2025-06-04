@@ -1,3 +1,5 @@
+![Rollup Boost banner](./assets/Rollup-Boost_brand-assets/rollup-boost_banner.png)
+
 # Rollup Boost
 
 Rollup Boost is a block builder sidecar for Optimism Stack chains to enable external block production. To read more about the design, check out the [design doc](https://github.com/ethereum-optimism/design-docs/blob/main/protocol/external-block-production.md).
