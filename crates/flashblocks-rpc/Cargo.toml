@@ -1,0 +1,18 @@
+[package]
+name = "flashblocks-rpc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+
+clap.workspace = true
+
+[[bin]]
+name = "flashblocks-rpc"
+path = "src/bin/main.rs"
+
+[lib]
+path = "src/lib.rs"

@@ -1,7 +1,11 @@
 [workspace]
 resolver = "3"
 
-members = ["crates/rollup-boost", "crates/websocket-proxy"]
+members = [
+    "crates/rollup-boost",
+    "crates/websocket-proxy",
+    "crates/flashblocks-rpc",
+]
 
 [workspace.dependencies]
 tracing = "0.1.4"
