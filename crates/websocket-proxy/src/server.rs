@@ -25,6 +25,7 @@ struct ServerState {
     metrics: Arc<Metrics>,
     auth: Authentication,
     ip_addr_http_header: String,
+    public_access_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -35,6 +36,7 @@ pub struct Server {
     metrics: Arc<Metrics>,
     ip_addr_http_header: String,
     authentication: Option<Authentication>,
+    public_access_enabled: bool,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +54,7 @@ impl Server {
         rate_limiter: Arc<dyn RateLimit>,
         authentication: Option<Authentication>,
         ip_addr_http_header: String,
+        public_access_enabled: bool,
     ) -> Self {
         Self {
             listen_addr,
@@ -60,6 +63,7 @@ impl Server {
             metrics,
             authentication,
             ip_addr_http_header,
+            public_access_enabled,
         }
     }
 
@@ -76,6 +80,11 @@ impl Server {
             router = router.route("/ws", any(unauthenticated_websocket_handler));
         }
 
+        if self.public_access_enabled && self.authentication.is_some() {
+            info!("Public endpoint is enabled");
+            router = router.route("/ws", any(unauthenticated_websocket_handler));
+        }
+
         let router = router.with_state(ServerState {
             registry: self.registry.clone(),
             rate_limiter: self.rate_limiter.clone(),
@@ -85,6 +94,7 @@ impl Server {
                 .clone()
                 .unwrap_or_else(Authentication::none),
             ip_addr_http_header: self.ip_addr_http_header.clone(),
+            public_access_enabled: self.public_access_enabled,
         });
 
         let listener = tokio::net::TcpListener::bind(self.listen_addr)
