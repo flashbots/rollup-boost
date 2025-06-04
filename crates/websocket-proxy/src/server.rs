@@ -73,9 +73,7 @@ impl Server {
                 .route("/ws/{api_key}/filter", any(authenticated_filter_websocket_handler));
         } else {
             info!("Public endpoint is enabled");
-            router = router
-                .route("/ws", any(unauthenticated_websocket_handler))
-                .route("/ws/filter", any(unauthenticated_filter_websocket_handler));
+            router = router.route("/ws", any(unauthenticated_websocket_handler));
         }
 
         let router = router.with_state(ServerState {
@@ -207,17 +205,6 @@ async fn unauthenticated_websocket_handler(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     websocket_handler(state, ws, addr, headers, FilterType::None)
-}
-
-async fn unauthenticated_filter_websocket_handler(
-    State(state): State<ServerState>,
-    ws: WebSocketUpgrade,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    query: Query<FilterQuery>,
-) -> impl IntoResponse {
-    let filter = create_filter_from_query(query.0);
-    websocket_handler(state, ws, addr, headers, filter)
 }
 
 fn websocket_handler(
