@@ -1,9 +1,9 @@
-use crate::BlockSelectionPolicy;
 use crate::debug_api::ExecutionMode;
+use crate::{BlockSelectionPolicy, EngineApiExt};
 use crate::{
-    HealthHandle,
     client::rpc::RpcClient,
     debug_api::DebugServer,
+    health::HealthHandle,
     payload::{
         NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope, PayloadSource,
         PayloadTraceContext, PayloadVersion,
@@ -27,7 +27,7 @@ use jsonrpsee::server::HttpResponse;
 use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use metrics::counter;
-use op_alloy_rpc_jsonrpsee::traits::MinerApiExtServer;
+use op_alloy_rpc_jsonrpsee::traits::{MinerApiExtClient, MinerApiExtServer};
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -45,10 +45,12 @@ pub type Response = HttpResponse;
 pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
 pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
+pub trait RollupBoostClient: EngineApiExt + MinerApiExtClient {}
+
 #[derive(Clone)]
-pub struct RollupBoostServer {
+pub struct RollupBoostServer<T> {
     pub l2_client: Arc<RpcClient>,
-    pub builder_client: Arc<RpcClient>,
+    pub builder_client: Arc<T>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
     miner_api_tx: watch::Sender<(U64, U64)>,
@@ -56,19 +58,21 @@ pub struct RollupBoostServer {
     probes: Arc<Probes>,
 }
 
-impl RollupBoostServer {
+impl<T> RollupBoostServer<T>
+where
+    T: EngineApiExt + MinerApiExtClient + Sized,
+{
     pub fn new(
         l2_client: RpcClient,
-        builder_client: RpcClient,
+        builder_client: Arc<T>,
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
     ) -> Self {
         let (tx, rx) = tokio::sync::watch::channel((U64::ZERO, U64::ZERO));
-
         let server = Self {
             l2_client: Arc::new(l2_client),
-            builder_client: Arc::new(builder_client),
+            builder_client,
             block_selection_policy,
             miner_api_tx: tx,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
@@ -347,7 +351,7 @@ impl RollupBoostServer {
     }
 }
 
-impl TryInto<RpcModule<()>> for RollupBoostServer {
+impl<T> TryInto<RpcModule<()>> for RollupBoostServer<T> {
     type Error = RegisterMethodError;
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
@@ -756,13 +760,15 @@ mod tests {
                 RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
-            let builder_client = RpcClient::new(
-                builder_auth_rpc.clone(),
-                jwt_secret,
-                2000,
-                PayloadSource::Builder,
-            )
-            .unwrap();
+            let builder_client = Arc::new(
+                RpcClient::new(
+                    builder_auth_rpc.clone(),
+                    jwt_secret,
+                    2000,
+                    PayloadSource::Builder,
+                )
+                .unwrap(),
+            );
 
             let (probe_layer, probes) = ProbeLayer::new();
             let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));

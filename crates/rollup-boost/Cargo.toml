@@ -10,24 +10,29 @@ tracing-subscriber.workspace = true
 clap.workspace = true
 futures.workspace = true
 thiserror.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 metrics.workspace = true
 tokio.workspace = true
+eyre.workspace = true
 
-op-alloy-rpc-types-engine = "0.12.0"
-op-alloy-rpc-jsonrpsee = { version = "0.12.0", features = ["client"] }
-alloy-rpc-types-engine = "0.13.0"
-alloy-rpc-types-eth = "0.13.0"
-alloy-primitives = { version = "0.8.10", features = ["rand"] }
-serde = { version = "1", features = ["derive"] }
+op-alloy-rpc-jsonrpsee.workspace = true
+op-alloy-rpc-types-engine.workspace = true
+alloy-rpc-types-engine.workspace = true
+alloy-rpc-types-eth.workspace = true
+alloy-primitives.workspace = true
+alloy-serde.workspace = true
+
+tokio-tungstenite.workspace = true
+
 jsonrpsee = { version = "0.24", features = ["server", "http-client", "macros"] }
 moka = { version = "0.12.10", features = ["future"] }
 http = "1.1.0"
 dotenvy = "0.15.7"
 tower = { version = "0.4.13", features = ["timeout"] }
 tower-http = { version = "0.5.2", features = [
-    "decompression-full",
-    "sensitive-headers",
+  "decompression-full",
+  "sensitive-headers",
 ] }
 http-body-util = "0.1.2"
 hyper = { version = "1.4.1", features = ["full"] }
@@ -36,19 +41,19 @@ hyper-rustls = { version = "0.27.0", features = ["ring"] }
 rustls = { version = "0.23.23", features = ["ring"] }
 opentelemetry = { version = "0.28.0", features = ["trace"] }
 opentelemetry-otlp = { version = "0.28.0", features = [
-    "http-proto",
-    "http-json",
-    "reqwest-client",
-    "trace",
-    "grpc-tonic",
+  "http-proto",
+  "http-json",
+  "reqwest-client",
+  "trace",
+  "grpc-tonic",
 ] }
 opentelemetry_sdk = { version = "0.28.0", features = ["rt-tokio"] }
 tracing-opentelemetry = "0.29.0"
 metrics-exporter-prometheus = "0.16.0"
 metrics-util = "0.19.0"
-eyre = "0.6.12"
 paste = "1.0.15"
 parking_lot = "0.12.3"
+url = "2.2.0"
 
 [dev-dependencies]
 rand = "0.9.0"
