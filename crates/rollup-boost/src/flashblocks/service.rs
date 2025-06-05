@@ -23,7 +23,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
-use tracing::error;
+use tracing::{error, info};
 
 #[derive(Debug, Error)]
 pub enum FlashblocksError {
@@ -284,13 +284,21 @@ impl EngineApiExt for FlashblocksService {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> ClientResult<OpExecutionPayloadEnvelope> {
-        let fb_payload = self.get_best_payload(version).await?;
-        if let Some(payload) = fb_payload {
-            tracing::info!(message = "Returning fb payload", payload_id = %payload_id);
-            return Ok(payload);
+        // First try to get the best flashblocks payload from the builder if it exists
+        match self.get_best_payload(version).await {
+            Ok(Some(payload)) => {
+                info!(message = "Returning fb payload");
+                return Ok(payload);
+            }
+            Ok(None) => {
+                info!(message = "No flashblocks payload available");
+            }
+            Err(e) => {
+                error!(message = "Error getting fb best payload", error = %e);
+            }
         }
 
-        tracing::info!(message = "No flashblocks payload available, fetching from client", payload_id = %payload_id);
+        info!(message = "Falling back to get_payload on client", payload_id = %payload_id);
         let result = self.client.get_payload(payload_id, version).await?;
         Ok(result)
     }
