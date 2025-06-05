@@ -1,5 +1,6 @@
 mod auth;
 mod client;
+mod filter;
 #[cfg(all(feature = "integration", test))]
 mod integration;
 mod metrics;
@@ -122,6 +123,14 @@ struct Args {
         help = "Prefix for Redis keys"
     )]
     redis_key_prefix: String,
+
+    #[arg(
+        long,
+        env,
+        default_value = "false",
+        help = "Allow unauthenticated access to endpoints even if api-keys are provided"
+    )]
+    public_access_enabled: bool,
 }
 
 #[tokio::main]
@@ -287,6 +296,7 @@ async fn main() {
         rate_limiter,
         authentication,
         args.ip_addr_http_header,
+        args.public_access_enabled,
     );
     let server_task = server.listen(token.clone());
 

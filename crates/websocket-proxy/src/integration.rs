@@ -58,6 +58,7 @@ mod test {
                     rate_limited,
                     auth,
                     "header".to_string(),
+                    false,
                 ),
                 server_addr: addr,
                 client_id_to_handle: HashMap::new(),
