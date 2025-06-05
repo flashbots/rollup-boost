@@ -35,7 +35,7 @@ use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
@@ -143,6 +143,8 @@ impl RollupBoostServer {
                         "number" = %execution_payload.block_number(),
                         %context,
                         %payload_id,
+                        // Add an extra label to know that this is the disabled execution mode path
+                        "execution_mode" = "disabled",
                     );
 
                     Ok(payload)
@@ -172,6 +174,8 @@ impl RollupBoostServer {
 
             // Get payload and validate with the local l2 client
             tracing::Span::current().record("builder_has_payload", true);
+            info!(message = "builder has payload, calling get_payload on builder");
+
             let payload = self.builder_client.get_payload(payload_id, version).await?;
             let _ = self
                 .l2_client
@@ -189,7 +193,16 @@ impl RollupBoostServer {
                 l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
             self.probes.set_health(Health::Healthy);
 
-            if let Ok(Some(builder_payload)) = builder_payload {
+            // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
+            // If there's an error, log it and return None instead.
+            let builder_payload = builder_payload
+                .map_err(|e| {
+                    error!(message = "error getting payload from builder", error = %e);
+                    e
+                })
+                .unwrap_or(None);
+
+            if let Some(builder_payload) = builder_payload {
                 // Record the delta (gas and txn) between the builder and l2 payload
                 let span = tracing::Span::current();
                 span.record(
