@@ -532,7 +532,7 @@ pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
 
 #[cfg(test)]
 #[allow(clippy::complexity)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::probe::ProbeLayer;
     use crate::proxy::ProxyLayer;
@@ -555,7 +555,7 @@ mod tests {
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
-        get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
+        pub get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
         get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
@@ -847,7 +847,7 @@ mod tests {
         test_harness.cleanup().await;
     }
 
-    async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
+    pub async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
         let server = ServerBuilder::default().build("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().expect("Missing local address");
 
