@@ -39,7 +39,7 @@ pub struct Args {
     pub health_check_interval: u64,
 
     /// Max duration in seconds between the unsafe head block of the builder and the current time
-    #[arg(long, env, default_value = "20")]
+    #[arg(long, env, default_value = "10")]
     pub max_unsafe_interval: u64,
 
     /// Host to run the server on
