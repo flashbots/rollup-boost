@@ -321,6 +321,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_health_check_exceeds_max_unsafe_interval_execution_mode_disabled()
+    -> eyre::Result<()> {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        let probes = Arc::new(Probes::default());
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        let builder = MockHttpServer::serve(handler, now - 10).await.unwrap();
+
+        let builder_client = Arc::new(RpcClient::new(
+            format!("http://{}", builder.addr).parse::<Uri>()?,
+            JwtSecret::random(),
+            100,
+            PayloadSource::Builder,
+        )?);
+
+        let health_handle = HealthHandle {
+            probes: probes.clone(),
+            execution_mode: Arc::new(Mutex::new(ExecutionMode::Disabled)),
+            builder_client: builder_client.clone(),
+            health_check_interval: Duration::from_secs(60),
+            max_unsafe_interval: 5,
+        };
+
+        health_handle.spawn();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert!(matches!(probes.health(), Health::Healthy));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_health_check_exceeds_max_unsafe_interval_execution_mode_dryrun()
+    -> eyre::Result<()> {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        let probes = Arc::new(Probes::default());
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        let builder = MockHttpServer::serve(handler, now - 10).await.unwrap();
+
+        let builder_client = Arc::new(RpcClient::new(
+            format!("http://{}", builder.addr).parse::<Uri>()?,
+            JwtSecret::random(),
+            100,
+            PayloadSource::Builder,
+        )?);
+
+        let health_handle = HealthHandle {
+            probes: probes.clone(),
+            execution_mode: Arc::new(Mutex::new(ExecutionMode::DryRun)),
+            builder_client: builder_client.clone(),
+            health_check_interval: Duration::from_secs(60),
+            max_unsafe_interval: 5,
+        };
+
+        health_handle.spawn();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert!(matches!(probes.health(), Health::Healthy));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_health_check_service_unavailable() -> eyre::Result<()> {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         let probes = Arc::new(Probes::default());
