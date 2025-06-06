@@ -143,7 +143,12 @@ where
 
                 // Fire and forget the builder request
                 tokio::spawn(async move {
-                    let _ = builder_client.forward(buffered_clone, method_clone).await;
+                    if let Err(err) = builder_client
+                        .forward(buffered_clone, method_clone.clone())
+                        .await
+                    {
+                        tracing::error!(method = %method_clone, error = ?err, "Builder forward request failed");
+                    }
                 });
             }
 
