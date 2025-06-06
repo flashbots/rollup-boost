@@ -182,7 +182,6 @@ mod tests {
         rpc_params,
         server::{ServerBuilder, ServerHandle},
     };
-    use parking_lot::Mutex;
     use serde_json::json;
     use std::{
         net::{IpAddr, SocketAddr},
