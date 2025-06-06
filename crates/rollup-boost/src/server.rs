@@ -36,7 +36,7 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
@@ -150,6 +150,8 @@ impl RollupBoostServer {
                         "number" = %execution_payload.block_number(),
                         %context,
                         %payload_id,
+                        // Add an extra label to know that this is the disabled execution mode path
+                        "execution_mode" = "disabled",
                     );
 
                     Ok(payload)
@@ -173,10 +175,14 @@ impl RollupBoostServer {
                 .await
             {
                 info!(message = "builder has no payload, skipping get_payload call to builder");
+                tracing::Span::current().record("builder_has_payload", false);
                 return RpcResult::Ok(None);
             }
 
             // Get payload and validate with the local l2 client
+            tracing::Span::current().record("builder_has_payload", true);
+            info!(message = "builder has payload, calling get_payload on builder");
+
             let payload = self.builder_client.get_payload(payload_id, version).await?;
             let _ = self
                 .l2_client
@@ -194,7 +200,16 @@ impl RollupBoostServer {
                 l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
             self.probes.set_health(Health::Healthy);
 
-            if let Ok(Some(builder_payload)) = builder_payload {
+            // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
+            // If there's an error, log it and return None instead.
+            let builder_payload = builder_payload
+                .map_err(|e| {
+                    error!(message = "error getting payload from builder", error = %e);
+                    e
+                })
+                .unwrap_or(None);
+
+            if let Some(builder_payload) = builder_payload {
                 // Record the delta (gas and txn) between the builder and l2 payload
                 let span = tracing::Span::current();
                 span.record(
@@ -312,7 +327,6 @@ impl EngineApiServer for RollupBoostServer {
         err,
         fields(
             otel.kind = ?SpanKind::Server,
-            has_attributes = payload_attributes.is_some(),
             head_block_hash = %fork_choice_state.head_block_hash,
             timestamp = ?payload_attributes.as_ref().map(|attrs| attrs.payload_attributes.timestamp),
             payload_id
@@ -413,6 +427,7 @@ impl EngineApiServer for RollupBoostServer {
             payload_source,
             gas_delta,
             tx_count_delta,
+            builder_has_payload,
         )
     )]
     async fn get_payload_v3(
@@ -524,7 +539,7 @@ pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
 
 #[cfg(test)]
 #[allow(clippy::complexity)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::probe::ProbeLayer;
     use crate::proxy::ProxyLayer;
@@ -547,7 +562,7 @@ mod tests {
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
-        get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
+        pub get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
         get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
@@ -837,7 +852,7 @@ mod tests {
         test_harness.cleanup().await;
     }
 
-    async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
+    pub async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
         let server = ServerBuilder::default().build("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().expect("Missing local address");
 
