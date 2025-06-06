@@ -24,7 +24,7 @@ impl FlashblocksReceiverService {
         loop {
             if let Err(e) = self.connect_and_handle().await {
                 error!("Flashblocks receiver connection error, retrying in 5 seconds: {e}");
-                tokio::time::sleep(std::time::Duration::from_secs(self.reconnect_ms)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(self.reconnect_ms)).await;
             } else {
                 break;
             }
@@ -135,7 +135,7 @@ mod tests {
 
         let (tx, mut rx) = mpsc::channel(100);
 
-        let service = FlashblocksReceiverService::new(url, tx);
+        let service = FlashblocksReceiverService::new(url, tx, 100);
         let _ = tokio::spawn(async move {
             service.run().await;
         });
