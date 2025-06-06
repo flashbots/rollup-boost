@@ -1,16 +1,11 @@
 use crate::client::http::HttpClient;
-use crate::consistent_request::ConsistentRequest;
 use crate::payload::PayloadSource;
-use crate::{
-    ExecutionMode, Probes, Request, Response, from_buffered_request, into_buffered_request,
-};
+use crate::{Request, Response, from_buffered_request, into_buffered_request};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
 use http_body_util::BodyExt as _;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
-use parking_lot::Mutex;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
@@ -19,15 +14,14 @@ use tracing::info;
 const ENGINE_METHOD: &str = "engine_";
 
 /// Requests that should be forwarded to both the builder and default execution client
-const FORWARD_REQUESTS: [&str; 5] = [
+const FORWARD_REQUESTS: [&str; 6] = [
     "eth_sendRawTransaction",
     "eth_sendRawTransactionConditional",
     "miner_setExtra",
     "miner_setGasPrice",
     "miner_setGasLimit",
+    "miner_setMaxDASize",
 ];
-
-pub const MINER_SET_MAX_DA_SIZE: &str = "miner_setMaxDASize";
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
@@ -37,8 +31,6 @@ pub struct ProxyLayer {
     builder_auth_rpc: Uri,
     builder_auth_secret: JwtSecret,
     builder_timeout: u64,
-    probes: Arc<Probes>,
-    execution_mode: Arc<Mutex<ExecutionMode>>,
 }
 
 impl ProxyLayer {
@@ -49,8 +41,6 @@ impl ProxyLayer {
         builder_auth_rpc: Uri,
         builder_auth_secret: JwtSecret,
         builder_timeout: u64,
-        probes: Arc<Probes>,
-        execution_mode: Arc<Mutex<ExecutionMode>>,
     ) -> Self {
         ProxyLayer {
             l2_auth_rpc,
@@ -59,8 +49,6 @@ impl ProxyLayer {
             builder_auth_rpc,
             builder_auth_secret,
             builder_timeout,
-            probes,
-            execution_mode,
         }
     }
 }
@@ -83,19 +71,10 @@ impl<S> Layer<S> for ProxyLayer {
             self.builder_timeout,
         );
 
-        let set_max_da_size_manager = ConsistentRequest::new(
-            MINER_SET_MAX_DA_SIZE.to_string(),
-            l2_client.clone(),
-            builder_client.clone(),
-            self.probes.clone(),
-            self.execution_mode.clone(),
-        );
-
         ProxyService {
             inner,
             l2_client,
             builder_client,
-            set_max_da_size_manager,
         }
     }
 }
@@ -105,7 +84,6 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
-    set_max_da_size_manager: ConsistentRequest,
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
@@ -154,13 +132,6 @@ where
                     .call(from_buffered_request(buffered))
                     .await
                     .map_err(|e| e.into());
-            }
-
-            // We need to handle the `miner_setMaxDASize` method carefully,
-            // so we ensure that the responses receive from the L2 and builder
-            // are consistent.
-            if method == MINER_SET_MAX_DA_SIZE {
-                return service.set_max_da_size_manager.send(buffered).await;
             }
 
             if FORWARD_REQUESTS.contains(&method.as_str()) {
@@ -251,8 +222,6 @@ mod tests {
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
                 1,
-                probes.clone(),
-                execution_mode.clone(),
             ));
 
             let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -517,16 +486,7 @@ mod tests {
 
         let (probe_layer, probes) = ProbeLayer::new();
 
-        let proxy_layer = ProxyLayer::new(
-            l2_auth_uri.clone(),
-            jwt,
-            1,
-            l2_auth_uri,
-            jwt,
-            1,
-            probes,
-            execution_mode,
-        );
+        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, 1, l2_auth_uri, jwt, 1);
 
         // Create a layered server
         let server = ServerBuilder::default()
