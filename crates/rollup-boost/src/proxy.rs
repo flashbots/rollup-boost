@@ -213,8 +213,6 @@ mod tests {
         async fn new() -> eyre::Result<Self> {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
-            let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
-            let probes = Arc::new(Probes::default());
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
@@ -416,8 +414,7 @@ mod tests {
     }
 
     async fn health_check() {
-        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
-        let proxy_server = spawn_proxy_server(execution_mode).await;
+        let proxy_server = spawn_proxy_server().await;
         // Create a new HTTP client
         let client: Client<HttpConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build_http();
@@ -434,9 +431,8 @@ mod tests {
     }
 
     async fn send_request(method: &str) -> Result<String, ClientError> {
-        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
         let server = spawn_server().await;
-        let proxy_server = spawn_proxy_server(execution_mode).await;
+        let proxy_server = spawn_proxy_server().await;
         let proxy_client = HttpClient::builder()
             .build(format!("http://{ADDR}:{PORT}"))
             .unwrap();
@@ -473,7 +469,7 @@ mod tests {
     }
 
     /// Spawn a new RPC server with a proxy layer.
-    async fn spawn_proxy_server(execution_mode: Arc<Mutex<ExecutionMode>>) -> ServerHandle {
+    async fn spawn_proxy_server() -> ServerHandle {
         let addr = format!("{ADDR}:{PORT}");
 
         let jwt = JwtSecret::random();
@@ -484,8 +480,7 @@ mod tests {
         .parse::<Uri>()
         .unwrap();
 
-        let (probe_layer, probes) = ProbeLayer::new();
-
+        let (probe_layer, _) = ProbeLayer::new();
         let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, 1, l2_auth_uri, jwt, 1);
 
         // Create a layered server
