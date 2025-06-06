@@ -4,22 +4,41 @@ use std::{
 };
 
 use alloy_rpc_types_eth::BlockNumberOrTag;
+use parking_lot::Mutex;
 use tokio::{
     task::JoinHandle,
     time::{Instant, sleep_until},
 };
 use tracing::warn;
 
-use crate::{EngineApiExt, Health, Probes};
+use crate::{EngineApiExt, ExecutionMode, Health, Probes};
 
 pub struct HealthHandle {
     pub probes: Arc<Probes>,
+    pub execution_mode: Arc<Mutex<ExecutionMode>>,
     pub builder_client: Arc<dyn EngineApiExt>,
     pub health_check_interval: Duration,
     pub max_unsafe_interval: u64,
 }
 
 impl HealthHandle {
+    /// Creates a new instance of [`HealthHandle`].
+    pub fn new(
+        probes: Arc<Probes>,
+        execution_mode: Arc<Mutex<ExecutionMode>>,
+        builder_client: Arc<dyn EngineApiExt>,
+        health_check_interval: Duration,
+        max_unsafe_interval: u64,
+    ) -> Self {
+        Self {
+            probes,
+            execution_mode,
+            builder_client,
+            health_check_interval,
+            max_unsafe_interval,
+        }
+    }
+
     /// Periodically checks that the latest unsafe block timestamp is not older than the
     /// the current time minus the max_unsafe_interval.
     pub fn spawn(self) -> JoinHandle<()> {
@@ -35,7 +54,9 @@ impl HealthHandle {
                     Ok(block) => block,
                     Err(e) => {
                         warn!(target: "rollup_boost::health", "Failed to get unsafe block from builder client: {} - updating health status", e);
-                        self.probes.set_health(Health::PartialContent);
+                        if !self.execution_mode.lock().is_disabled() {
+                            self.probes.set_health(Health::PartialContent);
+                        }
                         sleep_until(Instant::now() + self.health_check_interval).await;
                         continue;
                     }
@@ -46,7 +67,9 @@ impl HealthHandle {
                     .gt(&self.max_unsafe_interval)
                 {
                     warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %latest_unsafe.header.timestamp, "Unsafe block timestamp is too old updating health status");
-                    self.probes.set_health(Health::PartialContent);
+                    if !self.execution_mode.lock().is_disabled() {
+                        self.probes.set_health(Health::PartialContent);
+                    }
                 } else {
                     self.probes.set_health(Health::Healthy);
                 }
@@ -254,6 +277,7 @@ mod tests {
 
         let health_handle = HealthHandle {
             probes: probes.clone(),
+            execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
             builder_client: builder_client.clone(),
             health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
@@ -284,6 +308,7 @@ mod tests {
 
         let health_handle = HealthHandle {
             probes: probes.clone(),
+            execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
             builder_client: builder_client.clone(),
             health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
@@ -308,6 +333,7 @@ mod tests {
 
         let health_handle = HealthHandle {
             probes: probes.clone(),
+            execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
             builder_client: builder_client.clone(),
             health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
