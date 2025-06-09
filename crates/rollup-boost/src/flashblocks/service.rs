@@ -207,7 +207,10 @@ impl FlashblocksService {
     ) -> Result<Option<OpExecutionPayloadEnvelope>, FlashblocksError> {
         // Check that we have flashblocks for correct payload
         if *self.current_payload_id.read().await != payload_id {
-            // We have outdated flashblocks so we should fallback to get_payload
+            // We have outdated `current_payload_id` so we should fallback to get_payload
+            // Clearing best_payload in here would cause situation when old `get_payload` would clear 
+            // currently built correct flashblocks.
+            // This will self-heal on the next FCU.
             return Err(FlashblocksError::MissingPayload);
         }
         // consume the best payload and reset the builder
@@ -223,6 +226,8 @@ impl FlashblocksService {
     pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
         tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
         *self.current_payload_id.write().await = payload_id;
+        // Current state won't be useful anymore because chain progressed
+        *self.best_payload.write().await = FlashblockBuilder::new();
     }
 
     async fn on_event(&mut self, event: FlashblocksEngineMessage) {
