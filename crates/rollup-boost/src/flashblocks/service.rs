@@ -203,13 +203,19 @@ impl FlashblocksService {
     pub async fn get_best_payload(
         &self,
         version: PayloadVersion,
+        payload_id: PayloadId,
     ) -> Result<Option<OpExecutionPayloadEnvelope>, FlashblocksError> {
+        // Check that we have flashblocks for correct payload
+        if *self.current_payload_id.read().await != payload_id {
+            // We have outdated flashblocks so we should fallback to get_payload
+            return Err(FlashblocksError::MissingPayload);
+        }
         // consume the best payload and reset the builder
         let payload = {
             let mut builder = self.best_payload.write().await;
-            std::mem::take(&mut *builder).into_envelope(version)?
+            // Take payload and place new one in its place in one go to avoid double locking
+            std::mem::replace(&mut *builder, FlashblockBuilder::new()).into_envelope(version)?
         };
-        *self.best_payload.write().await = FlashblockBuilder::new();
 
         Ok(Some(payload))
     }
@@ -285,7 +291,7 @@ impl EngineApiExt for FlashblocksService {
         version: PayloadVersion,
     ) -> ClientResult<OpExecutionPayloadEnvelope> {
         // First try to get the best flashblocks payload from the builder if it exists
-        match self.get_best_payload(version).await {
+        match self.get_best_payload(version, payload_id).await {
             Ok(Some(payload)) => {
                 info!(message = "Returning fb payload");
                 return Ok(payload);
