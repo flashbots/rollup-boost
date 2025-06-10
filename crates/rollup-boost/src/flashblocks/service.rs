@@ -115,19 +115,14 @@ impl FlashblockBuilder {
             .flat_map(|diff| diff.transactions.clone())
             .collect();
 
-        let withdrawals = self
-            .flashblocks
-            .iter()
-            .flat_map(|diff| diff.withdrawals.clone())
-            .collect();
-
         let withdrawals_root = diff.withdrawals_root;
 
         let execution_payload = ExecutionPayloadV3 {
             blob_gas_used: 0,
             excess_blob_gas: 0,
             payload_inner: ExecutionPayloadV2 {
-                withdrawals,
+                //  Always empty because L2, no validator withdrawal txs
+                withdrawals: vec![],
                 payload_inner: ExecutionPayloadV1 {
                     parent_hash: base.parent_hash,
                     fee_recipient: base.fee_recipient,
