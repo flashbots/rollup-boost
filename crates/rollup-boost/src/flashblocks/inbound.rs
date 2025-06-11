@@ -123,7 +123,7 @@ impl FlashblocksReceiverService {
                             sender
                                 .send(flashblocks_msg)
                                 .await
-                                .map_err(FlashblocksReceiverError::SendError)?;
+                                .map_err(|e| FlashblocksReceiverError::SendError(Box::new(e)))?;
                         }
                     }
                     Message::Close(_) => {
