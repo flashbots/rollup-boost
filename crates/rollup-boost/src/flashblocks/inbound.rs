@@ -32,6 +32,7 @@ pub struct FlashblocksReceiverService {
     url: Url,
     sender: mpsc::Sender<FlashblocksPayloadV1>,
     reconnect_ms: u64,
+    metrics: FlashblocksWsInboundMetrics,
 }
 
 impl FlashblocksReceiverService {
@@ -40,6 +41,7 @@ impl FlashblocksReceiverService {
             url,
             sender,
             reconnect_ms,
+            metrics: Default::default(),
         }
     }
 
@@ -47,6 +49,8 @@ impl FlashblocksReceiverService {
         loop {
             if let Err(e) = self.connect_and_handle().await {
                 error!("Flashblocks receiver connection error, retrying in 5 seconds: {e}");
+                self.metrics.reconnect_attempts.increment(1);
+                self.metrics.connection_status.set(0);
                 tokio::time::sleep(std::time::Duration::from_millis(self.reconnect_ms)).await;
             } else {
                 break;
@@ -59,6 +63,7 @@ impl FlashblocksReceiverService {
         let (mut write, mut read) = ws_stream.split();
 
         info!("Connected to Flashblocks receiver at {}", self.url);
+        self.metrics.connection_status.set(1);
 
         // Channel for coordinating ping/pong and activity tracking
         let (activity_tx, mut activity_rx) = mpsc::channel::<()>(10);
@@ -109,6 +114,7 @@ impl FlashblocksReceiverService {
                         if let Ok(flashblocks_msg) =
                             serde_json::from_str::<FlashblocksPayloadV1>(&text)
                         {
+                            self.metrics.messages_received.increment(1);
                             sender.send(flashblocks_msg).await.unwrap();
                         }
                     }
@@ -245,7 +251,7 @@ mod tests {
         });
 
         // Send a message to the websocket server
-        let _ = send_msg
+        send_msg
             .send(FlashblocksPayloadV1::default())
             .await
             .expect("Failed to send message");
