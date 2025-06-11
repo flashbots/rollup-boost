@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use super::{metrics::FlashblocksWsInboundMetrics, primitives::FlashblocksPayloadV1};
 use futures::{SinkExt, StreamExt};
-use futures::stream::SplitSink;
 use tokio::{sync::mpsc, time::interval};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info};
@@ -55,7 +54,7 @@ impl FlashblocksReceiverService {
                 error!("Flashblocks receiver connection error, retrying in 5 seconds: {e}");
                 self.metrics.reconnect_attempts.increment(1);
                 self.metrics.connection_status.set(0);
-                tokio::time::sleep(std::time::Duration::from_millis(self.reconnect_ms)).await;
+                tokio::time::sleep(Duration::from_millis(self.reconnect_ms)).await;
             } else {
                 break;
             }
@@ -64,7 +63,7 @@ impl FlashblocksReceiverService {
 
     async fn connect_and_handle(&self) -> Result<(), FlashblocksReceiverError> {
         let (ws_stream, _) = connect_async(self.url.as_str()).await?;
-        let (mut write, mut read) = ws_stream.split();
+        let (write, read) = ws_stream.split();
 
         info!("Connected to Flashblocks receiver at {}", self.url);
         self.metrics.connection_status.set(1);
