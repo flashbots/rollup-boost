@@ -111,10 +111,10 @@ impl FlashblocksReceiverService {
                 match msg.unwrap() {
                     // TODO: handle errors
                     Message::Text(text) => {
+                        self.metrics.messages_received.increment(1);
                         if let Ok(flashblocks_msg) =
                             serde_json::from_str::<FlashblocksPayloadV1>(&text)
                         {
-                            self.metrics.messages_received.increment(1);
                             sender.send(flashblocks_msg).await.unwrap();
                         }
                     }
