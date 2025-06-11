@@ -2,10 +2,7 @@ use std::time::Duration;
 
 use super::{metrics::FlashblocksWsInboundMetrics, primitives::FlashblocksPayloadV1};
 use futures::{SinkExt, StreamExt};
-use tokio::{
-    sync::mpsc,
-    time::{Instant, interval},
-};
+use tokio::{sync::mpsc, time::interval};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info};
 use url::Url;
@@ -15,11 +12,14 @@ enum FlashblocksReceiverError {
     #[error("WebSocket connection failed: {0}")]
     Connection(#[from] tokio_tungstenite::tungstenite::Error),
 
-    #[error("Connection timeout")]
-    ConnectionTimeout,
-
     #[error("Ping failed")]
     PingFailed,
+
+    #[error("Read timeout")]
+    ReadTimeout,
+
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
 
     #[error("Connection closed")]
     ConnectionClosed,
@@ -68,29 +68,6 @@ impl FlashblocksReceiverService {
         info!("Connected to Flashblocks receiver at {}", self.url);
         self.metrics.connection_status.set(1);
 
-        // Channel for coordinating ping/pong and activity tracking
-        let (activity_tx, mut activity_rx) = mpsc::channel::<()>(10);
-
-        let timeout_task = tokio::spawn(async move {
-            let mut last_activity = Instant::now();
-            let mut check_interval = interval(Duration::from_millis(100));
-
-            let timeout_duration = Duration::from_millis(500);
-
-            loop {
-                tokio::select! {
-                    Some(_) = activity_rx.recv() => {
-                        last_activity = Instant::now();
-                    }
-                    _ = check_interval.tick() => {
-                        if last_activity.elapsed() > timeout_duration {
-                            return Err(FlashblocksReceiverError::ConnectionTimeout);
-                        }
-                    }
-                }
-            }
-        });
-
         let ping_task = tokio::spawn(async move {
             let mut ping_interval = interval(Duration::from_millis(500));
 
@@ -108,32 +85,38 @@ impl FlashblocksReceiverService {
         let sender = self.sender.clone();
         let metrics = self.metrics.clone();
 
+        let read_timeout = Duration::from_millis(500);
         let message_handle = tokio::spawn(async move {
-            while let Some(msg) = read.next().await {
-                // Signal activity - we received a real message
-                let _ = activity_tx.send(()).await;
+            loop {
+                let result = tokio::time::timeout(read_timeout, read.next())
+                    .await
+                    .map_err(|_| FlashblocksReceiverError::ReadTimeout)?;
 
-                match msg.unwrap() {
-                    // TODO: handle errors
-                    Message::Text(text) => {
-                        metrics.messages_received.increment(1);
-                        if let Ok(flashblocks_msg) =
-                            serde_json::from_str::<FlashblocksPayloadV1>(&text)
-                        {
-                            sender
-                                .send(flashblocks_msg)
-                                .await
-                                .map_err(|e| FlashblocksReceiverError::SendError(Box::new(e)))?;
+                match result {
+                    Some(Ok(msg)) => match msg {
+                        Message::Text(text) => {
+                            metrics.messages_received.increment(1);
+                            if let Ok(flashblocks_msg) =
+                                serde_json::from_str::<FlashblocksPayloadV1>(&text)
+                            {
+                                sender.send(flashblocks_msg).await.map_err(|e| {
+                                    FlashblocksReceiverError::SendError(Box::new(e))
+                                })?;
+                            }
                         }
+                        Message::Close(_) => {
+                            return Err(FlashblocksReceiverError::ConnectionClosed);
+                        }
+                        _ => {}
+                    },
+                    Some(Err(e)) => {
+                        return Err(FlashblocksReceiverError::ConnectionError(e.to_string()));
                     }
-                    Message::Close(_) => {
-                        return Err(FlashblocksReceiverError::ConnectionClosed);
+                    None => {
+                        return Err(FlashblocksReceiverError::ReadTimeout);
                     }
-                    _ => {}
-                }
+                };
             }
-
-            Ok(())
         });
 
         let result = tokio::select! {
@@ -141,9 +124,6 @@ impl FlashblocksReceiverService {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
             },
             result = ping_task => {
-                result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
-            },
-            result = timeout_task => {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
             },
         };
