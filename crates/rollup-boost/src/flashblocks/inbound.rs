@@ -69,30 +69,7 @@ impl FlashblocksReceiverService {
 
         info!("Connected to Flashblocks receiver at {}", self.url);
         self.metrics.connection_status.set(1);
-
-        // Channel for coordinating ping/pong and activity tracking
-        let (activity_tx, mut activity_rx) = mpsc::channel::<()>(10);
-
-        let timeout_task = tokio::spawn(async move {
-            let mut last_activity = Instant::now();
-            let mut check_interval = interval(Duration::from_millis(100));
-
-            let timeout_duration = Duration::from_millis(500);
-
-            loop {
-                tokio::select! {
-                    Some(_) = activity_rx.recv() => {
-                        last_activity = Instant::now();
-                    }
-                    _ = check_interval.tick() => {
-                        if last_activity.elapsed() > timeout_duration {
-                            return Err(FlashblocksReceiverError::ConnectionTimeout);
-                        }
-                    }
-                }
-            }
-        });
-
+        
         let ping_task = tokio::spawn(async move {
             let mut ping_interval = interval(Duration::from_millis(500));
             loop {
@@ -107,30 +84,28 @@ impl FlashblocksReceiverService {
         let metrics = self.metrics.clone();
 
         let message_handle = tokio::spawn(async move {
-            while let Some(msg) = read.next().await {
-                // Signal activity - we received a real message
-                let _ = activity_tx.send(()).await;
-
-                match msg.unwrap() {
-                    // TODO: handle errors
-                    Message::Text(text) => {
-                        metrics.messages_received.increment(1);
-                        if let Ok(flashblocks_msg) =
-                            serde_json::from_str::<FlashblocksPayloadV1>(&text)
-                        {
-                            sender
-                                .send(flashblocks_msg)
-                                .await
-                                .map_err(|e| FlashblocksReceiverError::SendError(Box::new(e)))?;
-                        }
+            let mut timeout = interval(Duration::from_millis(500));
+            tokio::select! {
+                _ = timeout.tick() => return Err(FlashblocksReceiverError::ConnectionClosed),
+                Some(msg) = read.next() => {
+                    // TODO: do we need this?
+                    timeout.reset();
+                    match msg? {
+                        Message::Text(text) => {
+                            self.metrics.messages_received.increment(1);
+                            if let Ok(flashblocks_msg) = serde_json::from_str::<FlashblocksPayloadV1>(&text) {
+                                // TODO: fix error type
+                                self.sender.send(flashblocks_msg).await?;
+                            }
+                        },
+                        Message::Close(_) => {
+                            return Err(FlashblocksReceiverError::ConnectionClosed);
+                        },
+                        Message::Pong(_) => (),
+                        _ => ()
                     }
-                    Message::Close(_) => {
-                        return Err(FlashblocksReceiverError::ConnectionClosed);
-                    }
-                    _ => {}
-                }
+                },
             }
-
             Ok(())
         });
 
@@ -139,9 +114,6 @@ impl FlashblocksReceiverService {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
             },
             result = ping_task => {
-                result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
-            },
-            result = timeout_task => {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
             },
         };
