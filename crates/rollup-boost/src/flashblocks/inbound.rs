@@ -4,11 +4,29 @@ use super::primitives::FlashblocksPayloadV1;
 use futures::{SinkExt, StreamExt};
 use tokio::{
     sync::mpsc,
-    time::{interval, timeout},
+    time::{Instant, interval},
 };
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info};
 use url::Url;
+
+#[derive(Debug, thiserror::Error)]
+enum FlashblocksReceiverError {
+    #[error("WebSocket connection failed: {0}")]
+    Connection(#[from] tokio_tungstenite::tungstenite::Error),
+
+    #[error("Connection timeout")]
+    ConnectionTimeout,
+
+    #[error("Ping failed")]
+    PingFailed,
+
+    #[error("Connection closed")]
+    ConnectionClosed,
+
+    #[error("Task panicked: {0}")]
+    TaskPanic(String),
+}
 
 pub struct FlashblocksReceiverService {
     url: Url,
@@ -36,7 +54,7 @@ impl FlashblocksReceiverService {
         }
     }
 
-    async fn connect_and_handle(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn connect_and_handle(&self) -> Result<(), FlashblocksReceiverError> {
         let (ws_stream, _) = connect_async(self.url.as_str()).await?;
         let (mut write, mut read) = ws_stream.split();
 
@@ -44,49 +62,39 @@ impl FlashblocksReceiverService {
 
         // Channel for coordinating ping/pong and activity tracking
         let (activity_tx, mut activity_rx) = mpsc::channel::<()>(10);
-        let (pong_tx, mut pong_rx) = mpsc::channel::<Vec<u8>>(10);
 
-        let ping_handle = tokio::spawn(async move {
-            let mut last_activity = std::time::Instant::now();
-            let mut check_interval = interval(Duration::from_millis(1000));
-            let ping_interval = 1000;
-            let pong_timeout = 2000;
+        let timeout_task = tokio::spawn(async move {
+            let mut last_activity = Instant::now();
+            let mut check_interval = interval(Duration::from_millis(100));
+
+            let timeout_duration = Duration::from_millis(500);
 
             loop {
                 tokio::select! {
-                    // Reset activity timestamp when we receive any activity signal
-                    _ = activity_rx.recv() => {
-                        last_activity = std::time::Instant::now();
+                    Some(_) = activity_rx.recv() => {
+                        last_activity = Instant::now();
                     }
-
-                    // Check if we need to send a ping
                     _ = check_interval.tick() => {
-                        let idle_duration = last_activity.elapsed();
-
-                        if idle_duration >= Duration::from_millis(ping_interval) {
-                            if write.send(Message::Ping(Default::default())).await.is_err() {
-                                break;
-                            }
-
-                            match timeout(Duration::from_millis(pong_timeout), pong_rx.recv()).await {
-                                Ok(Some(_pong_data)) => {
-                                    // if pong_data != b"pong" {
-                                    last_activity = std::time::Instant::now();
-                                    //}
-                                }
-                                Ok(None) => {
-                                    return Err("Pong channel closed");
-                                }
-                                _ => {
-                                    return Err("Pong timeout");
-                                }
-                            };
+                        if last_activity.elapsed() > timeout_duration {
+                            return Err(FlashblocksReceiverError::ConnectionTimeout);
                         }
                     }
                 }
             }
+        });
 
-            Ok(())
+        let ping_task = tokio::spawn(async move {
+            let mut ping_interval = interval(Duration::from_millis(500));
+
+            loop {
+                tokio::select! {
+                    _ = ping_interval.tick() => {
+                        if write.send(Message::Ping(Default::default())).await.is_err() {
+                            return Err(FlashblocksReceiverError::PingFailed);
+                        }
+                    }
+                }
+            }
         });
 
         let sender = self.sender.clone();
@@ -101,17 +109,11 @@ impl FlashblocksReceiverService {
                         if let Ok(flashblocks_msg) =
                             serde_json::from_str::<FlashblocksPayloadV1>(&text)
                         {
-                            sender.send(flashblocks_msg).await.unwrap(); // TODO
-                        }
-                    }
-                    Message::Pong(data) => {
-                        println!("Received pong");
-                        if pong_tx.send(data.to_vec()).await.is_err() {
-                            tracing::warn!("Failed to forward pong to ping handler");
+                            sender.send(flashblocks_msg).await.unwrap();
                         }
                     }
                     Message::Close(_) => {
-                        return Err("Closed");
+                        return Err(FlashblocksReceiverError::ConnectionClosed);
                     }
                     _ => {}
                 }
@@ -120,30 +122,19 @@ impl FlashblocksReceiverService {
             Ok(())
         });
 
-        // Wait for either ping task to fail (connection dead) or message task to complete
-        tokio::select! {
-            ping_result = ping_handle => {
-                error!("Ping task failed: {:?}", ping_result);
-                panic!("Ping task failed");
-            }
-            message_result = message_handle => {
-                match message_result {
-                    Ok(Ok(())) => {
-                        info!("Message handling completed normally");
-                    }
-                    Ok(Err(e)) => {
-                        error!("Message handling error: {}", e);
-                        panic!("Message handling error");
-                    }
-                    Err(e) => {
-                        error!("Message task panicked: {}", e);
-                        panic!("Message task panicked");
-                    }
-                }
-            }
-        }
+        let result = tokio::select! {
+            result = message_handle => {
+                result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
+            },
+            result = ping_task => {
+                result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
+            },
+            result = timeout_task => {
+                result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
+            },
+        };
 
-        Ok(())
+        result
     }
 }
 
@@ -161,10 +152,12 @@ mod tests {
     ) -> eyre::Result<(
         watch::Sender<bool>,
         mpsc::Sender<FlashblocksPayloadV1>,
+        mpsc::Receiver<()>,
         url::Url,
     )> {
         let (term_tx, mut term_rx) = watch::channel(false);
         let (send_tx, mut send_rx) = mpsc::channel::<FlashblocksPayloadV1>(100);
+        let (send_ping_tx, send_ping_rx) = mpsc::channel::<()>(100);
 
         let listener = TcpListener::bind(addr)?;
         let url = Url::parse(&format!("ws://{addr}"))?;
@@ -189,7 +182,7 @@ mod tests {
                         match result {
                             Ok((connection, _addr)) => {
                                 match accept_async(connection).await {
-                                    Ok(mut ws_stream) => {
+                                    Ok(ws_stream) => {
                                         let (mut write, mut read) = ws_stream.split();
 
                                         loop {
@@ -204,7 +197,7 @@ mod tests {
                                                     match msg {
                                                         // we need to read for the library to handle pong messages
                                                         Some(Ok(Message::Ping(_))) => {
-                                                            println!("Received ping");
+                                                            send_ping_tx.send(()).await.unwrap();
                                                         },
                                                         _ => {
                                                             println!("Received message: {:?}", msg);
@@ -236,13 +229,13 @@ mod tests {
             }
         });
 
-        Ok((term_tx, send_tx, url))
+        Ok((term_tx, send_tx, send_ping_rx, url))
     }
 
     #[tokio::test]
     async fn test_flashblocks_receiver_service() -> eyre::Result<()> {
         let addr = "127.0.0.1:8080".parse::<SocketAddr>().unwrap();
-        let (term, send_msg, url) = start(addr).await?;
+        let (term, send_msg, _, url) = start(addr).await?;
 
         let (tx, mut rx) = mpsc::channel(100);
 
@@ -268,7 +261,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         // start a new server with the same address
-        let (term, send_msg, _url) = start(addr).await?;
+        let (term, send_msg, _, _url) = start(addr).await?;
         let _ = send_msg
             .send(FlashblocksPayloadV1::default())
             .await
@@ -287,17 +280,18 @@ mod tests {
         // ping messages to test the connection periodically
 
         let addr = "127.0.0.1:8081".parse::<SocketAddr>().unwrap();
-        let (_term, _send_msg, url) = start(addr).await?;
+        let (_term, _send_msg, mut ping_rx, url) = start(addr).await?;
 
-        println!("Starting service");
-        let (tx, mut rx) = mpsc::channel(100);
-
+        let (tx, _rx) = mpsc::channel(100);
         let service = FlashblocksReceiverService::new(url, tx, 100);
         let _ = tokio::spawn(async move {
             service.run().await;
         });
 
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        // even if we do not send any messages, we should receive pings to keep the connection alive
+        for _ in 0..10 {
+            let _ = ping_rx.recv().await.expect("Failed to receive ping");
+        }
 
         Ok(())
     }
