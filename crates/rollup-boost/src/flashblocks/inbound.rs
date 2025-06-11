@@ -28,7 +28,7 @@ enum FlashblocksReceiverError {
     TaskPanic(String),
 
     #[error("Failed to send message to sender: {0}")]
-    SendError(#[from] tokio::sync::mpsc::error::SendError<FlashblocksPayloadV1>),
+    SendError(#[from] Box<tokio::sync::mpsc::error::SendError<FlashblocksPayloadV1>>),
 }
 
 pub struct FlashblocksReceiverService {
