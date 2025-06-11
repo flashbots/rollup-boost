@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use super::primitives::FlashblocksPayloadV1;
+use super::{metrics::FlashblocksWsInboundMetrics, primitives::FlashblocksPayloadV1};
 use futures::{SinkExt, StreamExt};
 use tokio::{
     sync::mpsc,
@@ -26,6 +26,9 @@ enum FlashblocksReceiverError {
 
     #[error("Task panicked: {0}")]
     TaskPanic(String),
+
+    #[error("Failed to send message to sender: {0}")]
+    SendError(#[from] tokio::sync::mpsc::error::SendError<FlashblocksPayloadV1>),
 }
 
 pub struct FlashblocksReceiverService {
@@ -103,6 +106,8 @@ impl FlashblocksReceiverService {
         });
 
         let sender = self.sender.clone();
+        let metrics = self.metrics.clone();
+
         let message_handle = tokio::spawn(async move {
             while let Some(msg) = read.next().await {
                 // Signal activity - we received a real message
@@ -111,11 +116,14 @@ impl FlashblocksReceiverService {
                 match msg.unwrap() {
                     // TODO: handle errors
                     Message::Text(text) => {
-                        self.metrics.messages_received.increment(1);
+                        metrics.messages_received.increment(1);
                         if let Ok(flashblocks_msg) =
                             serde_json::from_str::<FlashblocksPayloadV1>(&text)
                         {
-                            sender.send(flashblocks_msg).await.unwrap();
+                            sender
+                                .send(flashblocks_msg)
+                                .await
+                                .map_err(FlashblocksReceiverError::SendError)?;
                         }
                     }
                     Message::Close(_) => {
