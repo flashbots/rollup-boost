@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use super::{metrics::FlashblocksWsInboundMetrics, primitives::FlashblocksPayloadV1};
 use futures::{SinkExt, StreamExt};
+use futures::stream::SplitSink;
 use tokio::{sync::mpsc, time::interval};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info};
@@ -67,63 +68,12 @@ impl FlashblocksReceiverService {
 
         info!("Connected to Flashblocks receiver at {}", self.url);
         self.metrics.connection_status.set(1);
-
-        let ping_task = tokio::spawn(async move {
-            let mut ping_interval = interval(Duration::from_millis(500));
-
-            loop {
-                tokio::select! {
-                    _ = ping_interval.tick() => {
-                        if write.send(Message::Ping(Default::default())).await.is_err() {
-                            return Err(FlashblocksReceiverError::PingFailed);
-                        }
-                    }
-                }
-            }
-        });
-
-        let sender = self.sender.clone();
-        let metrics = self.metrics.clone();
-
-        let read_timeout = Duration::from_millis(500);
-        let message_handle = tokio::spawn(async move {
-            loop {
-                let result = tokio::time::timeout(read_timeout, read.next())
-                    .await
-                    .map_err(|_| FlashblocksReceiverError::ReadTimeout)?;
-
-                match result {
-                    Some(Ok(msg)) => match msg {
-                        Message::Text(text) => {
-                            metrics.messages_received.increment(1);
-                            if let Ok(flashblocks_msg) =
-                                serde_json::from_str::<FlashblocksPayloadV1>(&text)
-                            {
-                                sender.send(flashblocks_msg).await.map_err(|e| {
-                                    FlashblocksReceiverError::SendError(Box::new(e))
-                                })?;
-                            }
-                        }
-                        Message::Close(_) => {
-                            return Err(FlashblocksReceiverError::ConnectionClosed);
-                        }
-                        _ => {}
-                    },
-                    Some(Err(e)) => {
-                        return Err(FlashblocksReceiverError::ConnectionError(e.to_string()));
-                    }
-                    None => {
-                        return Err(FlashblocksReceiverError::ReadTimeout);
-                    }
-                };
-            }
-        });
-
+        
         let result = tokio::select! {
-            result = message_handle => {
+            result = spawn_receiver(read, self.metrics.clone(), self.sender.clone()) => {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
             },
-            result = ping_task => {
+            result = spawn_pinger(write) => {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
             },
         };
@@ -132,6 +82,61 @@ impl FlashblocksReceiverService {
     }
 }
 
+fn spawn_pinger(mut write: impl SinkExt<Message> + Unpin + Send + Sync + 'static) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>>{
+    tokio::spawn(async move {
+        let mut ping_interval = interval(Duration::from_millis(500));
+
+        loop {
+            tokio::select! {
+                    _ = ping_interval.tick() => {
+                        if write.send(Message::Ping(Default::default())).await.is_err() {
+                            return Err(FlashblocksReceiverError::PingFailed);
+                        }
+                    }
+                }
+        }
+    })
+}
+
+fn spawn_receiver(
+    mut read: impl StreamExt<Item=Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin + Send + Sync + 'static,
+    metrics: FlashblocksWsInboundMetrics,
+    sender: mpsc::Sender<FlashblocksPayloadV1>
+) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>>{
+    tokio::spawn(async move {
+        let read_timeout = Duration::from_millis(500);
+        loop {
+            let result = tokio::time::timeout(read_timeout, read.next())
+                .await
+                .map_err(|_| FlashblocksReceiverError::ReadTimeout)?;
+
+            match result {
+                Some(Ok(msg)) => match msg {
+                    Message::Text(text) => {
+                        metrics.messages_received.increment(1);
+                        if let Ok(flashblocks_msg) =
+                            serde_json::from_str::<FlashblocksPayloadV1>(&text)
+                        {
+                            sender.send(flashblocks_msg).await.map_err(|e| {
+                                FlashblocksReceiverError::SendError(Box::new(e))
+                            })?;
+                        }
+                    }
+                    Message::Close(_) => {
+                        return Err(FlashblocksReceiverError::ConnectionClosed);
+                    }
+                    _ => {}
+                },
+                Some(Err(e)) => {
+                    return Err(FlashblocksReceiverError::ConnectionError(e.to_string()));
+                }
+                None => {
+                    return Err(FlashblocksReceiverError::ReadTimeout);
+                }
+            };
+        }
+    })
+}
 #[cfg(test)]
 mod tests {
     use futures::SinkExt;
