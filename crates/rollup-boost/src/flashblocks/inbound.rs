@@ -67,7 +67,7 @@ impl FlashblocksReceiverService {
 
         info!("Connected to Flashblocks receiver at {}", self.url);
         self.metrics.connection_status.set(1);
-        
+
         let result = tokio::select! {
             result = spawn_receiver(read, self.metrics.clone(), self.sender.clone()) => {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
@@ -81,27 +81,33 @@ impl FlashblocksReceiverService {
     }
 }
 
-fn spawn_pinger(mut write: impl SinkExt<Message> + Unpin + Send + Sync + 'static) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>>{
+fn spawn_pinger(
+    mut write: impl SinkExt<Message> + Unpin + Send + Sync + 'static,
+) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>> {
     tokio::spawn(async move {
         let mut ping_interval = interval(Duration::from_millis(500));
 
         loop {
             tokio::select! {
-                    _ = ping_interval.tick() => {
-                        if write.send(Message::Ping(Default::default())).await.is_err() {
-                            return Err(FlashblocksReceiverError::PingFailed);
-                        }
+                _ = ping_interval.tick() => {
+                    if write.send(Message::Ping(Default::default())).await.is_err() {
+                        return Err(FlashblocksReceiverError::PingFailed);
                     }
                 }
+            }
         }
     })
 }
 
 fn spawn_receiver(
-    mut read: impl StreamExt<Item=Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin + Send + Sync + 'static,
+    mut read: impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+    + Unpin
+    + Send
+    + Sync
+    + 'static,
     metrics: FlashblocksWsInboundMetrics,
-    sender: mpsc::Sender<FlashblocksPayloadV1>
-) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>>{
+    sender: mpsc::Sender<FlashblocksPayloadV1>,
+) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>> {
     tokio::spawn(async move {
         let read_timeout = Duration::from_millis(500);
         loop {
@@ -116,9 +122,10 @@ fn spawn_receiver(
                         if let Ok(flashblocks_msg) =
                             serde_json::from_str::<FlashblocksPayloadV1>(&text)
                         {
-                            sender.send(flashblocks_msg).await.map_err(|e| {
-                                FlashblocksReceiverError::SendError(Box::new(e))
-                            })?;
+                            sender
+                                .send(flashblocks_msg)
+                                .await
+                                .map_err(|e| FlashblocksReceiverError::SendError(Box::new(e)))?;
                         }
                     }
                     Message::Close(_) => {
