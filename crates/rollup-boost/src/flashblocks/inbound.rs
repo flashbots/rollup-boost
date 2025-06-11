@@ -6,7 +6,9 @@ use tokio::{
     sync::mpsc,
     time::{Instant, interval},
 };
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio::net::TcpStream;
+use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream};
+use tokio_tungstenite::tungstenite::stream::MaybeTlsStream;
 use tracing::{error, info};
 use url::Url;
 
@@ -93,14 +95,10 @@ impl FlashblocksReceiverService {
 
         let ping_task = tokio::spawn(async move {
             let mut ping_interval = interval(Duration::from_millis(500));
-
             loop {
-                tokio::select! {
-                    _ = ping_interval.tick() => {
-                        if write.send(Message::Ping(Default::default())).await.is_err() {
-                            return Err(FlashblocksReceiverError::PingFailed);
-                        }
-                    }
+                ping_interval.tick().await;
+                if write.send(Message::Ping(Default::default())).await.is_err() {
+                    return Err(FlashblocksReceiverError::PingFailed);
                 }
             }
         });
