@@ -193,9 +193,7 @@ mod tests {
                                                         Some(Ok(Message::Ping(_))) => {
                                                             send_ping_tx.send(()).await.unwrap();
                                                         },
-                                                        _ => {
-                                                            println!("Received message: {:?}", msg);
-                                                        }
+                                                        _ => {}
                                                     }
                                                 }
                                                 _ = term_rx.changed() => {
