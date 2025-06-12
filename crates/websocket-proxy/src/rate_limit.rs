@@ -703,5 +703,147 @@ mod tests {
         );
     }
 
-    // TODO: Bring back
+    #[tokio::test]
+    #[ignore]
+    async fn test_instance_tracking_and_cleanup() {
+        use redis_test::server::RedisServer;
+        use std::time::Duration;
+
+        let server = RedisServer::new();
+        let client_addr = format!("redis://{}", server.client_addr());
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let user_1 = IpAddr::from_str("127.0.0.1").unwrap();
+        let user_2 = IpAddr::from_str("127.0.0.2").unwrap();
+
+        let redis_client = Client::open(client_addr.as_str()).unwrap();
+
+        {
+            let rate_limiter1 = Arc::new(RedisRateLimit {
+                redis_client: Client::open(client_addr.as_str()).unwrap(),
+                global_limit: 10,
+                per_ip_limit: 5,
+                semaphore: Arc::new(Semaphore::new(10)),
+                key_prefix: "test".to_string(),
+                instance_id: "instance1".to_string(),
+                heartbeat_interval: Duration::from_millis(200),
+                heartbeat_ttl: Duration::from_secs(1),
+                background_tasks_started: AtomicBool::new(true),
+            });
+
+            rate_limiter1.register_instance().unwrap();
+            let _ticket1 = rate_limiter1.clone().try_acquire(user_1).unwrap();
+            let _ticket2 = rate_limiter1.clone().try_acquire(user_2).unwrap();
+            // no drop on release (exit of block)
+            std::mem::forget(_ticket1);
+            std::mem::forget(_ticket2);
+
+            {
+                let mut conn = redis_client.get_connection().unwrap();
+
+                let exists: bool = redis::cmd("EXISTS")
+                    .arg(format!("test:instance:instance1:heartbeat"))
+                    .query(&mut conn)
+                    .unwrap();
+                assert!(exists, "Instance1 heartbeat should exist initially");
+
+                let ip1_instance1_count: usize = redis::cmd("GET")
+                    .arg("test:ip:127.0.0.1:instance:instance1:connections")
+                    .query(&mut conn)
+                    .unwrap();
+                let ip2_instance1_count: usize = redis::cmd("GET")
+                    .arg("test:ip:127.0.0.2:instance:instance1:connections")
+                    .query(&mut conn)
+                    .unwrap();
+
+                assert_eq!(ip1_instance1_count, 1, "IP1 count should be 1 initially");
+                assert_eq!(ip2_instance1_count, 1, "IP2 count should be 1 initially");
+            }
+        };
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        {
+            let mut conn = redis_client.get_connection().unwrap();
+
+            let exists: bool = redis::cmd("EXISTS")
+                .arg(format!("test:instance:instance1:heartbeat"))
+                .query(&mut conn)
+                .unwrap();
+            assert!(
+                !exists,
+                "Instance1 heartbeat should be gone after TTL expiration"
+            );
+
+            let ip1_instance1_count: usize = redis::cmd("GET")
+                .arg("test:ip:127.0.0.1:instance:instance1:connections")
+                .query(&mut conn)
+                .unwrap();
+            let ip2_instance1_count: usize = redis::cmd("GET")
+                .arg("test:ip:127.0.0.2:instance:instance1:connections")
+                .query(&mut conn)
+                .unwrap();
+
+            assert_eq!(
+                ip1_instance1_count, 1,
+                "IP1 instance1 count should still be 1 after instance1 crash"
+            );
+            assert_eq!(
+                ip2_instance1_count, 1,
+                "IP2 instance1 count should still be 1 after crash"
+            );
+        }
+
+        let rate_limiter2 = Arc::new(RedisRateLimit {
+            redis_client: Client::open(client_addr.as_str()).unwrap(),
+            global_limit: 10,
+            per_ip_limit: 5,
+            semaphore: Arc::new(Semaphore::new(10)),
+            key_prefix: "test".to_string(),
+            instance_id: "instance2".to_string(),
+            heartbeat_interval: Duration::from_millis(200),
+            heartbeat_ttl: Duration::from_secs(2),
+            background_tasks_started: AtomicBool::new(false),
+        });
+
+        rate_limiter2.register_instance().unwrap();
+        rate_limiter2.cleanup_stale_instances().unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        {
+            let mut conn = redis_client.get_connection().unwrap();
+
+            let ip1_instance1_exists: bool = redis::cmd("EXISTS")
+                .arg("test:ip:127.0.0.1:instance:instance1:connections")
+                .query(&mut conn)
+                .unwrap();
+            let ip2_instance1_exists: bool = redis::cmd("EXISTS")
+                .arg("test:ip:127.0.0.2:instance:instance1:connections")
+                .query(&mut conn)
+                .unwrap();
+
+            assert!(
+                !ip1_instance1_exists,
+                "IP1 instance1 counter should be gone after cleanup"
+            );
+            assert!(
+                !ip2_instance1_exists,
+                "IP2 instance1 counter should be gone after cleanup"
+            );
+        }
+
+        let _ticket3 = rate_limiter2.clone().try_acquire(user_1).unwrap();
+
+        {
+            let mut conn = redis_client.get_connection().unwrap();
+            let ip1_instance2_count: usize = redis::cmd("GET")
+                .arg("test:ip:127.0.0.1:instance:instance2:connections")
+                .query(&mut conn)
+                .unwrap();
+
+            assert_eq!(ip1_instance2_count, 1, "IP1 instance2 count should be 1");
+        }
+    }
 }
