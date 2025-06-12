@@ -704,7 +704,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[cfg(all(feature = "integration", test))]
     async fn test_instance_tracking_and_cleanup() {
         use redis_test::server::RedisServer;
         use std::time::Duration;
