@@ -7,8 +7,17 @@ edition = "2024"
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 
+alloy-eips.workspace = true
+alloy-primitives.workspace = true
+alloy-json-rpc.workspace = true
+op-alloy-network.workspace = true
+
+tracing.workspace = true
 clap.workspace = true
+jsonrpsee = { version = "0.25.1" }
 
 [[bin]]
 name = "flashblocks-rpc"
