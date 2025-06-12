@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rollup-boost.workspace = true
+
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
@@ -15,9 +17,19 @@ alloy-primitives.workspace = true
 alloy-json-rpc.workspace = true
 op-alloy-network.workspace = true
 
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+url.workspace = true
 tracing.workspace = true
 clap.workspace = true
+eyre.workspace = true
+metrics.workspace = true
+metrics-derive.workspace = true
+serde_json.workspace = true
+
 jsonrpsee = { version = "0.25.1" }
+futures-util = "0.3.31"
+brotli = "8.0.1"
 
 [[bin]]
 name = "flashblocks-rpc"

@@ -13,7 +13,7 @@ struct FlashblocksRollupArgs {
     rollup_args: RollupArgs,
 
     #[arg(long = "websocket-url", value_name = "WEBSOCKET_URL")]
-    websocket_url: String,
+    websocket_url: url::Url,
 }
 
 fn main() {
@@ -25,7 +25,7 @@ fn main() {
             let handle = builder
                 .node(OpNode::new(rollup_args))
                 .extend_rpc_modules(move |ctx| {
-                    let flashblocks_overlay = FlashblocksOverlay::new();
+                    let flashblocks_overlay = FlashblocksOverlay::new(args.websocket_url);
                     let eth_api = ctx.registry.eth_api().clone();
                     let api_ext = FlashblocksApiExt::new(eth_api.clone(), flashblocks_overlay);
 
