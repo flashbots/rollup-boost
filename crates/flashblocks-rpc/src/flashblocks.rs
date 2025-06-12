@@ -18,32 +18,32 @@ impl FlashblocksOverlay {
 impl EthApiOverrideServer for FlashblocksOverlay {
     async fn block_by_number(
         &self,
-        number: BlockNumberOrTag,
-        full: bool,
+        _number: BlockNumberOrTag,
+        _full: bool,
     ) -> RpcResult<Option<RpcBlock<Optimism>>> {
-        todo!()
+        Ok(None)
     }
 
     async fn get_transaction_receipt(
         &self,
-        tx_hash: TxHash,
+        _tx_hash: TxHash,
     ) -> RpcResult<Option<RpcReceipt<Optimism>>> {
-        todo!()
+        Ok(None)
     }
 
     async fn get_balance(
         &self,
-        address: Address,
-        block_number: Option<BlockId>,
+        _address: Address,
+        _block_number: Option<BlockId>,
     ) -> RpcResult<U256> {
-        todo!()
+        Ok(U256::ZERO)
     }
 
     async fn get_transaction_count(
         &self,
-        address: Address,
-        block_number: Option<BlockId>,
+        _address: Address,
+        _block_number: Option<BlockId>,
     ) -> RpcResult<U256> {
-        todo!()
+        Ok(U256::ZERO)
     }
 }
