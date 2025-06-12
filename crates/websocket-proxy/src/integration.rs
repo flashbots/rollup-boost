@@ -44,7 +44,12 @@ mod test {
             let (sender, _) = broadcast::channel(5);
             let metrics = Arc::new(Metrics::default());
             let registry = Registry::new(sender.clone(), metrics.clone());
-            let rate_limited = Arc::new(InMemoryRateLimit::new(3, 10));
+            let app_rate_limits = if let Some(auth) = &auth {
+                auth.get_rate_limits()
+            } else {
+                HashMap::new()
+            };
+            let rate_limited = Arc::new(InMemoryRateLimit::new(3, 10, app_rate_limits));
 
             Self {
                 received_messages: Arc::new(Mutex::new(HashMap::new())),
@@ -337,11 +342,18 @@ mod test {
     #[tokio::test]
     async fn test_authentication_allows_known_api_keys() {
         let addr = TestHarness::alloc_port().await;
-        let auth = Authentication::new(HashMap::from([
-            ("key1".to_string(), "app1".to_string()),
-            ("key2".to_string(), "app2".to_string()),
-            ("key3".to_string(), "app3".to_string()),
-        ]));
+        let auth = Authentication::new(
+            HashMap::from([
+                ("key1".to_string(), "app1".to_string()),
+                ("key2".to_string(), "app2".to_string()),
+                ("key3".to_string(), "app3".to_string()),
+            ]),
+            HashMap::from([
+                ("app1".to_string(), 10),
+                ("app2".to_string(), 10),
+                ("app3".to_string(), 10),
+            ]),
+        );
 
         let mut harness = TestHarness::new_with_auth(addr, Some(auth));
         harness.start_server().await;
