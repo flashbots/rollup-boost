@@ -2,8 +2,10 @@ use std::time::Duration;
 
 use super::{metrics::FlashblocksWsInboundMetrics, primitives::FlashblocksPayloadV1};
 use futures::{SinkExt, StreamExt};
+use futures::stream::{SplitSink, SplitStream};
 use tokio::{sync::mpsc, time::interval};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio::net::TcpStream;
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{error, info};
 use url::Url;
 
@@ -82,7 +84,7 @@ impl FlashblocksReceiverService {
 }
 
 fn spawn_pinger(
-    mut write: impl SinkExt<Message> + Unpin + Send + Sync + 'static,
+    mut write: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
 ) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>> {
     tokio::spawn(async move {
         let mut ping_interval = interval(Duration::from_millis(500));
@@ -100,11 +102,7 @@ fn spawn_pinger(
 }
 
 fn spawn_receiver(
-    mut read: impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
-    + Unpin
-    + Send
-    + Sync
-    + 'static,
+    mut read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     metrics: FlashblocksWsInboundMetrics,
     sender: mpsc::Sender<FlashblocksPayloadV1>,
 ) -> tokio::task::JoinHandle<Result<(), FlashblocksReceiverError>> {
@@ -143,6 +141,7 @@ fn spawn_receiver(
         }
     })
 }
+
 #[cfg(test)]
 mod tests {
     use futures::SinkExt;
@@ -267,7 +266,7 @@ mod tests {
 
         // start a new server with the same address
         let (term, send_msg, _, _url) = start(addr).await?;
-        let _ = send_msg
+        send_msg
             .send(FlashblocksPayloadV1::default())
             .await
             .expect("Failed to send message");
@@ -295,7 +294,7 @@ mod tests {
 
         // even if we do not send any messages, we should receive pings to keep the connection alive
         for _ in 0..10 {
-            let _ = ping_rx.recv().await.expect("Failed to receive ping");
+            ping_rx.recv().await.expect("Failed to receive ping");
         }
 
         Ok(())
