@@ -89,10 +89,7 @@ impl RateLimit for InMemoryRateLimit {
                 })?;
 
         if self.per_ip_limit > 0 {
-            let current_count = match inner.active_connections_per_ip.get(&addr) {
-                Some(count) => *count,
-                None => 0,
-            };
+            let current_count = *inner.active_connections_per_ip.get(&addr).unwrap_or(&0);
 
             if current_count + 1 > self.per_ip_limit {
                 debug!(
@@ -105,15 +102,11 @@ impl RateLimit for InMemoryRateLimit {
             }
 
             let new_count = current_count + 1;
-
             inner.active_connections_per_ip.insert(addr, new_count);
         }
 
         if let Some(app) = app.clone() {
-            let current_count = match inner.active_connections_per_app.get(&app) {
-                Some(count) => *count,
-                None => 0,
-            };
+            let current_count = *inner.active_connections_per_app.get(&app).unwrap_or(&0);
 
             if current_count + 1 > *self.per_app_limit.get(&app).unwrap_or(&0) {
                 debug!(
@@ -126,7 +119,6 @@ impl RateLimit for InMemoryRateLimit {
             }
 
             let new_count = current_count + 1;
-
             inner.active_connections_per_app.insert(app, new_count);
         }
 
@@ -142,47 +134,46 @@ impl RateLimit for InMemoryRateLimit {
         let mut inner = self.inner.lock().unwrap();
 
         if self.per_ip_limit > 0 {
-            let current_count = match inner.active_connections_per_ip.get(&addr) {
-                Some(count) => *count,
-                None => 0,
-            };
-            let new_count = if current_count == 0 {
-                warn!(
-                    message = "ip counting is not accurate -- unexpected underflow",
-                    client = addr.to_string()
-                );
-                0
-            } else {
-                current_count - 1
-            };
+            let current_count = *inner.active_connections_per_ip.get(&addr).unwrap_or(&0);
 
-            if new_count == 0 {
-                inner.active_connections_per_ip.remove(&addr);
-            } else {
-                inner.active_connections_per_ip.insert(addr, new_count);
+            match current_count {
+                0 => {
+                    warn!(
+                        message = "ip counting is not accurate -- unexpected underflow",
+                        client = addr.to_string()
+                    );
+                    inner.active_connections_per_ip.remove(&addr);
+                }
+                1 => {
+                    inner.active_connections_per_ip.remove(&addr);
+                }
+                _ => {
+                    inner
+                        .active_connections_per_ip
+                        .insert(addr, current_count - 1);
+                }
             }
         }
 
         if let Some(app) = app {
-            let current_count = match inner.active_connections_per_app.get(&app) {
-                Some(count) => *count,
-                None => 0,
-            };
+            let current_count = *inner.active_connections_per_app.get(&app).unwrap_or(&0);
 
-            let new_count = if current_count == 0 {
-                warn!(
-                    message = "app counting is not accurate -- unexpected underflow",
-                    client = addr.to_string()
-                );
-                0
-            } else {
-                current_count - 1
-            };
-
-            if new_count == 0 {
-                inner.active_connections_per_app.remove(&app);
-            } else {
-                inner.active_connections_per_app.insert(app, new_count);
+            match current_count {
+                0 => {
+                    warn!(
+                        message = "app counting is not accurate -- unexpected underflow",
+                        client = app
+                    );
+                    inner.active_connections_per_app.remove(&app);
+                }
+                1 => {
+                    inner.active_connections_per_app.remove(&app);
+                }
+                _ => {
+                    inner
+                        .active_connections_per_app
+                        .insert(app, current_count - 1);
+                }
             }
         }
     }
