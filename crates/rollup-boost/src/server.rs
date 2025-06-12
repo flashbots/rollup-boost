@@ -33,6 +33,7 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -51,6 +52,8 @@ pub struct RollupBoostServer {
     block_selection_policy: Option<BlockSelectionPolicy>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
+    payload_to_fcu_request:
+        Arc<Mutex<HashMap<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>>>,
 }
 
 impl RollupBoostServer {
@@ -68,6 +71,7 @@ impl RollupBoostServer {
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
             probes,
+            payload_to_fcu_request: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -184,12 +188,58 @@ impl RollupBoostServer {
             info!(message = "builder has payload, calling get_payload on builder");
 
             let payload = self.builder_client.get_payload(payload_id, version).await?;
-            let _ = self
+
+            // let l2_fut = self.l2_client.fork_choice_updated_v3(fork_choice_state, payload_attributes)
+
+            // let map = self.payload_to_fcu_request.lock();
+            let fcu_info = self
+                .payload_to_fcu_request
+                .lock()
+                .get(&payload_id)
+                .unwrap()
+                .to_owned()
+                .clone();
+
+            let new_payload_attrs = match fcu_info.1.as_ref() {
+                Some(attrs) => OpPayloadAttributes {
+                    payload_attributes: attrs.payload_attributes.clone(),
+                    transactions: Some(payload.transactions()),
+                    no_tx_pool: Some(true),
+                    gas_limit: attrs.gas_limit,
+                    eip_1559_params: attrs.eip_1559_params,
+                },
+                None => OpPayloadAttributes {
+                    payload_attributes: payload.payload_attributes(),
+                    transactions: Some(payload.transactions()),
+                    no_tx_pool: Some(true),
+                    gas_limit: None,
+                    eip_1559_params: None,
+                },
+            };
+            let l2_result = self
                 .l2_client
-                .new_payload(NewPayload::from(payload.clone()))
+                .fork_choice_updated_v3(fcu_info.0, Some(new_payload_attrs))
                 .await?;
 
-            Ok(Some(payload))
+            // sleep here
+
+            if let Some(new_payload_id) = l2_result.payload_id {
+                let v3 = self
+                    .l2_client
+                    .get_payload(new_payload_id, PayloadVersion::V3)
+                    .await?;
+
+                return Ok(Some(v3));
+            }
+
+            Ok(None)
+
+            // let _ = self
+            //     .l2_client
+            //     .new_payload(NewPayload::from(payload.clone()))
+            //     .await?;
+
+            // Ok(Some(payload))
         };
 
         let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
@@ -369,6 +419,10 @@ impl EngineApiServer for RollupBoostServer {
                             span.id(),
                         )
                         .await;
+
+                    self.payload_to_fcu_request
+                        .lock()
+                        .insert(payload_id, (fork_choice_state, payload_attributes));
                 }
 
                 // We always return the value from the l2 client
@@ -378,7 +432,7 @@ impl EngineApiServer for RollupBoostServer {
                 // to both the builder and the default l2 client
                 let builder_fut = self
                     .builder_client
-                    .fork_choice_updated_v3(fork_choice_state, payload_attributes);
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
                 let (l2_result, builder_result) = tokio::join!(l2_fut, builder_fut);
                 let l2_response = l2_result?;
@@ -398,6 +452,10 @@ impl EngineApiServer for RollupBoostServer {
                             span.id(),
                         )
                         .await;
+
+                    self.payload_to_fcu_request
+                        .lock()
+                        .insert(payload_id, (fork_choice_state, payload_attributes));
                 }
 
                 return Ok(l2_response);
@@ -407,15 +465,23 @@ impl EngineApiServer for RollupBoostServer {
             // forward the fcu to the builder to keep it synced and immediately return the l2
             // response without awaiting the builder
             let builder_client = self.builder_client.clone();
+            let attrs_clone = payload_attributes.clone();
             tokio::spawn(async move {
                 // It is not critical to wait for the builder response here
                 // During moments of high load, Op-node can send hundreds of FCU requests
                 // and we want to ensure that we don't block the main thread in those scenarios
                 builder_client
-                    .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+                    .fork_choice_updated_v3(fork_choice_state, attrs_clone)
                     .await
             });
-            return Ok(l2_fut.await?);
+            let l2_response = l2_fut.await?;
+            if let Some(payload_id) = l2_response.payload_id {
+                self.payload_to_fcu_request
+                    .lock()
+                    .insert(payload_id, (fork_choice_state, payload_attributes));
+            }
+
+            return Ok(l2_response);
         }
     }
 
