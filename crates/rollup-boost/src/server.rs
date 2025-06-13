@@ -226,7 +226,7 @@ impl RollupBoostServer {
             if let Some(new_payload_id) = l2_result.payload_id {
                 let v3 = self
                     .l2_client
-                    .get_payload(new_payload_id, PayloadVersion::V3)
+                    .get_payload(new_payload_id, PayloadVersion::V4)
                     .await?;
 
                 return Ok(Some(v3));
