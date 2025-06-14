@@ -99,7 +99,7 @@ impl From<RpcClientError> for ErrorObjectOwned {
 
 /// Client interface for interacting with execution layer node's Engine API.
 ///
-/// - **Engine API** calls are faciliated via the `auth_client` (requires JWT authentication).
+/// - **Engine API** calls are facilitated via the `auth_client` (requires JWT authentication).
 ///
 #[derive(Clone)]
 pub struct RpcClient {
