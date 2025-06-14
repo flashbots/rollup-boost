@@ -130,7 +130,7 @@ fn ok() -> Response {
     HttpResponse::builder()
         .status(200)
         .body(HttpBody::from("OK"))
-        .expect("Failed to create OK reponse")
+        .expect("Failed to create OK response")
 }
 
 fn partial_content() -> Response {
