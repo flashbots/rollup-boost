@@ -135,12 +135,12 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        let l2_fut = self.l2_client.get_payload(payload_id, version);
+        let l2_payload = self.l2_client.get_payload(payload_id, version).await;
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
         if self.execution_mode().is_disabled() {
-            return match l2_fut.await {
+            return match l2_payload {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
                     let context = PayloadSource::L2;
@@ -195,7 +195,7 @@ impl RollupBoostServer {
             let fcu_info = self
                 .payload_to_fcu_request
                 .lock()
-                .get(&payload_id)
+                .remove(&payload_id)
                 .unwrap()
                 .to_owned()
                 .clone();
@@ -221,15 +221,33 @@ impl RollupBoostServer {
                 .fork_choice_updated_v3(fcu_info.0, Some(new_payload_attrs))
                 .await?;
 
-            // sleep here
+            info!(message = "received FCU response from l2 for new state root", result = ?l2_result);
 
             if let Some(new_payload_id) = l2_result.payload_id {
+                info!(
+                    message = "sent FCU to l2 to calculate new state root",
+                    "returned_payload_id" = %new_payload_id,
+                    "old_payload_id" = %payload_id,
+                );
                 let v3 = self
                     .l2_client
                     .get_payload(new_payload_id, PayloadVersion::V4)
-                    .await?;
+                    .await;
 
-                return Ok(Some(v3));
+                match v3 {
+                    Ok(v3) => {
+                        info!(
+                            message = "received new state root payload from l2",
+                            payload = ?v3,
+                        );
+                        return Ok(Some(v3));
+                    }
+
+                    Err(e) => {
+                        error!(message = "error getting new state root payload from l2", error = %e);
+                        return Err(e.into());
+                    }
+                }
             }
 
             Ok(None)
@@ -242,7 +260,9 @@ impl RollupBoostServer {
             // Ok(Some(payload))
         };
 
-        let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
+        let builder_payload = builder_fut.await;
+
+        // let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
 
         // Evaluate the builder and l2 response and select the final payload
         let (payload, context) = {
@@ -994,7 +1014,7 @@ pub mod tests {
         assert!(fcu_response.is_ok());
 
         // wait for builder to observe the FCU call
-        sleep(std::time::Duration::from_millis(100)).await;
+        sleep(std::time::Duration::from_millis(10)).await;
 
         {
             let builder_fcu_req = builder_mock.fcu_requests.lock();
