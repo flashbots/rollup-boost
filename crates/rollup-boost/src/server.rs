@@ -319,6 +319,7 @@ impl RollupBoostServer {
         let inner_payload = ExecutionPayload::from(payload.clone());
         let block_hash = inner_payload.block_hash();
         let block_number = inner_payload.block_number();
+        let state_root = inner_payload.as_v1().state_root;
 
         // Note: This log message is used by integration tests to track payload context.
         // While not ideal to rely on log parsing, it provides a reliable way to verify behavior.
@@ -327,6 +328,7 @@ impl RollupBoostServer {
             message = "returning block",
             "hash" = %block_hash,
             "number" = %block_number,
+            "state_root" = %state_root,
             %context,
             %payload_id,
         );
