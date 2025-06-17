@@ -32,6 +32,8 @@ cargo run --bin rollup-boost -- \
   --log-level info
 ```
 
+This command uses the default Flashblocks configuration. For custom configurations, see the [Flashblocks Configuration](#flashblocks-configuration) section below.
+
 ### 2. Generate Genesis Configuration
 
 Navigate to the op-rbuilder directory and create a genesis file:
@@ -81,4 +83,60 @@ Use the built-in tester utility to simulate a consensus layer node:
 
 ```bash
 cargo run -p op-rbuilder --bin tester --features testing -- run
+```
+
+## Configuration Details
+
+### Port Configuration
+
+- `4444`: rollup-boost RPC port
+- `4445`: op-rbuilder auth RPC port (matches rollup-boost builder URL)
+- `5555`: op-reth auth RPC port (matches rollup-boost L2 URL)
+- `3030`: op-rbuilder P2P port
+- `3131`: op-reth P2P port
+
+### Flashblocks Configuration
+
+rollup-boost provides several configuration options for Flashblocks functionality:
+
+#### Basic Flashblocks Flag
+
+- `--flashblocks`: Enable Flashblocks client (required)
+  - Environment variable: `FLASHBLOCKS`
+
+#### WebSocket Connection Settings
+
+- `--flashblocks-builder-url <URL>`: Flashblocks Builder WebSocket URL
+
+  - Environment variable: `FLASHBLOCKS_BUILDER_URL`
+  - Default: `ws://127.0.0.1:1111`
+
+- `--flashblocks-host <HOST>`: Flashblocks WebSocket host for outbound connections
+
+  - Environment variable: `FLASHBLOCKS_HOST`
+  - Default: `127.0.0.1`
+
+- `--flashblocks-port <PORT>`: Flashblocks WebSocket port for outbound connections
+  - Environment variable: `FLASHBLOCKS_PORT`
+  - Default: `1112`
+
+#### Connection Management
+
+- `--flashblock-builder-ws-reconnect-ms <MILLISECONDS>`: Timeout duration if builder disconnects
+  - Environment variable: `FLASHBLOCK_BUILDER_WS_RECONNECT_MS`
+  - No default value specified
+
+#### Example with Custom Configuration
+
+```bash
+cargo run --bin rollup-boost -- \
+  --l2-url http://localhost:5555 \
+  --builder-url http://localhost:4445 \
+  --rpc-port 4444 \
+  --flashblocks \
+  --flashblocks-builder-url ws://localhost:9999 \
+  --flashblocks-host 0.0.0.0 \
+  --flashblocks-port 2222 \
+  --flashblock-builder-ws-reconnect-ms 5000 \
+  --log-level info
 ```
