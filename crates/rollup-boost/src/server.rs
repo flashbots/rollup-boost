@@ -231,18 +231,18 @@ impl RollupBoostServer {
                     "returned_payload_id" = %new_payload_id,
                     "old_payload_id" = %payload_id,
                 );
-                let v3 = self
+                let l2_payload = self
                     .l2_client
                     .get_payload(new_payload_id, PayloadVersion::V4)
                     .await;
 
-                match v3 {
-                    Ok(v3) => {
+                match l2_payload {
+                    Ok(new_payload) => {
                         debug!(
                             message = "received new state root payload from l2",
-                            payload = ?v3,
+                            payload = ?new_payload,
                         );
-                        return Ok(Some(v3));
+                        return Ok(Some(new_payload));
                     }
 
                     Err(e) => {
