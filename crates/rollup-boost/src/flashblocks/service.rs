@@ -273,6 +273,8 @@ impl FlashblocksService {
                     index = payload.index
                 );
                 // We are waiting for FCU to complete
+                // Caution: one possible race condition if rbuilder will send base payload and first
+                // flashblocks while waiting for FCU answer
                 let now = tokio::time::Instant::now();
                 while !self.current_payload_id.is_set.load(Ordering::Acquire) {
                     // Bound wait for only 10ms
@@ -340,7 +342,14 @@ impl EngineApiExt for FlashblocksService {
         let result = self
             .client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)
-            .await?;
+            .await
+            .or_else(|err| {
+                // Clean up is_set on error
+                self.current_payload_id
+                    .is_set
+                    .store(true, Ordering::Release);
+                Err(err)
+            })?;
 
         if let Some(payload_id) = result.payload_id {
             tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
