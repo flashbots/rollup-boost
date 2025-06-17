@@ -746,7 +746,7 @@ pub mod tests {
                 execution_mode.clone(),
                 None,
                 probes.clone(),
-                true,
+                false,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
