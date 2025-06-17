@@ -2,11 +2,11 @@ use super::outbound::WebSocketPublisher;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
-use crate::RpcClientError;
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
 };
+use crate::{RpcClientError, payload_id_optimism};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
@@ -246,19 +246,35 @@ impl FlashblocksService {
                 );
 
                 // make sure the payload id matches the current payload id
-                if *self.current_payload_id.read().await != payload.payload_id {
+                let local_payload_id = *self.current_payload_id.read().await;
+                if local_payload_id != payload.payload_id {
                     self.metrics.current_payload_id_mismatch.increment(1);
-                    error!(message = "Payload ID mismatch",);
+                    error!(
+                        message = "Payload ID mismatch",
+                        payload_id = %payload.payload_id,
+                        %local_payload_id,
+                        index = payload.index,
+                    );
                     return;
                 }
 
                 if let Err(e) = self.best_payload.write().await.extend(payload.clone()) {
                     self.metrics.extend_payload_errors.increment(1);
-                    error!(message = "Failed to extend payload", error = %e);
+                    error!(
+                        message = "Failed to extend payload",
+                        error = %e,
+                        payload_id = %payload.payload_id,
+                        index = payload.index,
+                    );
                 } else {
                     // Broadcast the valid message
                     if let Err(e) = self.ws_pub.publish(&payload) {
-                        error!(message = "Failed to broadcast payload", error = %e);
+                        error!(
+                            message = "Failed to broadcast payload",
+                            error = %e,
+                            payload_id = %payload.payload_id,
+                            index = payload.index,
+                        );
                     }
                 }
             }
@@ -280,14 +296,29 @@ impl EngineApiExt for FlashblocksService {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
+        // Calculate and set expected payload_id
+        if let Some(attr) = &payload_attributes {
+            let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attr, 3);
+            self.set_current_payload_id(payload_id).await;
+        }
+
         let result = self
             .client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)
             .await?;
 
         if let Some(payload_id) = result.payload_id {
-            tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
-            self.set_current_payload_id(payload_id).await;
+            let current_payload = *self.current_payload_id.read().await;
+            if current_payload != payload_id {
+                tracing::error!(
+                    message = "Payload id returned by builder differs from calculated. Using builder payload id",
+                    builder_payload_id = %payload_id,
+                    calculated_payload_id = %current_payload,
+                );
+                self.set_current_payload_id(payload_id).await;
+            } else {
+                tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
+            }
         } else {
             tracing::debug!(message = "Forkchoice updated with no payload ID");
         }

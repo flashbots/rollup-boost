@@ -1010,7 +1010,7 @@ pub mod tests {
         assert!(fcu_response.is_ok());
 
         // wait for builder to observe the FCU call
-        sleep(std::time::Duration::from_millis(10)).await;
+        sleep(std::time::Duration::from_millis(100)).await;
 
         {
             let builder_fcu_req = builder_mock.fcu_requests.lock();
