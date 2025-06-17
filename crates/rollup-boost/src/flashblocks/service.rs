@@ -21,6 +21,7 @@ use op_alloy_rpc_types_engine::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
@@ -175,12 +176,28 @@ impl FlashblockBuilder {
     }
 }
 
+/// Structure used to sync flashblocks consuming and FCU with attributes calls.
+/// We won't register flashblocks until is_set == true (not guaranteed)
+pub struct SettablePayloadId {
+    id: RwLock<PayloadId>,
+    is_set: AtomicBool,
+}
+
+impl Default for SettablePayloadId {
+    fn default() -> Self {
+        Self {
+            id: RwLock::new(PayloadId::default()),
+            is_set: AtomicBool::from(false),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct FlashblocksService {
     client: RpcClient,
 
     // Current payload ID we're processing (set from external notification)
-    current_payload_id: Arc<RwLock<PayloadId>>,
+    current_payload_id: Arc<SettablePayloadId>,
 
     // flashblocks payload being constructed
     best_payload: Arc<RwLock<FlashblockBuilder>>,
@@ -197,7 +214,7 @@ impl FlashblocksService {
 
         Ok(Self {
             client,
-            current_payload_id: Arc::new(RwLock::new(PayloadId::default())),
+            current_payload_id: Arc::new(SettablePayloadId::default()),
             best_payload: Arc::new(RwLock::new(FlashblockBuilder::new())),
             ws_pub,
             metrics: Default::default(),
@@ -210,7 +227,7 @@ impl FlashblocksService {
         payload_id: PayloadId,
     ) -> Result<Option<OpExecutionPayloadEnvelope>, FlashblocksError> {
         // Check that we have flashblocks for correct payload
-        if *self.current_payload_id.read().await != payload_id {
+        if *self.current_payload_id.id.read().await != payload_id {
             // We have outdated `current_payload_id` so we should fallback to get_payload
             // Clearing best_payload in here would cause situation when old `get_payload` would clear
             // currently built correct flashblocks.
@@ -229,7 +246,18 @@ impl FlashblocksService {
 
     pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
         tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
-        *self.current_payload_id.write().await = payload_id;
+        *self.current_payload_id.id.write().await = payload_id;
+        self.current_payload_id
+            .is_set
+            .store(true, Ordering::Release);
+    }
+
+    pub async fn clear_current_payload(&self) {
+        tracing::debug!(message = "Clearing current payload before precessing FCU");
+        self.current_payload_id
+            .is_set
+            .store(false, Ordering::Release);
+        *self.current_payload_id.id.write().await = PayloadId::default();
         // Current state won't be useful anymore because chain progressed
         *self.best_payload.write().await = FlashblockBuilder::new();
     }
@@ -244,9 +272,20 @@ impl FlashblocksService {
                     payload_id = %payload.payload_id,
                     index = payload.index
                 );
-
+                // We are waiting for FCU to complete
+                let now = tokio::time::Instant::now();
+                while !self.current_payload_id.is_set.load(Ordering::Acquire) {
+                    // Bound wait for only 10ms
+                    if now.elapsed().as_millis() > 10 {
+                        tracing::warn!(
+                            "Timed out waiting for FCU call processing. Exciting spin loop"
+                        );
+                        break;
+                    }
+                    std::hint::spin_loop();
+                }
                 // make sure the payload id matches the current payload id
-                let local_payload_id = *self.current_payload_id.read().await;
+                let local_payload_id = *self.current_payload_id.id.read().await;
                 if local_payload_id != payload.payload_id {
                     self.metrics.current_payload_id_mismatch.increment(1);
                     error!(
@@ -296,6 +335,8 @@ impl EngineApiExt for FlashblocksService {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
+        self.clear_current_payload().await;
+
         let result = self
             .client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)
@@ -406,7 +447,7 @@ mod tests {
             FlashblocksService::new(builder_client, "127.0.0.1:8001".parse().unwrap()).unwrap();
 
         // Some "random" payload id
-        *service.current_payload_id.write().await = PayloadId::new([1, 1, 1, 1, 1, 1, 1, 1]);
+        *service.current_payload_id.id.write().await = PayloadId::new([1, 1, 1, 1, 1, 1, 1, 1]);
 
         // We ensure that request will skip rollup-boost and serve payload from backup if payload id
         // don't match
