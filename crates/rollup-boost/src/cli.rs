@@ -98,7 +98,7 @@ pub struct Args {
     pub block_selection_policy: Option<BlockSelectionPolicy>,
 
     /// Should we use the l2 client for computing state root
-    #[arg(long, env, default_value = "true")]
+    #[arg(long, env, default_value = "false")]
     pub use_l2_client_for_state_root: bool,
 
     #[clap(flatten)]
