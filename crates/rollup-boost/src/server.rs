@@ -210,13 +210,24 @@ impl RollupBoostServer {
                 .clone();
 
             let new_payload_attrs = match fcu_info.1.as_ref() {
-                Some(attrs) => OpPayloadAttributes {
-                    payload_attributes: attrs.payload_attributes.clone(),
-                    transactions: Some(payload.transactions()),
-                    no_tx_pool: Some(true),
-                    gas_limit: attrs.gas_limit,
-                    eip_1559_params: attrs.eip_1559_params,
-                },
+                Some(attrs) => {
+                    let transactions = match &attrs.transactions {
+                        Some(txns) => {
+                            let mut final_txns = txns.clone();
+                            final_txns.extend(payload.transactions());
+                            final_txns
+                        }
+                        None => payload.transactions().clone(),
+                    };
+
+                    OpPayloadAttributes {
+                        payload_attributes: attrs.payload_attributes.clone(),
+                        transactions: Some(transactions),
+                        no_tx_pool: Some(true),
+                        gas_limit: attrs.gas_limit,
+                        eip_1559_params: attrs.eip_1559_params,
+                    }
+                }
                 None => OpPayloadAttributes {
                     payload_attributes: payload.payload_attributes(),
                     transactions: Some(payload.transactions()),
@@ -236,10 +247,7 @@ impl RollupBoostServer {
                     "returned_payload_id" = %new_payload_id,
                     "old_payload_id" = %payload_id,
                 );
-                let l2_payload = self
-                    .l2_client
-                    .get_payload(new_payload_id, PayloadVersion::V4)
-                    .await;
+                let l2_payload = self.l2_client.get_payload(new_payload_id, version).await;
 
                 match l2_payload {
                     Ok(new_payload) => {

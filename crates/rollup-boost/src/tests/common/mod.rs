@@ -363,6 +363,7 @@ impl RollupBoostTestHarnessBuilder {
         rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
         rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
+        rollup_boost.args.use_l2_client_for_state_root = false;
         let rollup_boost = rollup_boost.start().await;
         println!("rollup-boost authrpc: {}", rollup_boost.rpc_endpoint());
         println!("rollup-boost metrics: {}", rollup_boost.metrics_endpoint());
