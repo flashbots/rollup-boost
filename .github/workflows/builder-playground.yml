@@ -42,4 +42,4 @@ jobs:
 
       - name: Run Builder Playground
         run: |
-          builder-playground cook opstack --external-builder op-reth --timeout 5m --watchdog
+          builder-playground cook opstack --override rollup-boost=flashbots/rollup-boost:develop --external-builder op-reth --timeout 5m --watchdog
