@@ -43,7 +43,7 @@ ARG ROLLUP_BOOST_BIN="rollup-boost"
 COPY --from=planner /app/recipe.json recipe.json
 
 RUN --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo chef cook --recipe-path recipe.json
+    cargo chef cook --release --recipe-path recipe.json
 
 COPY . .
 
