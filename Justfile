@@ -9,7 +9,7 @@ kurtosis-stress-test:
         && ./scripts/ci/kurtosis.sh run
 
 build:
-    docker build -t flashbots/rollup-boost:develop .
+    docker buildx build -t flashbots/rollup-boost:develop .
 
 kurtosis-spawn:
     kurtosis run github.com/ethpandaops/optimism-package --args-file ./scripts/ci/kurtosis-params.yaml --enclave op-rollup-boost
