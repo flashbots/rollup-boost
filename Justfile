@@ -1,4 +1,4 @@
-kurtosis-devnet-up: build spawn
+kurtosis-devnet-up: build kurtosis-spawn
 
 kurtosis-devnet-down:
     kurtosis enclave rm -f op-rollup-boost
@@ -11,5 +11,5 @@ kurtosis-stress-test:
 build:
     docker buildx build -t flashbots/rollup-boost:develop .
 
-spawn:
+kurtosis-spawn:
     kurtosis run github.com/ethpandaops/optimism-package --args-file ./scripts/ci/kurtosis-params.yaml --enclave op-rollup-boost
