@@ -1,5 +1,0 @@
-[registries.crates-io]
-protocol = "sparse"
-
-[build]
-jobs = 0
