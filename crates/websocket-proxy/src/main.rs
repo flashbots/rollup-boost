@@ -18,6 +18,7 @@ use clap::Parser;
 use dotenvy::dotenv;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use rate_limit::RedisRateLimit;
+use std::collections::HashMap;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -66,9 +67,10 @@ struct Args {
         long,
         env,
         default_value = "10",
-        help = "Maximum number of concurrently connected clients per IP"
+        help = "Maximum number of concurrently connected clients per IP. 0 here means no limit."
     )]
     per_ip_connection_limit: usize,
+
     #[arg(
         long,
         env,
@@ -96,7 +98,7 @@ struct Args {
     #[arg(long, env, default_value = "true")]
     metrics: bool,
 
-    /// API Keys, if not provided will be an unauthenticated endpoint, should be in the format <app1>:<apiKey1>,<app2>:<apiKey2>,..
+    /// API Keys, if not provided will be an unauthenticated endpoint, should be in the format <app1>:<apiKey1>:<rateLimit1>,<app2>:<apiKey2>:<rateLimit2>,..
     #[arg(long, env, value_delimiter = ',', help = "API keys to allow")]
     api_keys: Vec<String>,
 
@@ -266,6 +268,12 @@ async fn main() {
 
     let registry = Registry::new(sender, metrics.clone());
 
+    let app_rate_limits = if let Some(auth) = &authentication {
+        auth.get_rate_limits()
+    } else {
+        HashMap::new()
+    };
+
     let rate_limiter = match &args.redis_url {
         Some(redis_url) => {
             info!(message = "Using Redis rate limiter", redis_url = redis_url);
@@ -273,6 +281,7 @@ async fn main() {
                 redis_url,
                 args.instance_connection_limit,
                 args.per_ip_connection_limit,
+                app_rate_limits.clone(),
                 &args.redis_key_prefix,
             ) {
                 Ok(limiter) => {
@@ -288,6 +297,7 @@ async fn main() {
                     Arc::new(InMemoryRateLimit::new(
                         args.instance_connection_limit,
                         args.per_ip_connection_limit,
+                        app_rate_limits.clone(),
                     )) as Arc<dyn RateLimit>
                 }
             }
@@ -297,6 +307,7 @@ async fn main() {
             Arc::new(InMemoryRateLimit::new(
                 args.instance_connection_limit,
                 args.per_ip_connection_limit,
+                app_rate_limits,
             )) as Arc<dyn RateLimit>
         }
     };
