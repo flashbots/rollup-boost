@@ -55,7 +55,7 @@ cargo run --bin op-rbuilder -- node \
   --flashblocks.enabled \
   --disable-discovery \
   --authrpc.port 4445 \
-  --authrpc.jwtsecret c \
+  --authrpc.jwtsecret ./crates/op-rbuilder/src/tests/framework/artifacts/test-jwt-secret.txt \
   --http
 ```
 
