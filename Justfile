@@ -1,4 +1,4 @@
-devnet-up: build spawn
+devnet-up: build-debug spawn
 
 devnet-down:
     kurtosis enclave rm -f op-rollup-boost
