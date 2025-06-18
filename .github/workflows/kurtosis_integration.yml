@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   # Run nightly at 00:00 UTC
   schedule:
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
   push:
     branches:
       - main
@@ -16,8 +16,8 @@ on:
 jobs:
   integration-tests:
     name: Run Kurtosis Integration Tests
-    runs-on: ubuntu-latest
-    
+    runs-on: warp-ubuntu-latest-x64-16x
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,20 +27,14 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
-    
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
-      
+
       - name: Install Just
         uses: taiki-e/install-action@just
-
-      - name: Install Contender
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev libfontconfig1-dev libfontconfig
-          ./scripts/ci/kurtosis.sh install-contender
 
       - name: Setup Kurtosis
         shell: bash
@@ -48,10 +42,10 @@ jobs:
           echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
           sudo apt update
           sudo apt install kurtosis-cli
-              
+
           kurtosis analytics disable
           echo "$(dirname $(which kurtosis))" >> $GITHUB_PATH
-  
+
       - name: Setup K8s
         uses: medyagh/setup-minikube@latest
 
@@ -107,9 +101,8 @@ jobs:
 
       - name: Stress Tests
         run: |
-          rm -rf ~/.contender/contender.db
-          just kurtosis-stress-test
-    
+          just stress-test
+
       - name: Devnet Down
         run: |
           just kurtosis-devnet-down
