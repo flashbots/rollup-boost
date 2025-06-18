@@ -50,7 +50,7 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo build --features="$FEATURES" --package=${ROLLUP_BOOST_BIN}
+    cargo build --release --features="$FEATURES" --package=${ROLLUP_BOOST_BIN}
 
 #
 # Runtime container
@@ -59,6 +59,6 @@ FROM gcr.io/distroless/cc-debian12
 WORKDIR /app
 
 ARG ROLLUP_BOOST_BIN="rollup-boost"
-COPY --from=builder /app/target/debug/${ROLLUP_BOOST_BIN} /usr/local/bin/
+COPY --from=builder /app/target/release/${ROLLUP_BOOST_BIN} /usr/local/bin/
 
 ENTRYPOINT ["/usr/local/bin/rollup-boost"]
