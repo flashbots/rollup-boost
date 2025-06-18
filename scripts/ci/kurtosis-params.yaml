@@ -12,6 +12,10 @@ optimism_package:
             image: "ghcr.io/paradigmxyz/op-reth:nightly"
           cl_builder:
             type: op-node
+          mev_params:
+            enabled: true  # Need to enable MEV to use rollup-boost
+            image: "flashbots/rollup-boost:develop"
+            type: "rollup-boost"
       network_params:
         network: "kurtosis"
         fund_dev_accounts: true
@@ -19,10 +23,6 @@ optimism_package:
         fjord_time_offset: 0
         granite_time_offset: 0
         isthmus_time_offset: 5
-      mev_params:
-        enabled: true  # Need to enable MEV to use rollup-boost
-        image: "flashbots/rollup-boost:develop"
-        type: "rollup-boost"
 ethereum_package:
   participants:
   - el_type: geth
