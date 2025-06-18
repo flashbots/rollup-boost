@@ -11,5 +11,5 @@ kurtosis-stress-test:
 build:
     docker buildx build -t flashbots/rollup-boost:develop .
 
-kurtosis-spawn:
+spawn:
     kurtosis run github.com/ethpandaops/optimism-package --args-file ./scripts/ci/kurtosis-params.yaml --enclave op-rollup-boost
