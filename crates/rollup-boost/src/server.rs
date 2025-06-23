@@ -138,12 +138,12 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        let l2_fut = self.l2_client.get_payload(payload_id, version);
+        let l2_payload = self.l2_client.get_payload(payload_id, version).await;
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
         if self.execution_mode().is_disabled() {
-            return match l2_fut.await {
+            return match l2_payload {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
                     let context = PayloadSource::L2;
@@ -268,7 +268,7 @@ impl RollupBoostServer {
             Ok(None)
         };
 
-        let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
+        let builder_payload = builder_fut.await;
 
         // Evaluate the builder and l2 response and select the final payload
         let (payload, context) = {
@@ -456,6 +456,16 @@ impl EngineApiServer for RollupBoostServer {
                 // We always return the value from the l2 client
                 return Ok(l2_response);
             } else {
+                let current_timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let is_historical_syncing = attrs.payload_attributes.timestamp < current_timestamp;
+                if is_historical_syncing {
+                    info!(message = "historical syncing FCU received. skipping FCU to builder");
+                    return Ok(l2_fut.await?);
+                }
+
                 // If the tx pool is enabled, forward the fcu
                 // to both the builder and the default l2 client
                 let builder_fut = self
