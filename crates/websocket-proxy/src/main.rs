@@ -130,6 +130,9 @@ struct Args {
         help = "Prefix for Redis keys"
     )]
     redis_key_prefix: String,
+
+    #[arg(long, env, help = "JWT token string to connect to websocket server.")]
+    jwt_string: Option<String>,
 }
 
 #[tokio::main]
@@ -308,6 +311,7 @@ async fn main() {
         rate_limiter,
         authentication,
         args.ip_addr_http_header,
+        args.jwt_string,
     );
     let server_task = server.listen(token.clone());
 

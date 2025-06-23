@@ -4,7 +4,7 @@ use crate::metrics::Metrics;
 use crate::rate_limit::{RateLimit, RateLimitError};
 use crate::registry::Registry;
 use axum::body::Body;
-use axum::extract::{ConnectInfo, Path, State, WebSocketUpgrade};
+use axum::extract::{ConnectInfo, Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
@@ -16,12 +16,58 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JwtClaims {
+    pub sub: String, // Subject (user identifier)
+    pub exp: usize,  // Expiration time
+    pub iat: usize,  // Issued at
+    pub user_id: Option<u32>,
+    pub username: String,
+    pub app_id: Option<String>, // Optional application identifier
+}
+
+#[derive(Clone)]
+pub struct JwtConfig {
+    pub secret: String,
+    pub algorithm: Algorithm,
+}
+
+impl JwtConfig {
+    pub fn new(secret: String) -> Self {
+        Self {
+            secret,
+            algorithm: Algorithm::HS256,
+        }
+    }
+
+    pub fn validate_token(&self, token: &str) -> Result<JwtClaims, jsonwebtoken::errors::Error> {
+        let mut validation = Validation::new(self.algorithm);
+        validation.validate_exp = true;
+
+        decode::<JwtClaims>(
+            token,
+            &DecodingKey::from_secret(self.secret.as_ref()),
+            &validation,
+        )
+        .map(|data| data.claims)
+    }
+}
+
+#[derive(Deserialize)]
+struct AuthQuery {
+    token: Option<String>,
+}
+
 #[derive(Clone)]
 struct ServerState {
     registry: Registry,
     rate_limiter: Arc<dyn RateLimit>,
     metrics: Arc<Metrics>,
     auth: Authentication,
+    jwt_config: Option<JwtConfig>,
     ip_addr_http_header: String,
 }
 
@@ -33,6 +79,7 @@ pub struct Server {
     metrics: Arc<Metrics>,
     ip_addr_http_header: String,
     authentication: Option<Authentication>,
+    jwt_config: Option<JwtConfig>,
 }
 
 impl Server {
@@ -43,6 +90,7 @@ impl Server {
         rate_limiter: Arc<dyn RateLimit>,
         authentication: Option<Authentication>,
         ip_addr_http_header: String,
+        jwt_secret: Option<String>,
     ) -> Self {
         Self {
             listen_addr,
@@ -51,18 +99,33 @@ impl Server {
             metrics,
             authentication,
             ip_addr_http_header,
+            jwt_config: jwt_secret.map(JwtConfig::new),
         }
     }
 
     pub async fn listen(&self, cancellation_token: CancellationToken) {
         let mut router: Router<ServerState> = Router::new().route("/healthz", get(healthz_handler));
 
-        if self.authentication.is_some() {
-            info!("Authentication is enabled");
-            router = router.route("/ws/{api_key}", any(authenticated_websocket_handler));
-        } else {
-            info!("Public endpoint is enabled");
-            router = router.route("/ws", any(unauthenticated_websocket_handler));
+        // Determine which authentication method to use
+        match (&self.authentication, &self.jwt_config) {
+            (Some(_), Some(_)) => {
+                info!("Both API key and JWT authentication are enabled - JWT takes precedence");
+                router = router
+                    .route("/ws", any(jwt_websocket_handler))
+                    .route("/ws/apikey/:api_key", any(authenticated_websocket_handler));
+            }
+            (Some(_), None) => {
+                info!("API key authentication is enabled");
+                router = router.route("/ws/:api_key", any(authenticated_websocket_handler));
+            }
+            (None, Some(_)) => {
+                info!("JWT authentication is enabled");
+                router = router.route("/ws", any(jwt_websocket_handler));
+            }
+            (None, None) => {
+                info!("Public endpoint is enabled");
+                router = router.route("/ws", any(unauthenticated_websocket_handler));
+            }
         }
 
         let router = router.with_state(ServerState {
@@ -73,6 +136,7 @@ impl Server {
                 .authentication
                 .clone()
                 .unwrap_or_else(Authentication::none),
+            jwt_config: self.jwt_config.clone(),
             ip_addr_http_header: self.ip_addr_http_header.clone(),
         });
 
@@ -99,6 +163,85 @@ async fn healthz_handler() -> impl IntoResponse {
     StatusCode::OK
 }
 
+async fn jwt_websocket_handler(
+    State(state): State<ServerState>,
+    ws: WebSocketUpgrade,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(params): Query<AuthQuery>,
+) -> impl IntoResponse {
+    let jwt_config = match &state.jwt_config {
+        Some(config) => config,
+        None => {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(
+                    json!({"message": "JWT authentication not configured"}).to_string(),
+                ))
+                .unwrap();
+        }
+    };
+
+    // Tries to get token from param and use header as fallback
+    let token = params.token.or_else(|| {
+        headers
+            .get("Authorization")
+            .and_then(|header| header.to_str().ok())
+            .and_then(|header_str| {
+                if header_str.starts_with("Bearer ") {
+                    Some(header_str[7..].to_string())
+                } else {
+                    None
+                }
+            })
+    });
+
+    let token = match token {
+        Some(token) => token,
+        None => {
+            state.metrics.unauthorized_requests.increment(1);
+            return Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from(
+                    json!({"message": "Missing JWT token. Provide via ?token=<jwt> or Authorization: Bearer <jwt>"}).to_string(),
+                ))
+                .unwrap();
+        }
+    };
+
+    match jwt_config.validate_token(&token) {
+        Ok(claims) => {
+            info!(
+                message = "JWT authentication successful",
+                user = claims.username,
+                user_id = claims.user_id,
+                client = addr.to_string()
+            );
+
+            if let Some(app_id) = &claims.app_id {
+                state.metrics.proxy_connections_by_app(app_id);
+            }
+
+            websocket_handler_with_user_info(state, ws, addr, headers, Some(claims))
+        }
+        Err(e) => {
+            warn!(
+                message = "JWT validation failed",
+                error = e.to_string(),
+                client = addr.to_string()
+            );
+
+            state.metrics.unauthorized_requests.increment(1);
+            Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from(
+                    json!({"message": format!("Invalid JWT token: {}", e)}).to_string(),
+                ))
+                .unwrap()
+        }
+    }
+}
+
 async fn authenticated_websocket_handler(
     State(state): State<ServerState>,
     ws: WebSocketUpgrade,
@@ -121,7 +264,7 @@ async fn authenticated_websocket_handler(
         }
         Some(app) => {
             state.metrics.proxy_connections_by_app(app);
-            websocket_handler(state, ws, addr, headers)
+            websocket_handler_with_user_info(state, ws, addr, headers, None)
         }
     }
 }
@@ -132,18 +275,19 @@ async fn unauthenticated_websocket_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
-    websocket_handler(state, ws, addr, headers)
+    websocket_handler_with_user_info(state, ws, addr, headers, None)
 }
 
-fn websocket_handler(
+fn websocket_handler_with_user_info(
     state: ServerState,
     ws: WebSocketUpgrade,
     addr: SocketAddr,
     headers: HeaderMap,
+    jwt_claims: Option<JwtClaims>,
 ) -> Response {
     let connect_addr = addr.ip();
 
-    let client_addr = match headers.get(state.ip_addr_http_header) {
+    let client_addr = match headers.get(&state.ip_addr_http_header) {
         None => connect_addr,
         Some(value) => extract_addr(value, connect_addr),
     };
@@ -169,6 +313,16 @@ fn websocket_handler(
     })
     .on_upgrade(async move |socket| {
         let client = ClientConnection::new(client_addr, ticket, socket);
+
+        if let Some(claims) = jwt_claims {
+            info!(
+                message = "WebSocket connection established with JWT user",
+                user = claims.username,
+                user_id = claims.user_id,
+                client = addr.to_string()
+            );
+        }
+
         state.registry.subscribe(client).await;
     })
 }
@@ -204,6 +358,8 @@ fn extract_addr(header: &HeaderValue, fallback: IpAddr) -> IpAddr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Duration, Utc};
+    use jsonwebtoken::{encode, EncodingKey, Header};
     use std::net::Ipv4Addr;
 
     #[tokio::test]
@@ -222,5 +378,62 @@ mod tests {
         test("nonsense", fb);
         test("400.0.0.1", fb);
         test("120.0.0.1.0", fb);
+    }
+
+    #[test]
+    fn test_jwt_validation() {
+        let secret = "test-secret";
+        let jwt_config = JwtConfig::new(secret.to_string());
+
+        let now = Utc::now();
+        let exp = now + Duration::hours(1);
+
+        let claims = JwtClaims {
+            sub: "testuser".to_string(),
+            exp: exp.timestamp() as usize,
+            iat: now.timestamp() as usize,
+            user_id: Some(123),
+            username: "testuser".to_string(),
+            app_id: Some("test-app".to_string()),
+        };
+
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_ref()),
+        )
+        .unwrap();
+
+        let validated_claims = jwt_config.validate_token(&token).unwrap();
+        assert_eq!(validated_claims.username, "testuser");
+        assert_eq!(validated_claims.user_id, Some(123));
+        assert_eq!(validated_claims.app_id, Some("test-app".to_string()));
+    }
+
+    #[test]
+    fn test_expired_jwt() {
+        let secret = "test-secret";
+        let jwt_config = JwtConfig::new(secret.to_string());
+
+        let now = Utc::now();
+        let exp = now - Duration::hours(1); // Expired token
+
+        let claims = JwtClaims {
+            sub: "testuser".to_string(),
+            exp: exp.timestamp() as usize,
+            iat: now.timestamp() as usize,
+            user_id: Some(123),
+            username: "testuser".to_string(),
+            app_id: None,
+        };
+
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_ref()),
+        )
+        .unwrap();
+
+        assert!(jwt_config.validate_token(&token).is_err());
     }
 }

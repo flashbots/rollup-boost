@@ -6,3 +6,4 @@ websocket-proxy/.env
 websocket-proxy/target
 integration_logs
 .vscode
+.DS_Store
