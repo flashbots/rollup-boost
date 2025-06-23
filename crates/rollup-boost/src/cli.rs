@@ -13,8 +13,8 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, DebugClient, EngineApiExt, Flashblocks, FlashblocksArgs, ProxyLayer,
-    RollupBoostServer, RpcClient,
+    BlockSelectionPolicy, DebugClient, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer,
+    RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
