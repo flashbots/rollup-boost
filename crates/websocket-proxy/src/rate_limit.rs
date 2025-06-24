@@ -447,11 +447,6 @@ impl RateLimit for RedisRateLimit {
 mod tests {
     use super::*;
     use std::str::FromStr;
-    use testcontainers::{
-        core::{IntoContainerPort, WaitFor},
-        runners::AsyncRunner,
-        GenericImage,
-    };
 
     const GLOBAL_LIMIT: usize = 3;
     const PER_IP_LIMIT: usize = 2;
@@ -682,6 +677,12 @@ mod tests {
     #[tokio::test]
     #[cfg(all(feature = "integration", test))]
     async fn test_instance_tracking_and_cleanup() -> eyre::Result<()> {
+        use testcontainers::{
+            core::{IntoContainerPort, WaitFor},
+            runners::AsyncRunner,
+            GenericImage,
+        };
+
         let _container = GenericImage::new("redis", "7.2.4")
             .with_exposed_port(6379.tcp())
             .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
