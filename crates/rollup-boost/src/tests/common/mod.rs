@@ -231,6 +231,7 @@ pub struct RollupBoostTestHarnessBuilder {
     proxy_handler: Option<Arc<dyn BuilderProxyHandler>>,
     isthmus_block: Option<u64>,
     block_time: u64,
+    use_l2_client_for_state_root: bool,
 }
 
 impl RollupBoostTestHarnessBuilder {
@@ -240,6 +241,7 @@ impl RollupBoostTestHarnessBuilder {
             proxy_handler: None,
             isthmus_block: None,
             block_time: 1,
+            use_l2_client_for_state_root: false,
         }
     }
 
@@ -287,6 +289,11 @@ impl RollupBoostTestHarnessBuilder {
 
     pub fn proxy_handler(mut self, proxy_handler: Arc<dyn BuilderProxyHandler>) -> Self {
         self.proxy_handler = Some(proxy_handler);
+        self
+    }
+
+    pub fn with_l2_state_root_computation(mut self, enabled: bool) -> Self {
+        self.use_l2_client_for_state_root = enabled;
         self
     }
 
@@ -363,7 +370,7 @@ impl RollupBoostTestHarnessBuilder {
         rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
         rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
-        rollup_boost.args.use_l2_client_for_state_root = false;
+        rollup_boost.args.use_l2_client_for_state_root = self.use_l2_client_for_state_root;
         let rollup_boost = rollup_boost.start().await;
         println!("rollup-boost authrpc: {}", rollup_boost.rpc_endpoint());
         println!("rollup-boost metrics: {}", rollup_boost.metrics_endpoint());
