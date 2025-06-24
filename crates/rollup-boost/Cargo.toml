@@ -26,6 +26,7 @@ alloy-serde.workspace = true
 
 tokio-tungstenite.workspace = true
 metrics-derive.workspace = true
+testcontainers.workspace = true
 
 # TODO: update to latest release when it is published
 # jsonrpsee = { version = "0.25.1", features = ["server", "http-client", "macros"] }
@@ -70,7 +71,6 @@ op-alloy-consensus = "0.17.2"
 alloy-eips = { version = "1.0.9", features = ["serde"] }
 alloy-consensus = { version = "1.0.9", features = ["serde"] }
 anyhow = "1.0"
-testcontainers = { version = "0.23.3" }
 assert_cmd = "2.0.10"
 predicates = "3.1.2"
 tokio-util = { version = "0.7.13" }

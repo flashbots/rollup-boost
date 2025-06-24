@@ -447,6 +447,11 @@ impl RateLimit for RedisRateLimit {
 mod tests {
     use super::*;
     use std::str::FromStr;
+    use testcontainers::{
+        core::{IntoContainerPort, WaitFor},
+        runners::AsyncRunner,
+        GenericImage,
+    };
 
     const GLOBAL_LIMIT: usize = 3;
     const PER_IP_LIMIT: usize = 2;
@@ -676,23 +681,27 @@ mod tests {
 
     #[tokio::test]
     #[cfg(all(feature = "integration", test))]
-    async fn test_instance_tracking_and_cleanup() {
-        use redis_test::server::RedisServer;
+    async fn test_instance_tracking_and_cleanup() -> eyre::Result<()> {
+        let _container = GenericImage::new("redis", "7.2.4")
+            .with_exposed_port(6379.tcp())
+            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+            .start()
+            .await?;
+
         use std::time::Duration;
 
-        let server = RedisServer::new();
-        let client_addr = format!("redis://{}", server.client_addr());
+        let client_addr = "redis://localhost:6379";
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let user_1 = IpAddr::from_str("127.0.0.1").unwrap();
         let user_2 = IpAddr::from_str("127.0.0.2").unwrap();
 
-        let redis_client = Client::open(client_addr.as_str()).unwrap();
+        let redis_client = Client::open(client_addr).unwrap();
 
         {
             let rate_limiter1 = Arc::new(RedisRateLimit {
-                redis_client: Client::open(client_addr.as_str()).unwrap(),
+                redis_client: Client::open(client_addr).unwrap(),
                 instance_limit: 10,
                 per_ip_limit: 5,
                 semaphore: Arc::new(Semaphore::new(10)),
@@ -767,7 +776,7 @@ mod tests {
         }
 
         let rate_limiter2 = Arc::new(RedisRateLimit {
-            redis_client: Client::open(client_addr.as_str()).unwrap(),
+            redis_client: Client::open(client_addr).unwrap(),
             instance_limit: 10,
             per_ip_limit: 5,
             semaphore: Arc::new(Semaphore::new(10)),
@@ -816,5 +825,7 @@ mod tests {
 
             assert_eq!(ip1_instance2_count, 1, "IP1 instance2 count should be 1");
         }
+
+        Ok(())
     }
 }

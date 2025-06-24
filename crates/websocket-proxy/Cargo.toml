@@ -16,6 +16,8 @@ metrics.workspace = true
 metrics-derive.workspace = true
 tokio.workspace = true
 tokio-tungstenite.workspace = true
+eyre.workspace = true
+testcontainers.workspace = true
 
 metrics-exporter-prometheus = { version = "0.17.0", features = [
     "http-listener",
