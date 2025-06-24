@@ -1,3 +1,7 @@
+![Rollup Boost banner](./assets/Rollup-Boost_brand-assets/rollup-boost_banner.png)
+
+[![Test status](https://github.com/flashbots/rollup-boost/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/flashbots/rollup-boost/actions?query=workflow%3A%22Tests%22)
+
 # Rollup Boost
 
 Rollup Boost is a block builder sidecar for Optimism Stack chains to enable external block production. To read more about the design, check out the [design doc](https://github.com/ethereum-optimism/design-docs/blob/main/protocol/external-block-production.md).
@@ -225,3 +229,5 @@ The code in this project is free software under the [MIT License](/LICENSE).
 ---
 
 Made with ☀️ by the ⚡🤖 collective.
+
+🎨 For Rollup Boost brand guidelines and to download brand assets, [click here](https://desert-shelf-a90.notion.site/Rollup-Boost-Brand-Guide-1c08490ae44f80ecaafee5975f71228f).

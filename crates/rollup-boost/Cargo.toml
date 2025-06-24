@@ -15,7 +15,11 @@ serde_json.workspace = true
 metrics.workspace = true
 tokio.workspace = true
 eyre.workspace = true
+<<<<<<< HEAD
 url.workspace = true
+=======
+sha2.workspace = true
+>>>>>>> main
 
 op-alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-engine.workspace = true
@@ -24,6 +28,7 @@ alloy-primitives.workspace = true
 alloy-serde.workspace = true
 
 tokio-tungstenite.workspace = true
+metrics-derive.workspace = true
 
 # TODO: update to latest release when it is published
 # jsonrpsee = { version = "0.25.1", features = ["server", "http-client", "macros"] }
@@ -59,6 +64,11 @@ metrics-exporter-prometheus = "0.16.0"
 metrics-util = "0.19.0"
 paste = "1.0.15"
 parking_lot = "0.12.3"
+<<<<<<< HEAD
+=======
+url = "2.2.0"
+tokio-util = { version = "0.7.13" }
+>>>>>>> main
 
 [dev-dependencies]
 rand = "0.9.0"
@@ -75,6 +85,10 @@ bytes = "1.2"
 reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.4.7" }
 ctor = "0.4.1"
 reqwest = "0.12.15"
+
+[build-dependencies]
+vergen = { version = "9.0.4", features = ["build", "cargo", "emit_and_set"] }
+vergen-git2 = "1.0.5"
 
 [[bin]]
 name = "rollup-boost"

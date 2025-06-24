@@ -35,7 +35,8 @@ use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, instrument};
+use tokio::task::JoinHandle;
+use tracing::{error, info, instrument};
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
@@ -59,17 +60,7 @@ impl RollupBoostServer {
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
-        health_check_interval: u64,
-        max_unsafe_interval: u64,
     ) -> Self {
-        HealthHandle {
-            probes: probes.clone(),
-            builder_client: builder_client.clone(),
-            health_check_interval: Duration::from_secs(health_check_interval),
-            max_unsafe_interval,
-        }
-        .spawn();
-
         Self {
             l2_client: Arc::new(l2_client),
             builder_client,
@@ -78,6 +69,22 @@ impl RollupBoostServer {
             execution_mode: initial_execution_mode,
             probes,
         }
+    }
+
+    pub fn spawn_health_check(
+        &self,
+        health_check_interval: u64,
+        max_unsafe_interval: u64,
+    ) -> JoinHandle<()> {
+        let handle = HealthHandle::new(
+            self.probes.clone(),
+            self.execution_mode.clone(),
+            self.builder_client.clone(),
+            Duration::from_secs(health_check_interval),
+            max_unsafe_interval,
+        );
+
+        handle.spawn()
     }
 
     pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
@@ -143,6 +150,8 @@ impl RollupBoostServer {
                         "number" = %execution_payload.block_number(),
                         %context,
                         %payload_id,
+                        // Add an extra label to know that this is the disabled execution mode path
+                        "execution_mode" = "disabled",
                     );
 
                     Ok(payload)
@@ -172,6 +181,8 @@ impl RollupBoostServer {
 
             // Get payload and validate with the local l2 client
             tracing::Span::current().record("builder_has_payload", true);
+            info!(message = "builder has payload, calling get_payload on builder");
+
             let payload = self.builder_client.get_payload(payload_id, version).await?;
             let _ = self
                 .l2_client
@@ -189,16 +200,26 @@ impl RollupBoostServer {
                 l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
             self.probes.set_health(Health::Healthy);
 
-            if let Ok(Some(builder_payload)) = builder_payload {
+            // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
+            // If there's an error, log it and return None instead.
+            let builder_payload = builder_payload
+                .map_err(|e| {
+                    error!(message = "error getting payload from builder", error = %e);
+                    e
+                })
+                .unwrap_or(None);
+
+            if let Some(builder_payload) = builder_payload {
                 // Record the delta (gas and txn) between the builder and l2 payload
                 let span = tracing::Span::current();
+                // use i64 to cover case when l2 builder has more gas/txs
                 span.record(
                     "gas_delta",
-                    (builder_payload.gas_used() - l2_payload.gas_used()).to_string(),
+                    (builder_payload.gas_used() as i64 - l2_payload.gas_used() as i64).to_string(),
                 );
                 span.record(
                     "tx_count_delta",
-                    (builder_payload.tx_count() - l2_payload.tx_count()).to_string(),
+                    (builder_payload.tx_count() as i64 - l2_payload.tx_count() as i64).to_string(),
                 );
 
                 // If execution mode is set to DryRun, fallback to the l2_payload,
@@ -519,7 +540,7 @@ pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
 
 #[cfg(test)]
 #[allow(clippy::complexity)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::probe::ProbeLayer;
     use crate::proxy::ProxyLayer;
@@ -542,7 +563,7 @@ mod tests {
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
-        get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
+        pub get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
         get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
@@ -644,8 +665,6 @@ mod tests {
                 execution_mode.clone(),
                 None,
                 probes.clone(),
-                60,
-                5,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
@@ -656,10 +675,10 @@ mod tests {
                     .layer(ProxyLayer::new(
                         l2_auth_rpc,
                         jwt_secret,
+                        1,
                         builder_auth_rpc,
                         jwt_secret,
-                        probes,
-                        execution_mode.clone(),
+                        1,
                     ));
 
             let server = Server::builder()
@@ -834,7 +853,7 @@ mod tests {
         test_harness.cleanup().await;
     }
 
-    async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
+    pub async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
         let server = ServerBuilder::default().build("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().expect("Missing local address");
 

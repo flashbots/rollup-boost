@@ -17,13 +17,13 @@ use crate::{
     RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
-    init_metrics,
+    get_version, init_metrics,
     payload::PayloadSource,
     probe::ProbeLayer,
 };
 
 #[derive(Clone, Parser, Debug)]
-#[clap(author, version, about)]
+#[clap(author, version = get_version(), about)]
 pub struct Args {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -39,7 +39,7 @@ pub struct Args {
     pub health_check_interval: u64,
 
     /// Max duration in seconds between the unsafe head block of the builder and the current time
-    #[arg(long, env, default_value = "5")]
+    #[arg(long, env, default_value = "10")]
     pub max_unsafe_interval: u64,
 
     /// Host to run the server on
@@ -178,6 +178,7 @@ impl Args {
                 builder_client.clone(),
                 inbound_url,
                 outbound_addr,
+                self.flashblocks.flashblock_builder_ws_reconnect_ms,
             )?)
         } else {
             Arc::new(builder_client)
@@ -190,9 +191,10 @@ impl Args {
             execution_mode.clone(),
             self.block_selection_policy,
             probes.clone(),
-            self.health_check_interval,
-            self.max_unsafe_interval,
         );
+
+        let health_handle =
+            rollup_boost.spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
         // Spawn the debug server
         rollup_boost.start_debug_server(debug_addr.as_str()).await?;
@@ -208,10 +210,10 @@ impl Args {
                 .layer(ProxyLayer::new(
                     l2_client_args.l2_url,
                     l2_auth_jwt,
+                    l2_client_args.l2_timeout,
                     builder_args.builder_url,
                     builder_auth_jwt,
-                    probes,
-                    execution_mode,
+                    builder_args.builder_timeout,
                 ));
 
         let server = Server::builder()
@@ -230,6 +232,9 @@ impl Args {
             _ = handle.stopped() => {
                 // The server has already shut down by itself
                 info!("Server stopped");
+            }
+            _ = health_handle => {
+                info!("Health check task stopped");
             }
             _ = sigint.recv() => {
                 info!("Received SIGINT, shutting down gracefully...");

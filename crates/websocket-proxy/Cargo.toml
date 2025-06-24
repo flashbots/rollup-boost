@@ -27,10 +27,12 @@ backoff = "0.4.0"
 reqwest = { version = "0.12.15", default-features = false, features = [
     "native-tls",
 ] }
+
 hostname = "0.4.0"
 redis = "0.32.0"
 uuid = { version = "1.16.0", features = ["v4"] }
 tokio-util = "0.7.12"
+brotli = "8.0.1"
 
 [dependencies.ring]
 version = "0.17.12"

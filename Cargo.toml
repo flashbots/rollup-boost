@@ -22,6 +22,7 @@ metrics-derive = "0.1"
 tokio = { version = "1", features = ["full"] }
 eyre = "0.6.12"
 url = "2.2.0"
+sha2 = { version = "0.10", default-features = false }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.5"
@@ -37,3 +38,4 @@ op-alloy-rpc-types-engine = "0.17.2"
 op-alloy-consensus = "0.17.2"
 op-alloy-rpc-types = "0.17.2"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
+metrics-derive = "0.1"

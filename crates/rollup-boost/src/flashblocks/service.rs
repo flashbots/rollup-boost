@@ -3,8 +3,10 @@ use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
 use crate::RpcClientError;
+use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
+    payload_id_optimism,
 };
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
@@ -23,7 +25,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
-use tracing::error;
+use tracing::{error, info};
 
 #[derive(Debug, Error)]
 pub enum FlashblocksError {
@@ -193,6 +195,8 @@ pub struct FlashblocksService {
 
     // websocket publisher for sending valid preconfirmations to clients
     ws_pub: Arc<WebSocketPublisher>,
+
+    metrics: FlashblocksServiceMetrics,
 }
 
 impl FlashblocksService {
@@ -204,19 +208,29 @@ impl FlashblocksService {
             current_payload_id: Arc::new(RwLock::new(PayloadId::default())),
             best_payload: Arc::new(RwLock::new(FlashblockBuilder::new())),
             ws_pub,
+            metrics: Default::default(),
         })
     }
 
     pub async fn get_best_payload(
         &self,
         version: PayloadVersion,
+        payload_id: PayloadId,
     ) -> Result<Option<OpExecutionPayloadEnvelope>, FlashblocksError> {
+        // Check that we have flashblocks for correct payload
+        if *self.current_payload_id.read().await != payload_id {
+            // We have outdated `current_payload_id` so we should fallback to get_payload
+            // Clearing best_payload in here would cause situation when old `get_payload` would clear
+            // currently built correct flashblocks.
+            // This will self-heal on the next FCU.
+            return Err(FlashblocksError::MissingPayload);
+        }
         // consume the best payload and reset the builder
         let payload = {
             let mut builder = self.best_payload.write().await;
-            std::mem::take(&mut *builder).into_envelope(version)?
+            // Take payload and place new one in its place in one go to avoid double locking
+            std::mem::replace(&mut *builder, FlashblockBuilder::new()).into_envelope(version)?
         };
-        *self.best_payload.write().await = FlashblockBuilder::new();
 
         Ok(Some(payload))
     }
@@ -224,11 +238,15 @@ impl FlashblocksService {
     pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
         tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
         *self.current_payload_id.write().await = payload_id;
+        // Current state won't be useful anymore because chain progressed
+        *self.best_payload.write().await = FlashblockBuilder::new();
     }
 
     async fn on_event(&mut self, event: FlashblocksEngineMessage) {
         match event {
             FlashblocksEngineMessage::FlashblocksPayloadV1(payload) => {
+                self.metrics.messages_processed.increment(1);
+
                 tracing::debug!(
                     message = "Received flashblock payload",
                     payload_id = %payload.payload_id,
@@ -236,17 +254,35 @@ impl FlashblocksService {
                 );
 
                 // make sure the payload id matches the current payload id
-                if *self.current_payload_id.read().await != payload.payload_id {
-                    error!(message = "Payload ID mismatch",);
+                let local_payload_id = *self.current_payload_id.read().await;
+                if local_payload_id != payload.payload_id {
+                    self.metrics.current_payload_id_mismatch.increment(1);
+                    error!(
+                        message = "Payload ID mismatch",
+                        payload_id = %payload.payload_id,
+                        %local_payload_id,
+                        index = payload.index,
+                    );
                     return;
                 }
 
                 if let Err(e) = self.best_payload.write().await.extend(payload.clone()) {
-                    error!(message = "Failed to extend payload", error = %e);
+                    self.metrics.extend_payload_errors.increment(1);
+                    error!(
+                        message = "Failed to extend payload",
+                        error = %e,
+                        payload_id = %payload.payload_id,
+                        index = payload.index,
+                    );
                 } else {
                     // Broadcast the valid message
                     if let Err(e) = self.ws_pub.publish(&payload) {
-                        error!(message = "Failed to broadcast payload", error = %e);
+                        error!(
+                            message = "Failed to broadcast payload",
+                            error = %e,
+                            payload_id = %payload.payload_id,
+                            index = payload.index,
+                        );
                     }
                 }
             }
@@ -268,14 +304,28 @@ impl EngineApiExt for FlashblocksService {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
+        // Calculate and set expected payload_id
+        if let Some(attr) = &payload_attributes {
+            let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attr, 3);
+            self.set_current_payload_id(payload_id).await;
+        }
         let result = self
             .client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)
             .await?;
 
         if let Some(payload_id) = result.payload_id {
-            tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
-            self.set_current_payload_id(payload_id).await;
+            let current_payload = *self.current_payload_id.read().await;
+            if current_payload != payload_id {
+                tracing::error!(
+                    message = "Payload id returned by builder differs from calculated. Using builder payload id",
+                    builder_payload_id = %payload_id,
+                    calculated_payload_id = %current_payload,
+                );
+                self.set_current_payload_id(payload_id).await;
+            } else {
+                tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
+            }
         } else {
             tracing::debug!(message = "Forkchoice updated with no payload ID");
         }
@@ -291,13 +341,21 @@ impl EngineApiExt for FlashblocksService {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> ClientResult<OpExecutionPayloadEnvelope> {
-        let fb_payload = self.get_best_payload(version).await?;
-        if let Some(payload) = fb_payload {
-            tracing::info!(message = "Returning fb payload", payload_id = %payload_id);
-            return Ok(payload);
+        // First try to get the best flashblocks payload from the builder if it exists
+        match self.get_best_payload(version, payload_id).await {
+            Ok(Some(payload)) => {
+                info!(message = "Returning fb payload");
+                return Ok(payload);
+            }
+            Ok(None) => {
+                info!(message = "No flashblocks payload available");
+            }
+            Err(e) => {
+                error!(message = "Error getting fb best payload", error = %e);
+            }
         }
 
-        tracing::info!(message = "No flashblocks payload available, fetching from client", payload_id = %payload_id);
+        info!(message = "Falling back to get_payload on client", payload_id = %payload_id);
         let result = self.client.get_payload(payload_id, version).await?;
         Ok(result)
     }
@@ -308,5 +366,79 @@ impl EngineApiExt for FlashblocksService {
         full: bool,
     ) -> ClientResult<Block> {
         self.client.get_block_by_number(number, full).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        PayloadSource,
+        server::tests::{MockEngineServer, spawn_server},
+    };
+    use http::Uri;
+    use reth_rpc_layer::JwtSecret;
+    use std::str::FromStr;
+
+    /// Test that we fallback to the getPayload method if the flashblocks payload is not available
+    #[tokio::test]
+    async fn test_flashblocks_fallback_to_get_payload() -> eyre::Result<()> {
+        let builder_mock: MockEngineServer = MockEngineServer::new();
+        let (_fallback_server, fallback_server_addr) = spawn_server(builder_mock.clone()).await;
+        let jwt_secret = JwtSecret::random();
+
+        let builder_auth_rpc = Uri::from_str(&format!("http://{fallback_server_addr}")).unwrap();
+        let builder_client = RpcClient::new(
+            builder_auth_rpc.clone(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+
+        let service =
+            FlashblocksService::new(builder_client, "127.0.0.1:8000".parse().unwrap()).unwrap();
+
+        // by default, builder_mock returns a valid payload always
+        service
+            .get_payload(PayloadId::default(), PayloadVersion::V3)
+            .await?;
+
+        let get_payload_requests_builder = builder_mock.get_payload_requests.clone();
+        assert_eq!(get_payload_requests_builder.lock().len(), 1);
+
+        Ok(())
+    }
+
+    /// Test that we don't return block from flashblocks if payload_id is different
+    #[tokio::test]
+    async fn test_flashblocks_different_payload_id() -> eyre::Result<()> {
+        let builder_mock: MockEngineServer = MockEngineServer::new();
+        let (_fallback_server, fallback_server_addr) = spawn_server(builder_mock.clone()).await;
+        let jwt_secret = JwtSecret::random();
+
+        let builder_auth_rpc = Uri::from_str(&format!("http://{fallback_server_addr}")).unwrap();
+        let builder_client = RpcClient::new(
+            builder_auth_rpc.clone(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+
+        let service =
+            FlashblocksService::new(builder_client, "127.0.0.1:8001".parse().unwrap()).unwrap();
+
+        // Some "random" payload id
+        *service.current_payload_id.write().await = PayloadId::new([1, 1, 1, 1, 1, 1, 1, 1]);
+
+        // We ensure that request will skip rollup-boost and serve payload from backup if payload id
+        // don't match
+        service
+            .get_payload(PayloadId::default(), PayloadVersion::V3)
+            .await?;
+
+        let get_payload_requests_builder = builder_mock.get_payload_requests.clone();
+        assert_eq!(get_payload_requests_builder.lock().len(), 1);
+
+        Ok(())
     }
 }
