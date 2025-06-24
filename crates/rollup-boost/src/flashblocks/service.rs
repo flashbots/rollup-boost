@@ -2,12 +2,11 @@ use super::outbound::WebSocketPublisher;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
-use crate::RpcClientError;
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
-    payload_id_optimism,
 };
+use crate::{RpcClientError, payload_id_optimism};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
@@ -302,6 +301,7 @@ impl EngineApiExt for FlashblocksService {
             let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attr, 3);
             self.set_current_payload_id(payload_id).await;
         }
+
         let result = self
             .client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)

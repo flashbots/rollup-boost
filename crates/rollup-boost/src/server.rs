@@ -37,7 +37,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
@@ -50,6 +50,7 @@ pub struct RollupBoostServer {
     pub builder_client: Arc<dyn EngineApiExt>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
+    use_l2_client_for_state_root: bool,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
     payload_to_fcu_request:
@@ -63,6 +64,7 @@ impl RollupBoostServer {
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
+        use_l2_client_for_state_root: bool,
     ) -> Self {
         Self {
             l2_client: Arc::new(l2_client),
@@ -71,6 +73,7 @@ impl RollupBoostServer {
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
             probes,
+            use_l2_client_for_state_root,
             payload_to_fcu_request: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -135,12 +138,12 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        let l2_payload = self.l2_client.get_payload(payload_id, version).await;
+        let l2_fut = self.l2_client.get_payload(payload_id, version);
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
         if self.execution_mode().is_disabled() {
-            return match l2_payload {
+            return match l2_fut.await {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
                     let context = PayloadSource::L2;
@@ -189,9 +192,15 @@ impl RollupBoostServer {
 
             let payload = self.builder_client.get_payload(payload_id, version).await?;
 
-            // let l2_fut = self.l2_client.fork_choice_updated_v3(fork_choice_state, payload_attributes)
+            if self.use_l2_client_for_state_root == false {
+                let _ = self
+                    .l2_client
+                    .new_payload(NewPayload::from(payload.clone()))
+                    .await?;
 
-            // let map = self.payload_to_fcu_request.lock();
+                return Ok(Some(payload));
+            }
+
             let fcu_info = self
                 .payload_to_fcu_request
                 .lock()
@@ -221,26 +230,21 @@ impl RollupBoostServer {
                 .fork_choice_updated_v3(fcu_info.0, Some(new_payload_attrs))
                 .await?;
 
-            info!(message = "received FCU response from l2 for new state root", result = ?l2_result);
-
             if let Some(new_payload_id) = l2_result.payload_id {
-                info!(
+                debug!(
                     message = "sent FCU to l2 to calculate new state root",
                     "returned_payload_id" = %new_payload_id,
                     "old_payload_id" = %payload_id,
                 );
-                let v3 = self
-                    .l2_client
-                    .get_payload(new_payload_id, PayloadVersion::V4)
-                    .await;
+                let l2_payload = self.l2_client.get_payload(new_payload_id, version).await;
 
-                match v3 {
-                    Ok(v3) => {
-                        info!(
+                match l2_payload {
+                    Ok(new_payload) => {
+                        debug!(
                             message = "received new state root payload from l2",
-                            payload = ?v3,
+                            payload = ?new_payload,
                         );
-                        return Ok(Some(v3));
+                        return Ok(Some(new_payload));
                     }
 
                     Err(e) => {
@@ -251,18 +255,9 @@ impl RollupBoostServer {
             }
 
             Ok(None)
-
-            // let _ = self
-            //     .l2_client
-            //     .new_payload(NewPayload::from(payload.clone()))
-            //     .await?;
-
-            // Ok(Some(payload))
         };
 
-        let builder_payload = builder_fut.await;
-
-        // let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
+        let (builder_payload, l2_payload) = tokio::join!(builder_fut, l2_fut);
 
         // Evaluate the builder and l2 response and select the final payload
         let (payload, context) = {
@@ -450,6 +445,16 @@ impl EngineApiServer for RollupBoostServer {
                 // We always return the value from the l2 client
                 return Ok(l2_response);
             } else {
+                let current_timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let is_historical_syncing = attrs.payload_attributes.timestamp < current_timestamp;
+                if is_historical_syncing {
+                    info!(message = "historical syncing FCU received. skipping FCU to builder");
+                    return Ok(l2_fut.await?);
+                }
+
                 // If the tx pool is enabled, forward the fcu
                 // to both the builder and the default l2 client
                 let builder_fut = self
@@ -753,6 +758,7 @@ pub mod tests {
                 execution_mode.clone(),
                 None,
                 probes.clone(),
+                false,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
@@ -1016,7 +1022,7 @@ pub mod tests {
         assert!(fcu_response.is_ok());
 
         // wait for builder to observe the FCU call
-        sleep(std::time::Duration::from_millis(10)).await;
+        sleep(std::time::Duration::from_millis(100)).await;
 
         {
             let builder_fcu_req = builder_mock.fcu_requests.lock();
