@@ -138,12 +138,12 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
-        let l2_payload = self.l2_client.get_payload(payload_id, version).await;
+        let l2_fut = self.l2_client.get_payload(payload_id, version);
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
         if self.execution_mode().is_disabled() {
-            return match l2_payload {
+            return match l2_fut.await {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
                     let context = PayloadSource::L2;
@@ -257,7 +257,7 @@ impl RollupBoostServer {
             Ok(None)
         };
 
-        let builder_payload = builder_fut.await;
+        let (builder_payload, l2_payload) = tokio::join!(builder_fut, l2_fut);
 
         // Evaluate the builder and l2 response and select the final payload
         let (payload, context) = {
