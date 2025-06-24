@@ -11,11 +11,21 @@ reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.7" }
 
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
 alloy-json-rpc.workspace = true
+alloy-rpc-types.workspace = true
+alloy-rpc-types-engine.workspace = true
+alloy-rpc-types-eth.workspace = true
+alloy-consensus.workspace = true
 op-alloy-network.workspace = true
+op-alloy-consensus.workspace = true
+op-alloy-rpc-types.workspace = true
 
 tokio.workspace = true
 tokio-tungstenite.workspace = true
@@ -26,6 +36,7 @@ eyre.workspace = true
 metrics.workspace = true
 metrics-derive.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 
 jsonrpsee = { version = "0.25.1" }
 futures-util = "0.3.31"

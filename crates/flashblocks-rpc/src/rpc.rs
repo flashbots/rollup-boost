@@ -41,6 +41,17 @@ pub trait EthApiOverride {
     ) -> RpcResult<U256>;
 }
 
+#[async_trait]
+pub trait FlashblocksApi {
+    async fn block_by_number(&self, full: bool) -> Option<RpcBlock<Optimism>>;
+
+    async fn get_transaction_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Optimism>>;
+
+    async fn get_balance(&self, address: Address) -> Option<U256>;
+
+    async fn get_transaction_count(&self, address: Address) -> Option<u64>;
+}
+
 pub struct FlashblocksApiExt<Eth, FB> {
     eth_api: Eth,
     flashblocks_api: FB,
@@ -61,7 +72,7 @@ where
     Eth: FullEthApi<NetworkTypes = Optimism> + Send + Sync + 'static,
     Eth: RpcNodeCore,
     <Eth as RpcNodeCore>::Provider: TransactionsProvider<Transaction = OpTransactionSigned>,
-    FB: EthApiOverrideServer,
+    FB: FlashblocksApi + Send + Sync + 'static,
 {
     async fn block_by_number(
         &self,
@@ -71,7 +82,7 @@ where
         debug!("block_by_number: {:?}", number);
 
         if number.is_pending() {
-            self.flashblocks_api.block_by_number(number, full).await
+            Ok(self.flashblocks_api.block_by_number(full).await)
         } else {
             EthBlocks::rpc_block(&self.eth_api, number.into(), full)
                 .await
@@ -87,11 +98,12 @@ where
 
         let receipt = EthTransactions::transaction_receipt(&self.eth_api, tx_hash).await;
         if let Ok(None) = receipt {
-            let fb_receipt = self.flashblocks_api.get_transaction_receipt(tx_hash).await;
-            fb_receipt.map_err(Into::into)
-        } else {
-            receipt.map_err(Into::into)
+            if let Some(fb_receipt) = self.flashblocks_api.get_transaction_receipt(tx_hash).await {
+                return Ok(Some(fb_receipt));
+            }
         }
+
+        receipt.map_err(Into::into)
     }
 
     async fn get_balance(
@@ -103,14 +115,14 @@ where
 
         let block_id = block_number.unwrap_or_default();
         if block_id.is_pending() {
-            self.flashblocks_api
-                .get_balance(address, block_number)
-                .await
-        } else {
-            EthState::balance(&self.eth_api, address, block_number)
-                .await
-                .map_err(Into::into)
+            if let Some(balance) = self.flashblocks_api.get_balance(address).await {
+                return Ok(balance);
+            }
         }
+
+        EthState::balance(&self.eth_api, address, block_number)
+            .await
+            .map_err(Into::into)
     }
 
     async fn get_transaction_count(
@@ -122,13 +134,21 @@ where
 
         let block_id = block_number.unwrap_or_default();
         if block_id.is_pending() {
-            self.flashblocks_api
-                .get_transaction_count(address, block_number)
-                .await
-        } else {
-            EthState::transaction_count(&self.eth_api, address, block_number)
-                .await
-                .map_err(Into::into)
+            let latest_count = EthState::transaction_count(
+                &self.eth_api,
+                address,
+                Some(BlockId::Number(BlockNumberOrTag::Latest)),
+            )
+            .await
+            .map_err(Into::into)?;
+
+            if let Some(count) = self.flashblocks_api.get_transaction_count(address).await {
+                return Ok(latest_count + U256::from(count));
+            }
         }
+
+        EthState::transaction_count(&self.eth_api, address, block_number)
+            .await
+            .map_err(Into::into)
     }
 }

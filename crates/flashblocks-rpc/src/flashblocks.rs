@@ -1,33 +1,33 @@
-use std::io::Read;
-
-use alloy_eips::{BlockId, BlockNumberOrTag};
+use crate::{FlashblocksApi, cache::FlashblocksCache};
 use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
-use jsonrpsee::core::{RpcResult, async_trait};
+use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
+use reth_optimism_chainspec::OpChainSpec;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::FlashblocksPayloadV1;
+use std::{io::Read, sync::Arc};
+use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info};
 use url::Url;
 
-use crate::EthApiOverrideServer;
-
 pub struct FlashblocksOverlay {
     url: Url,
+    cache: FlashblocksCache,
 }
 
 impl FlashblocksOverlay {
-    pub fn new(url: Url) -> Self {
-        Self { url }
+    pub fn new(url: Url, chain_spec: Arc<OpChainSpec>) -> Self {
+        Self {
+            url,
+            cache: FlashblocksCache::new(chain_spec),
+        }
     }
 
     pub fn start(&mut self) -> eyre::Result<()> {
-        Ok(())
-    }
-
-    pub fn websocket_stream(&self) {
         let url = self.url.clone();
+        let (sender, mut receiver) = mpsc::channel(100);
 
         tokio::spawn(async move {
             let mut backoff = std::time::Duration::from_secs(1);
@@ -46,13 +46,26 @@ impl FlashblocksOverlay {
                                 Ok(Message::Binary(bytes)) => match try_decode_message(&bytes) {
                                     Ok(payload) => {
                                         info!("Received payload: {:?}", payload);
+
+                                        let _ = sender
+                                            .send(InternalMessage::NewPayload(payload))
+                                            .await
+                                            .map_err(|e| {
+                                                error!("failed to send payload to channel: {}", e);
+                                            });
                                     }
                                     Err(e) => {
                                         error!("failed to parse fb message: {}", e);
                                     }
                                 },
-                                Ok(Message::Close(_)) => break,
-                                Err(e) => {}
+                                Ok(Message::Close(e)) => {
+                                    error!("WebSocket connection closed: {:?}", e);
+                                    break;
+                                }
+                                Err(e) => {
+                                    error!("WebSocket connection error: {}", e);
+                                    break;
+                                }
                                 _ => {}
                             }
                         }
@@ -70,7 +83,26 @@ impl FlashblocksOverlay {
                 }
             }
         });
+
+        let cache_cloned = self.cache.clone();
+        tokio::spawn(async move {
+            while let Some(message) = receiver.recv().await {
+                match message {
+                    InternalMessage::NewPayload(payload) => {
+                        if let Err(e) = cache_cloned.process_payload(payload) {
+                            error!("failed to process payload: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
     }
+}
+
+enum InternalMessage {
+    NewPayload(FlashblocksPayloadV1),
 }
 
 fn try_decode_message(bytes: &[u8]) -> eyre::Result<FlashblocksPayloadV1> {
@@ -102,35 +134,20 @@ fn try_parse_message(bytes: &[u8]) -> eyre::Result<String> {
 }
 
 #[async_trait]
-impl EthApiOverrideServer for FlashblocksOverlay {
-    async fn block_by_number(
-        &self,
-        _number: BlockNumberOrTag,
-        _full: bool,
-    ) -> RpcResult<Option<RpcBlock<Optimism>>> {
-        Ok(None)
+impl FlashblocksApi for FlashblocksOverlay {
+    async fn block_by_number(&self, full: bool) -> Option<RpcBlock<Optimism>> {
+        self.cache.get_block(full)
     }
 
-    async fn get_transaction_receipt(
-        &self,
-        _tx_hash: TxHash,
-    ) -> RpcResult<Option<RpcReceipt<Optimism>>> {
-        Ok(None)
+    async fn get_transaction_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Optimism>> {
+        self.cache.get_receipt(&tx_hash)
     }
 
-    async fn get_balance(
-        &self,
-        _address: Address,
-        _block_number: Option<BlockId>,
-    ) -> RpcResult<U256> {
-        Ok(U256::ZERO)
+    async fn get_balance(&self, address: Address) -> Option<U256> {
+        self.cache.get_balance(address)
     }
 
-    async fn get_transaction_count(
-        &self,
-        _address: Address,
-        _block_number: Option<BlockId>,
-    ) -> RpcResult<U256> {
-        Ok(U256::ZERO)
+    async fn get_transaction_count(&self, address: Address) -> Option<u64> {
+        self.cache.get_transaction_count(address)
     }
 }

@@ -60,7 +60,7 @@ enum FlashblocksEngineMessage {
 }
 
 #[derive(Debug, Default)]
-struct FlashblockBuilder {
+pub struct FlashblockBuilder {
     base: Option<ExecutionPayloadBaseV1>,
     flashblocks: Vec<ExecutionPayloadFlashblockDeltaV1>,
 }
@@ -101,7 +101,14 @@ impl FlashblockBuilder {
         self,
         version: PayloadVersion,
     ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
-        let base = self.base.ok_or(FlashblocksError::MissingPayload)?;
+        self.build_envelope(version)
+    }
+
+    pub fn build_envelope(
+        &self,
+        version: PayloadVersion,
+    ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
+        let base = self.base.as_ref().ok_or(FlashblocksError::MissingPayload)?;
 
         // There must be at least one delta
         let diff = self
@@ -139,7 +146,7 @@ impl FlashblockBuilder {
                     gas_limit: base.gas_limit,
                     gas_used: diff.gas_used,
                     timestamp: base.timestamp,
-                    extra_data: base.extra_data,
+                    extra_data: base.extra_data.clone(),
                     base_fee_per_gas: base.base_fee_per_gas,
                     block_hash: diff.block_hash,
                     transactions,
