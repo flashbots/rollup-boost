@@ -139,7 +139,8 @@ where
                         uri = self.uri.to_string(),
                         payload = text
                     );
-                    self.metrics.upstream_messages.increment(1);
+                    self.metrics
+                        .message_received_from_upstream(self.uri.to_string().as_str());
                     (self.handler)(text.into());
                 }
                 Err(e) => {

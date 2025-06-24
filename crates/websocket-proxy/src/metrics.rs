@@ -30,9 +30,6 @@ pub struct Metrics {
     #[metric(describe = "Count of times upstream receiver was closed/errored")]
     pub upstream_errors: Counter,
 
-    #[metric(describe = "Count of messages received from the upstream source")]
-    pub upstream_messages: Gauge,
-
     #[metric(describe = "Number of active upstream connections")]
     pub upstream_connections: Gauge,
 
@@ -49,5 +46,10 @@ pub struct Metrics {
 impl Metrics {
     pub fn proxy_connections_by_app(&self, app: &str) {
         counter!("websocket_proxy.connections_by_app", "app" => app.to_owned()).increment(1);
+    }
+
+    pub fn message_received_from_upstream(&self, upstream: &str) {
+        counter!("websocket_proxy.upstream_messages", "upstream" => upstream.to_owned())
+            .increment(1);
     }
 }
