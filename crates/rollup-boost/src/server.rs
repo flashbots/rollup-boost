@@ -445,16 +445,6 @@ impl EngineApiServer for RollupBoostServer {
                 // We always return the value from the l2 client
                 return Ok(l2_response);
             } else {
-                let current_timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                let is_historical_syncing = attrs.payload_attributes.timestamp < current_timestamp;
-                if is_historical_syncing {
-                    info!(message = "historical syncing FCU received. skipping FCU to builder");
-                    return Ok(l2_fut.await?);
-                }
-
                 // If the tx pool is enabled, forward the fcu
                 // to both the builder and the default l2 client
                 let builder_fut = self
