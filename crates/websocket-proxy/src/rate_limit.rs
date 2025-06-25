@@ -447,6 +447,9 @@ impl RateLimit for RedisRateLimit {
 mod tests {
     use super::*;
     use std::str::FromStr;
+    use std::time::Duration;
+    use testcontainers::runners::AsyncRunner;
+    use testcontainers_modules::redis::Redis;
 
     const GLOBAL_LIMIT: usize = 3;
     const PER_IP_LIMIT: usize = 2;
@@ -676,10 +679,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_instance_tracking_and_cleanup() {
-        use std::time::Duration;
-        use testcontainers::runners::AsyncRunner;
-        use testcontainers_modules::redis::Redis;
-
         let container = Redis::default().start().await.unwrap();
         let host_port = container.get_host_port_ipv4(6379).await.unwrap();
         let client_addr = format!("redis://127.0.0.1:{}", host_port);
