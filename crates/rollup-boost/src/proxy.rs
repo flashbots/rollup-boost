@@ -533,6 +533,7 @@ mod tests {
         // Assert the builder received the correct payload
         let builder = &test_harness.builder;
         let builder_requests = builder.requests.lock().await;
+        println!("builder_requests: {:?}", builder_requests);
         let builder_req = builder_requests.first().unwrap();
         assert_eq!(builder_requests.len(), 1);
         assert_eq!(builder_req["method"], expected_method);

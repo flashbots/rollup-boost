@@ -51,6 +51,7 @@ impl Default for RollupBoostConfig {
             &format!("--l2-jwt-path={}/jwt_secret.hex", *TEST_DATA),
             &format!("--builder-jwt-path={}/jwt_secret.hex", *TEST_DATA),
             "--log-level=trace",
+            "--health-check-interval=1", // Set health check interval to 1 second for tests
         ]);
 
         args.rpc_port = get_available_port();
