@@ -41,6 +41,9 @@ pub struct Metrics {
 
     #[metric(describe = "Number of failed upstream connection attempts")]
     pub upstream_connection_failures: Counter,
+
+    #[metric(describe = "Total bytes broadcasted to clients")]
+    pub bytes_broadcasted: Counter,
 }
 
 impl Metrics {
