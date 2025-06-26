@@ -125,7 +125,7 @@ impl RollupBoostServer {
             .await;
 
         // async call to builder to sync the builder node
-        if !self.execution_mode().is_disabled() {
+        if !self.execution_mode().is_disabled() && matches!(self.probes.health(), Health::Healthy) {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
@@ -183,6 +183,11 @@ impl RollupBoostServer {
             {
                 info!(message = "builder has no payload, skipping get_payload call to builder");
                 tracing::Span::current().record("builder_has_payload", false);
+                return RpcResult::Ok(None);
+            }
+
+            if !matches!(self.probes.health(), Health::Healthy) {
+                info!(message = "builder is unhealthy, skipping get_payload call to builder");
                 return RpcResult::Ok(None);
             }
 
@@ -409,13 +414,17 @@ impl EngineApiServer for RollupBoostServer {
         let l2_fut = self
             .l2_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
+        let builder_healthy = matches!(self.probes.health(), Health::Healthy);
 
         // If execution mode is disabled, return the l2 client response immediately
         if self.execution_mode().is_disabled() {
             return Ok(l2_fut.await?);
         }
 
-        let builder_healthy = matches!(self.probes.health(), Health::Healthy);
+        if !builder_healthy {
+            info!(message = "builder is unhealthy, skipping FCU to builder");
+            return Ok(l2_fut.await?);
+        }
 
         let span = tracing::Span::current();
         // If the fcu contains payload attributes and the tx pool is disabled,
@@ -447,68 +456,38 @@ impl EngineApiServer for RollupBoostServer {
                 // We always return the value from the l2 client
                 return Ok(l2_response);
             } else {
-                if builder_healthy {
-                    // If the tx pool is enabled and builder is healthy, forward the fcu
-                    // to both the builder and the default l2 client
-                    let builder_fut = self
-                        .builder_client
-                        .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
+                // If the tx pool is enabled and builder is healthy, forward the fcu
+                // to both the builder and the default l2 client
+                let builder_fut = self
+                    .builder_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
-                    let (l2_result, builder_result) = tokio::join!(l2_fut, builder_fut);
-                    let l2_response = l2_result?;
+                let (l2_result, builder_result) = tokio::join!(l2_fut, builder_fut);
+                let l2_response = l2_result?;
 
-                    if let Some(payload_id) = l2_response.payload_id {
-                        info!(
-                            message = "block building started",
-                            "payload_id" = %payload_id,
-                            "builder_building" = builder_result.is_ok(),
-                            "builder_healthy" = true,
-                        );
+                if let Some(payload_id) = l2_response.payload_id {
+                    info!(
+                        message = "block building started",
+                        "payload_id" = %payload_id,
+                        "builder_building" = builder_result.is_ok(),
+                        "builder_healthy" = true,
+                    );
 
-                        self.payload_trace_context
-                            .store(
-                                payload_id,
-                                fork_choice_state.head_block_hash,
-                                builder_result.is_ok(),
-                                span.id(),
-                            )
-                            .await;
+                    self.payload_trace_context
+                        .store(
+                            payload_id,
+                            fork_choice_state.head_block_hash,
+                            builder_result.is_ok(),
+                            span.id(),
+                        )
+                        .await;
 
-                        self.payload_to_fcu_request
-                            .lock()
-                            .insert(payload_id, (fork_choice_state, payload_attributes));
-                    }
-
-                    return Ok(l2_response);
-                } else {
-                    // Builder is unhealthy, only send to L2 client
-                    debug!("Builder unhealthy, skipping FCU to builder");
-                    let l2_response = l2_fut.await?;
-
-                    if let Some(payload_id) = l2_response.payload_id {
-                        info!(
-                            message = "block building started (L2 only)",
-                            "payload_id" = %payload_id,
-                            "builder_building" = false,
-                            "builder_healthy" = false,
-                        );
-
-                        self.payload_trace_context
-                            .store(
-                                payload_id,
-                                fork_choice_state.head_block_hash,
-                                false,
-                                span.id(),
-                            )
-                            .await;
-
-                        self.payload_to_fcu_request
-                            .lock()
-                            .insert(payload_id, (fork_choice_state, payload_attributes));
-                    }
-
-                    return Ok(l2_response);
+                    self.payload_to_fcu_request
+                        .lock()
+                        .insert(payload_id, (fork_choice_state, payload_attributes));
                 }
+
+                return Ok(l2_response);
             }
         } else {
             // If the FCU does not contain payload attributes
