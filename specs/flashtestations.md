@@ -531,7 +531,38 @@ function isAllowedPolicy(policyId, teeAddress) {
 
 ## End-to-End Flow
 
-The complete verification flow connects attestation, the registry, and the policy layer:
+The complete verification flow connects attestation, the registry, and the policy layer. The following diagram illustrates the interactions between all components, from initial registration to runtime authorization and frontend source code verification.
+
+```mermaid
+sequenceDiagram
+    participant TEE Workload
+    participant Onchain Verifier
+    participant Flashtestation Registry
+    participant Policy Registry
+    participant Consumer Contract
+    participant Frontend
+
+    Note over TEE Workload, Consumer Contract: 1. Attestation & Registration
+    TEE Workload->>Onchain Verifier: registerTEEService(quote)
+    Onchain Verifier->>Flashtestation Registry: _recordValidAttestation(workloadId, teeAddress, quote)
+    Flashtestation Registry-->>Onchain Verifier: Success
+    Onchain Verifier-->>TEE Workload: Success
+
+    Note over TEE Workload, Consumer Contract: 2. Runtime Authorization
+    TEE Workload->>Consumer Contract: executeProtectedOperation()
+    Consumer Contract->>Policy Registry: isAllowedPolicy(policyId, teeAddress)
+    Policy Registry->>Flashtestation Registry: isValidWorkload(workloadId, teeAddress)
+    Flashtestation Registry-->>Policy Registry: true
+    Policy Registry-->>Consumer Contract: true
+    Consumer Contract-->>TEE Workload: Success
+
+    Note over Frontend, Policy Registry: 3. Frontend Source Verification
+    Frontend->>Flashtestation Registry: getQuoteForAddress(teeAddress)
+    Flashtestation Registry-->>Frontend: quote
+    Frontend->>Frontend: Computes workloadId from quote
+    Frontend->>Policy Registry: getWorkloadMetadata(workloadId)
+    Policy Registry-->>Frontend: commitHash, sourceLocators
+```
 
 ### Attestation and Registration
 
