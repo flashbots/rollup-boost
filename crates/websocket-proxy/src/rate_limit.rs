@@ -678,41 +678,21 @@ mod tests {
     }
 
     #[tokio::test]
-<<<<<<< HEAD
-    #[cfg(all(feature = "integration", test))]
-    async fn test_instance_tracking_and_cleanup() -> eyre::Result<()> {
-        use testcontainers::{
-            core::{IntoContainerPort, WaitFor},
-            runners::AsyncRunner,
-            GenericImage,
-        };
-
-        let _container = GenericImage::new("redis", "7.2.4")
-            .with_exposed_port(6379.tcp())
-            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
-            .start()
-            .await?;
-
-        use std::time::Duration;
-
-        let client_addr = "redis://localhost:6379";
-=======
     async fn test_instance_tracking_and_cleanup() {
         let container = Redis::default().start().await.unwrap();
         let host_port = container.get_host_port_ipv4(6379).await.unwrap();
         let client_addr = format!("redis://127.0.0.1:{}", host_port);
->>>>>>> main
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let user_1 = IpAddr::from_str("127.0.0.1").unwrap();
         let user_2 = IpAddr::from_str("127.0.0.2").unwrap();
 
-        let redis_client = Client::open(client_addr).unwrap();
+        let redis_client = Client::open(client_addr.as_str()).unwrap();
 
         {
             let rate_limiter1 = Arc::new(RedisRateLimit {
-                redis_client: Client::open(client_addr).unwrap(),
+                redis_client: Client::open(client_addr.as_str()).unwrap(),
                 instance_limit: 10,
                 per_ip_limit: 5,
                 semaphore: Arc::new(Semaphore::new(10)),
@@ -787,7 +767,7 @@ mod tests {
         }
 
         let rate_limiter2 = Arc::new(RedisRateLimit {
-            redis_client: Client::open(client_addr).unwrap(),
+            redis_client: Client::open(client_addr.as_str()).unwrap(),
             instance_limit: 10,
             per_ip_limit: 5,
             semaphore: Arc::new(Semaphore::new(10)),
@@ -836,7 +816,5 @@ mod tests {
 
             assert_eq!(ip1_instance2_count, 1, "IP1 instance2 count should be 1");
         }
-
-        Ok(())
     }
 }
