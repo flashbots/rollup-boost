@@ -3,16 +3,18 @@ use alloy_consensus::transaction::SignerRecoverable;
 use alloy_consensus::transaction::TransactionMeta;
 use alloy_primitives::{Address, Sealable, TxHash, U256};
 use alloy_rpc_types::Withdrawals;
-use alloy_rpc_types::{BlockTransactions, Header};
+use alloy_rpc_types::{BlockTransactions, Header, TransactionInfo};
 use op_alloy_consensus::OpTxEnvelope;
 use op_alloy_network::Optimism;
 use op_alloy_rpc_types::OpTransactionReceipt;
 use op_alloy_rpc_types::Transaction;
-use reth::{api::BlockBody, primitives::Recovered, rpc::types::TransactionInfo};
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_evm::extract_l1_info;
 use reth_optimism_primitives::{OpBlock, OpReceipt, OpTransactionSigned};
 use reth_optimism_rpc::OpReceiptBuilder;
+use reth_primitives::Recovered;
+use reth_primitives_traits::block::body::BlockBody;
+
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::{
     FlashblockBuilder, FlashblocksPayloadV1, OpExecutionPayloadEnvelope, PayloadVersion,

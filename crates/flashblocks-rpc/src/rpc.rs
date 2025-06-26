@@ -5,8 +5,8 @@ use jsonrpsee::{
     proc_macros::rpc,
 };
 use op_alloy_network::Optimism;
-use reth::providers::TransactionsProvider;
 use reth_optimism_primitives::OpTransactionSigned;
+use reth_provider::TransactionsProvider;
 use reth_rpc_eth_api::{
     RpcBlock, RpcNodeCore, RpcReceipt,
     helpers::{EthBlocks, EthState, EthTransactions, FullEthApi},
