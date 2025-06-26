@@ -456,7 +456,7 @@ impl EngineApiServer for RollupBoostServer {
                 // We always return the value from the l2 client
                 return Ok(l2_response);
             } else {
-                // If the tx pool is enabled and builder is healthy, forward the fcu
+                // If the tx pool is enabled, forward the fcu
                 // to both the builder and the default l2 client
                 let builder_fut = self
                     .builder_client
@@ -470,7 +470,6 @@ impl EngineApiServer for RollupBoostServer {
                         message = "block building started",
                         "payload_id" = %payload_id,
                         "builder_building" = builder_result.is_ok(),
-                        "builder_healthy" = true,
                     );
 
                     self.payload_trace_context
@@ -491,23 +490,18 @@ impl EngineApiServer for RollupBoostServer {
             }
         } else {
             // If the FCU does not contain payload attributes
-            if builder_healthy {
-                // Forward the fcu to the builder to keep it synced and immediately return the l2
-                // response without awaiting the builder
-                let builder_client = self.builder_client.clone();
-                let attrs_clone = payload_attributes.clone();
-                tokio::spawn(async move {
-                    // It is not critical to wait for the builder response here
-                    // During moments of high load, Op-node can send hundreds of FCU requests
-                    // and we want to ensure that we don't block the main thread in those scenarios
-                    builder_client
-                        .fork_choice_updated_v3(fork_choice_state, attrs_clone)
-                        .await
-                });
-            } else {
-                debug!("Builder unhealthy, skipping async FCU to builder");
-            }
-
+            // forward the fcu to the builder to keep it synced and immediately return the l2
+            // response without awaiting the builder
+            let builder_client = self.builder_client.clone();
+            let attrs_clone = payload_attributes.clone();
+            tokio::spawn(async move {
+                // It is not critical to wait for the builder response here
+                // During moments of high load, Op-node can send hundreds of FCU requests
+                // and we want to ensure that we don't block the main thread in those scenarios
+                builder_client
+                    .fork_choice_updated_v3(fork_choice_state, attrs_clone)
+                    .await
+            });
             let l2_response = l2_fut.await?;
             if let Some(payload_id) = l2_response.payload_id {
                 self.payload_to_fcu_request
