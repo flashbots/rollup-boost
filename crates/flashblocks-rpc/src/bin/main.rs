@@ -46,7 +46,7 @@ fn main() {
             handle.node_exit_future.await
         })
     {
-        eprintln!("Error: {err:?}");
+        tracing::error!("Error: {err:?}");
         std::process::exit(1);
     }
 }

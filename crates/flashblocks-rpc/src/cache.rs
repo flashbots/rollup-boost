@@ -2,6 +2,7 @@ use alloy_consensus::Transaction as _;
 use alloy_consensus::transaction::SignerRecoverable;
 use alloy_consensus::transaction::TransactionMeta;
 use alloy_primitives::{Address, Sealable, TxHash, U256};
+use alloy_rpc_types::Withdrawals;
 use alloy_rpc_types::{BlockTransactions, Header};
 use op_alloy_consensus::OpTxEnvelope;
 use op_alloy_network::Optimism;
@@ -115,7 +116,7 @@ impl FlashblocksCacheInner {
                 header: Header::from_consensus(header.seal_slow(), None, None),
                 transactions: BlockTransactions::Full(converted_txs),
                 uncles: Vec::new(),
-                withdrawals: None,
+                withdrawals: Some(Withdrawals::new(Vec::new())),
             })
         } else {
             let tx_hashes = transactions.into_iter().map(|tx| tx.tx_hash()).collect();
@@ -123,7 +124,7 @@ impl FlashblocksCacheInner {
                 header: Header::from_consensus(header.seal_slow(), None, None),
                 transactions: BlockTransactions::Hashes(tx_hashes),
                 uncles: Vec::new(),
-                withdrawals: None,
+                withdrawals: Some(Withdrawals::new(Vec::new())),
             })
         }
     }
@@ -149,7 +150,7 @@ impl FlashblocksCacheInner {
             self.reset();
         }
 
-        let _ = self.builder.extend(payload)?;
+        self.builder.extend(payload)?;
 
         let execution_payload = match self.builder.build_envelope(PayloadVersion::V4)? {
             OpExecutionPayloadEnvelope::V4(envelope) => envelope.execution_payload.payload_inner,
@@ -185,7 +186,7 @@ impl FlashblocksCacheInner {
             all_receipts.push(receipt.clone());
         }
         for (address, nonce) in nonce_map.iter() {
-            self.nonce_cache.insert(address.clone(), nonce.clone());
+            self.nonce_cache.insert(*address, *nonce);
         }
 
         let mut l1_block_info = extract_l1_info(&block.body).expect("failed to extract l1 info");
@@ -202,7 +203,7 @@ impl FlashblocksCacheInner {
                 &self.chain_spec.clone(),
                 tx,
                 meta,
-                &receipt,
+                receipt,
                 &all_receipts,
                 &mut l1_block_info,
             )
