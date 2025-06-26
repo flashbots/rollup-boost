@@ -101,6 +101,11 @@ pub struct Args {
     #[arg(long, env, default_value = "false")]
     pub use_l2_client_for_state_root: bool,
 
+    /// Allow all engine API calls to builder even when marked as unhealthy
+    /// This is default true assuming no builder CL set up
+    #[arg(long, env, default_value = "true")]
+    pub allow_traffic_to_unhealthy_builder: bool,
+
     #[clap(flatten)]
     pub flashblocks: FlashblocksArgs,
 }
@@ -196,6 +201,7 @@ impl Args {
             self.block_selection_policy,
             probes.clone(),
             self.use_l2_client_for_state_root,
+            self.allow_traffic_to_unhealthy_builder,
         );
 
         let health_handle =

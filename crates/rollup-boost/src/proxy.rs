@@ -215,10 +215,10 @@ mod tests {
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
-                1,
+                5000,
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
-                1,
+                5000,
             ));
 
             let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -480,7 +480,7 @@ mod tests {
         .unwrap();
 
         let (probe_layer, _) = ProbeLayer::new();
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, 1, l2_auth_uri, jwt, 1);
+        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, 5000, l2_auth_uri, jwt, 5000);
 
         // Create a layered server
         let server = ServerBuilder::default()
