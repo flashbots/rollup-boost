@@ -101,7 +101,7 @@ jobs:
 
       - name: Stress Tests
         run: |
-          just stress-test
+          just kurtosis-stress-test
 
       - name: Devnet Down
         run: |
