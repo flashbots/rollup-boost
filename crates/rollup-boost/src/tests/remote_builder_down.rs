@@ -35,7 +35,7 @@ async fn remote_builder_down() -> eyre::Result<()> {
     // Generate a new block so that the builder can use the FCU request
     // to sync up the missing blocks with the L2 client
     let _ = block_generator.generate_block(false).await?;
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // create 3 new blocks that are processed by the l2 builder because the builder is not synced with the previous 3 blocks
     for _ in 0..3 {

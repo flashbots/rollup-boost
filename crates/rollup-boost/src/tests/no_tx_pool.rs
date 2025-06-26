@@ -1,13 +1,10 @@
 use super::common::RollupBoostTestHarnessBuilder;
-use std::time::Duration;
 
 #[tokio::test]
 async fn no_tx_pool() -> eyre::Result<()> {
     let harness = RollupBoostTestHarnessBuilder::new("no_tx_pool")
         .build()
         .await?;
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
 
     let mut block_generator = harness.block_generator().await?;
 
