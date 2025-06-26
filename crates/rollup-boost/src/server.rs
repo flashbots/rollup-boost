@@ -127,10 +127,11 @@ impl RollupBoostServer {
             .remove_by_parent_hash(&parent_hash)
             .await;
 
+        let builder_healthy = matches!(self.probes.health(), Health::Healthy);
+
         // async call to builder to sync the builder node
         if !self.execution_mode().is_disabled()
-            && (self.allow_traffic_to_unhealthy_builder
-                || matches!(self.probes.health(), Health::Healthy))
+            && (self.allow_traffic_to_unhealthy_builder || builder_healthy)
         {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
