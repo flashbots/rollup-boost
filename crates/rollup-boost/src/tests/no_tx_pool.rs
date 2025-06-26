@@ -5,6 +5,7 @@ async fn no_tx_pool() -> eyre::Result<()> {
     let harness = RollupBoostTestHarnessBuilder::new("no_tx_pool")
         .build()
         .await?;
+
     let mut block_generator = harness.block_generator().await?;
 
     // start creating 5 empty blocks which are processed by the L2 builder

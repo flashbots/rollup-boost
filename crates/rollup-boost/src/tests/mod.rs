@@ -10,3 +10,4 @@ mod remote_builder_down;
 mod simple;
 mod simple_isthmus;
 mod simple_isthmus_transition;
+mod unhealthy_builder_traffic;

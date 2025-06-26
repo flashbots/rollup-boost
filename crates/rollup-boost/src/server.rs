@@ -51,6 +51,7 @@ pub struct RollupBoostServer {
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
     use_l2_client_for_state_root: bool,
+    allow_traffic_to_unhealthy_builder: bool,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
     payload_to_fcu_request:
@@ -65,6 +66,7 @@ impl RollupBoostServer {
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
         use_l2_client_for_state_root: bool,
+        allow_traffic_to_unhealthy_builder: bool,
     ) -> Self {
         Self {
             l2_client: Arc::new(l2_client),
@@ -74,6 +76,7 @@ impl RollupBoostServer {
             execution_mode: initial_execution_mode,
             probes,
             use_l2_client_for_state_root,
+            allow_traffic_to_unhealthy_builder,
             payload_to_fcu_request: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -124,8 +127,12 @@ impl RollupBoostServer {
             .remove_by_parent_hash(&parent_hash)
             .await;
 
+        let builder_healthy = matches!(self.probes.health(), Health::Healthy);
+
         // async call to builder to sync the builder node
-        if !self.execution_mode().is_disabled() {
+        if !self.execution_mode().is_disabled()
+            && (self.allow_traffic_to_unhealthy_builder || builder_healthy)
+        {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
@@ -183,6 +190,13 @@ impl RollupBoostServer {
             {
                 info!(message = "builder has no payload, skipping get_payload call to builder");
                 tracing::Span::current().record("builder_has_payload", false);
+                return RpcResult::Ok(None);
+            }
+
+            if !self.allow_traffic_to_unhealthy_builder
+                && !matches!(self.probes.health(), Health::Healthy)
+            {
+                info!(message = "builder is unhealthy, skipping get_payload call to builder");
                 return RpcResult::Ok(None);
             }
 
@@ -409,9 +423,15 @@ impl EngineApiServer for RollupBoostServer {
         let l2_fut = self
             .l2_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
+        let builder_healthy = matches!(self.probes.health(), Health::Healthy);
 
         // If execution mode is disabled, return the l2 client response immediately
         if self.execution_mode().is_disabled() {
+            return Ok(l2_fut.await?);
+        }
+
+        if !self.allow_traffic_to_unhealthy_builder && !builder_healthy {
+            info!(message = "builder is unhealthy, skipping FCU to builder");
             return Ok(l2_fut.await?);
         }
 
@@ -742,6 +762,9 @@ pub mod tests {
             let (probe_layer, probes) = ProbeLayer::new();
             let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
+            // For tests, set initial health to Healthy since we don't run health checks
+            probes.set_health(Health::Healthy);
+
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
@@ -749,6 +772,7 @@ pub mod tests {
                 None,
                 probes.clone(),
                 false,
+                true, // Allow all engine API calls to unhealthy builder for tests
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
