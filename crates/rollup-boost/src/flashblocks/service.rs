@@ -20,6 +20,7 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use serde::{Deserialize, Serialize};
+use std::io;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -68,6 +69,11 @@ impl FlashblockBuilder {
     pub fn extend(&mut self, payload: FlashblocksPayloadV1) -> Result<(), FlashblocksError> {
         tracing::debug!(message = "Extending payload", payload_id = %payload.payload_id, index = payload.index, has_base=payload.base.is_some());
 
+        // Validate the index is contiguous
+        if payload.index != self.flashblocks.len() as u64 {
+            return Err(FlashblocksError::InvalidIndex);
+        }
+
         // Check base payload rules
         if payload.index == 0 {
             if let Some(base) = payload.base {
@@ -75,15 +81,8 @@ impl FlashblockBuilder {
             } else {
                 return Err(FlashblocksError::MissingBasePayload);
             }
-        } else {
-            if payload.base.is_some() {
-                return Err(FlashblocksError::UnexpectedBasePayload);
-            }
-        }
-
-        // Validate the index is contiguous
-        if payload.index != self.flashblocks.len() as u64 {
-            return Err(FlashblocksError::InvalidIndex);
+        } else if payload.base.is_some() {
+            return Err(FlashblocksError::UnexpectedBasePayload);
         }
 
         // Update latest diff and accumulate transactions and withdrawals
@@ -183,7 +182,7 @@ pub struct FlashblocksService {
 }
 
 impl FlashblocksService {
-    pub fn new(client: RpcClient, outbound_addr: SocketAddr) -> eyre::Result<Self> {
+    pub fn new(client: RpcClient, outbound_addr: SocketAddr) -> io::Result<Self> {
         let ws_pub = WebSocketPublisher::new(outbound_addr)?.into();
 
         Ok(Self {
