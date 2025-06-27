@@ -54,7 +54,7 @@ impl HealthHandle {
                     Ok(block) => block,
                     Err(e) => {
                         warn!(target: "rollup_boost::health", "Failed to get unsafe block from builder client: {} - updating health status", e);
-                        if self.execution_mode.lock().is_enabled() {
+                        if !self.execution_mode.lock().is_disabled() {
                             self.probes.set_health(Health::PartialContent);
                         }
                         sleep_until(Instant::now() + self.health_check_interval).await;
@@ -67,7 +67,7 @@ impl HealthHandle {
                     .gt(&self.max_unsafe_interval)
                 {
                     warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %latest_unsafe.header.timestamp, "Unsafe block timestamp is too old updating health status");
-                    if self.execution_mode.lock().is_enabled() {
+                    if !self.execution_mode.lock().is_disabled() {
                         self.probes.set_health(Health::PartialContent);
                     }
                 } else {
