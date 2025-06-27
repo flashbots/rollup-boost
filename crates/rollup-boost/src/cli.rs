@@ -200,7 +200,6 @@ impl RollupBoostArgs {
                     builder_args.builder_timeout,
                 ));
 
-        // NOTE: clean this up
         let server = Server::builder()
             .set_http_middleware(http_middleware)
             .build(format!("{}:{}", self.rpc_host, self.rpc_port).parse::<SocketAddr>()?)
