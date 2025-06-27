@@ -1,5 +1,5 @@
 use alloy_rpc_types_engine::JwtSecret;
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use eyre::bail;
 use jsonrpsee::{RpcModule, server::Server};
 use parking_lot::Mutex;
@@ -13,8 +13,7 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, DebugClient, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer,
-    RpcClient,
+    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
@@ -24,10 +23,7 @@ use crate::{
 
 #[derive(Clone, Parser, Debug)]
 #[clap(author, version = get_version(), about)]
-pub struct Args {
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-
+pub struct RollupBoostArgs {
     #[clap(flatten)]
     pub builder: BuilderArgs,
 
@@ -98,40 +94,15 @@ pub struct Args {
     pub block_selection_policy: Option<BlockSelectionPolicy>,
 
     #[clap(flatten)]
-    pub flashblocks: FlashblocksArgs,
+    pub flashblocks: Option<FlashblocksArgs>,
 }
 
-impl Args {
+impl RollupBoostArgs {
     pub async fn run(self) -> eyre::Result<()> {
         let _ = rustls::crypto::ring::default_provider().install_default();
-
-        let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
-
-        // Handle commands if present
-        if let Some(cmd) = self.command {
-            let debug_addr = format!("http://{debug_addr}");
-            return match cmd {
-                Commands::Debug { command } => match command {
-                    DebugCommands::SetExecutionMode { execution_mode } => {
-                        let client = DebugClient::new(debug_addr.as_str())?;
-                        let result = client.set_execution_mode(execution_mode).await?;
-                        println!("Response: {:?}", result.execution_mode);
-
-                        Ok(())
-                    }
-                    DebugCommands::ExecutionMode {} => {
-                        let client = DebugClient::new(debug_addr.as_str())?;
-                        let result = client.get_execution_mode().await?;
-                        println!("Execution mode: {:?}", result.execution_mode);
-
-                        Ok(())
-                    }
-                },
-            };
-        }
-
         init_metrics(&self)?;
 
+        let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
         let l2_client_args = self.l2_client;
 
         let l2_auth_jwt = if let Some(secret) = l2_client_args.l2_jwt_token {
@@ -168,50 +139,51 @@ impl Args {
         let (probe_layer, probes) = ProbeLayer::new();
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));
 
-        let (rpc_module, health_handle): (RpcModule<()>, _) = if self.flashblocks.flashblocks {
-            let inbound_url = self.flashblocks.flashblocks_builder_url;
-            let outbound_addr = SocketAddr::new(
-                IpAddr::from_str(&self.flashblocks.flashblocks_host)?,
-                self.flashblocks.flashblocks_port,
-            );
+        let (rpc_module, health_handle): (RpcModule<()>, _) =
+            if let Some(flashblocks_args) = self.flashblocks {
+                let inbound_url = flashblocks_args.flashblocks_builder_url;
+                let outbound_addr = SocketAddr::new(
+                    IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
+                    flashblocks_args.flashblocks_port,
+                );
 
-            let builder_client = Arc::new(Flashblocks::run(
-                builder_client.clone(),
-                inbound_url,
-                outbound_addr,
-                self.flashblocks.flashblock_builder_ws_reconnect_ms,
-            )?);
+                let builder_client = Arc::new(Flashblocks::run(
+                    builder_client.clone(),
+                    inbound_url,
+                    outbound_addr,
+                    flashblocks_args.flashblock_builder_ws_reconnect_ms,
+                )?);
 
-            let rollup_boost = RollupBoostServer::new(
-                l2_client,
-                builder_client,
-                execution_mode.clone(),
-                self.block_selection_policy,
-                probes.clone(),
-            );
+                let rollup_boost = RollupBoostServer::new(
+                    l2_client,
+                    builder_client,
+                    execution_mode.clone(),
+                    self.block_selection_policy,
+                    probes.clone(),
+                );
 
-            let health_handle = rollup_boost
-                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
+                let health_handle = rollup_boost
+                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
-            // Spawn the debug server
-            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-            (rollup_boost.try_into()?, health_handle)
-        } else {
-            let rollup_boost = RollupBoostServer::new(
-                l2_client,
-                Arc::new(builder_client),
-                execution_mode.clone(),
-                self.block_selection_policy,
-                probes.clone(),
-            );
+                // Spawn the debug server
+                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+                (rollup_boost.try_into()?, health_handle)
+            } else {
+                let rollup_boost = RollupBoostServer::new(
+                    l2_client,
+                    Arc::new(builder_client),
+                    execution_mode.clone(),
+                    self.block_selection_policy,
+                    probes.clone(),
+                );
 
-            let health_handle = rollup_boost
-                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
+                let health_handle = rollup_boost
+                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
-            // Spawn the debug server
-            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-            (rollup_boost.try_into()?, health_handle)
-        };
+                // Spawn the debug server
+                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+                (rollup_boost.try_into()?, health_handle)
+            };
 
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);
@@ -279,22 +251,4 @@ impl std::str::FromStr for LogFormat {
             _ => Err("Invalid log format".into()),
         }
     }
-}
-
-#[derive(Clone, Subcommand, Debug)]
-pub enum Commands {
-    /// Debug commands
-    Debug {
-        #[command(subcommand)]
-        command: DebugCommands,
-    },
-}
-
-#[derive(Clone, Subcommand, Debug)]
-pub enum DebugCommands {
-    /// Set the execution mode
-    SetExecutionMode { execution_mode: ExecutionMode },
-
-    /// Get the execution mode
-    ExecutionMode {},
 }
