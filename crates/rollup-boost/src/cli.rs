@@ -177,6 +177,7 @@ impl Args {
             );
 
             // TODO: update this to use a flashblocks client that queries the flashblocks manager
+            // let flashblocks_provider = FlashblocksProvider::new(manager);
 
             let flashblocks_manager = FlashblocksManager::new();
             // TODO: return handles
