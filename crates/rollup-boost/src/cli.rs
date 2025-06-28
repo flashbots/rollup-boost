@@ -13,11 +13,12 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, DebugClient, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer,
-    RpcClient,
+    BlockSelectionPolicy, DebugClient, FlashblocksArgs, FlashblocksManager, ProxyLayer,
+    RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
+    manager::FlashblocksManager,
     payload::PayloadSource,
     probe::ProbeLayer,
 };
@@ -169,15 +170,21 @@ impl Args {
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));
 
         let (rpc_module, health_handle): (RpcModule<()>, _) = if self.flashblocks.flashblocks {
-            let inbound_url = self.flashblocks.flashblocks_builder_url;
+            let builder_ws_url = self.flashblocks.flashblocks_builder_url;
             let outbound_addr = SocketAddr::new(
                 IpAddr::from_str(&self.flashblocks.flashblocks_host)?,
                 self.flashblocks.flashblocks_port,
             );
 
-            let builder_client = Arc::new(Flashblocks::run(
+            // TODO: update this to use a flashblocks client that queries the flashblocks manager
+
+            let flashblocks_manager = FlashblocksManager::new();
+            // TODO: return handles
+            flashblocks_manager.spawn();
+
+            let builder_client = Arc::new(FlashblocksManager::run(
                 builder_client.clone(),
-                inbound_url,
+                builder_ws_url,
                 outbound_addr,
                 self.flashblocks.flashblock_builder_ws_reconnect_ms,
             )?);

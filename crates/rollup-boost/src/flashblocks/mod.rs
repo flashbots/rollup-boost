@@ -1,6 +1,4 @@
-mod launcher;
-
-pub use launcher::*;
+pub mod manager;
 
 mod primitives;
 mod service;
