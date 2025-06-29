@@ -1,10 +1,11 @@
 use crate::flashblocks::inbound::FlashblocksReceiverService;
 use crate::{FlashblocksService, RpcClient};
 use core::net::SocketAddr;
-use futures::stream::SplitSink;
+use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use std::time::Duration;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::{self, Message};
@@ -39,16 +40,51 @@ impl FlashblocksManager {
     ) -> Result<(), FlashblocksManagerError> {
         // TODO: establish connection
         let (ws_stream, _) = connect_async(self.builder_ws_endpoint.as_str()).await?;
-        let (mut sink, mut stream) = ws_stream.split();
+        let (sink, stream) = ws_stream.split();
 
         let ping_handle = spawn_ping(sink);
-
-        // TODO: handle stream
+        let stream_handle = handle_flashblocks_stream(stream, tx);
 
         Ok(())
     }
 }
 
+fn handle_flashblocks_stream(
+    mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    tx: Sender<FlashblocksPayloadV1>,
+) -> JoinHandle<Result<(), FlashblocksManagerError>> {
+    tokio::spawn(async move {
+        while let Some(msg) = stream.next().await {
+            let msg = msg.map_err(|e| {
+                tracing::error!("Ws connection error: {e}");
+                e
+            })?;
+
+            match msg {
+                Message::Text(text) => {
+                    let flashblock_payload = serde_json::from_str::<FlashblocksPayloadV1>(&text)
+                        .expect("TODO: handle error ");
+                    tx.send(flashblock_payload).await?;
+                }
+
+                Message::Pong(_) => {
+                    todo!("pong received")
+                }
+
+                Message::Close(_) => {
+                    todo!("conection closed")
+                }
+
+                // TODO: handle other message types
+                _ => {}
+            }
+        }
+
+        Ok(())
+    })
+}
+
+// TODO: implement timeout logic here on when we expect a pong
 fn spawn_ping(
     mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
 ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
@@ -69,4 +105,6 @@ pub enum FlashblocksManagerError {
     PingFailed,
     #[error(transparent)]
     ConnectError(#[from] tungstenite::Error),
+    #[error(transparent)]
+    SendError(#[from] SendError<FlashblocksPayloadV1>),
 }
