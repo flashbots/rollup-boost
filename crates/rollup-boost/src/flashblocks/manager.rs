@@ -36,10 +36,11 @@ impl FlashblocksManager {
         todo!();
     }
 
-    pub async fn subscribe_flashblocks(
+    fn subscribe_flashblocks(
         &self,
         tx: Sender<FlashblocksPayloadV1>,
     ) -> Result<(), FlashblocksManagerError> {
+        let builder_ws_endpoint = self.builder_ws_endpoint.clone();
         tokio::spawn(async move {
             loop {
                 let Ok((ws_stream, _)) = connect_async(builder_ws_endpoint.as_str()).await else {
@@ -50,8 +51,10 @@ impl FlashblocksManager {
 
                 let (sink, stream) = ws_stream.split();
 
-                let ping_handle = self.spawn_ping(sink);
-                let stream_handle = self.handle_flashblocks_stream(stream, tx);
+                // TODO: handle latest ping and timeout
+                let ping_handle = spawn_ping(sink);
+                // TODO: handle latest ping and timeout
+                let stream_handle = handle_flashblocks_stream(stream, tx);
 
                 tokio::select! {
                     _ = ping_handle => {
@@ -68,58 +71,55 @@ impl FlashblocksManager {
 
         Ok(())
     }
+}
 
-    fn handle_flashblocks_stream(
-        &self,
-        mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-        tx: Sender<FlashblocksPayloadV1>,
-    ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
-        tokio::spawn(async move {
-            while let Some(msg) = stream.next().await {
-                let msg = msg.map_err(|e| {
-                    tracing::error!("Ws connection error: {e}");
-                    e
-                })?;
+fn handle_flashblocks_stream(
+    mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    tx: Sender<FlashblocksPayloadV1>,
+) -> JoinHandle<Result<(), FlashblocksManagerError>> {
+    tokio::spawn(async move {
+        while let Some(msg) = stream.next().await {
+            let msg = msg.map_err(|e| {
+                tracing::error!("Ws connection error: {e}");
+                e
+            })?;
 
-                match msg {
-                    Message::Text(text) => {
-                        let flashblock_payload =
-                            serde_json::from_str::<FlashblocksPayloadV1>(&text)?;
-                        tx.send(flashblock_payload).await?;
-                    }
-
-                    Message::Pong(_) => {
-                        todo!("pong received")
-                    }
-
-                    Message::Close(_) => {
-                        todo!("conection closed")
-                    }
-
-                    // TODO: handle other message types
-                    _ => {}
+            match msg {
+                Message::Text(text) => {
+                    let flashblock_payload = serde_json::from_str::<FlashblocksPayloadV1>(&text)?;
+                    tx.send(flashblock_payload).await?;
                 }
-            }
 
-            Ok(())
-        })
-    }
+                Message::Pong(_) => {
+                    todo!("pong received")
+                }
 
-    // TODO: implement timeout logic here on when we expect a pong
-    fn spawn_ping(
-        &self,
-        mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-    ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
-        tokio::spawn(async move {
-            let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
-            loop {
-                ping_interval.tick().await;
-                sink.send(Message::Ping(Bytes::new()))
-                    .await
-                    .map_err(|_| FlashblocksManagerError::PingFailed)?;
+                Message::Close(_) => {
+                    todo!("conection closed")
+                }
+
+                // TODO: handle other message types
+                _ => {}
             }
-        })
-    }
+        }
+
+        Ok(())
+    })
+}
+
+// TODO: implement timeout logic here on when we expect a pong
+fn spawn_ping(
+    mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+) -> JoinHandle<Result<(), FlashblocksManagerError>> {
+    tokio::spawn(async move {
+        let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
+        loop {
+            ping_interval.tick().await;
+            sink.send(Message::Ping(Bytes::new()))
+                .await
+                .map_err(|_| FlashblocksManagerError::PingFailed)?;
+        }
+    })
 }
 
 #[derive(thiserror::Error, Debug)]
