@@ -8,7 +8,7 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::{self, Message};
-use tokio_tungstenite::{WebSocketStream, connect_async};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tokio_util::bytes::Bytes;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -41,55 +41,27 @@ impl FlashblocksManager {
         let (ws_stream, _) = connect_async(self.builder_ws_endpoint.as_str()).await?;
         let (mut sink, mut stream) = ws_stream.split();
 
-        // TODO: spawn_ping
-        let ping_handle: JoinHandle<Result<(), FlashblocksManagerError>> =
-            tokio::spawn(async move {
-                let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
-                loop {
-                    ping_interval.tick().await;
-                    sink.send(Message::Ping(Bytes::new()))
-                        .await
-                        .map_err(|_| FlashblocksManagerError::PingFailed)?;
-                }
-            });
+        let ping_handle = spawn_ping(sink);
+
+        // TODO: handle stream
 
         Ok(())
     }
-
-    pub fn run(
-        builder_url: RpcClient,
-        flashblocks_url: Url,
-        outbound_addr: SocketAddr,
-        reconnect_ms: u64,
-        // TODO: update error handling
-    ) -> eyre::Result<FlashblocksService> {
-        let (tx, rx) = mpsc::channel(100);
-
-        let receiver = FlashblocksReceiverService::new(flashblocks_url, tx, reconnect_ms);
-        tokio::spawn(async move {
-            let _ = receiver.run().await;
-        });
-
-        let service = FlashblocksService::new(builder_url, outbound_addr)?;
-        let mut service_handle = service.clone();
-        tokio::spawn(async move {
-            service_handle.run(rx).await;
-        });
-
-        Ok(service)
-    }
 }
 
-// fn spawn_ping<S, Item>(mut sink: SplitSink<WebSocketStream<S>, Item>) -> JoinHandle<()> {
-//     tokio::spawn(async move {
-//         let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
-//         loop {
-//             ping_interval.tick().await;
-//             sink.send(Message::Ping(Bytes::new()));
-//         }
-//     })
-// }
-//
+fn spawn_ping(
+    mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+) -> JoinHandle<Result<(), FlashblocksManagerError>> {
+    tokio::spawn(async move {
+        let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
+        loop {
+            ping_interval.tick().await;
+            sink.send(Message::Ping(Bytes::new()))
+                .await
+                .map_err(|_| FlashblocksManagerError::PingFailed)?;
+        }
+    })
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum FlashblocksManagerError {
