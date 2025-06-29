@@ -1,9 +1,10 @@
 pub mod manager;
+pub mod provider;
 
 mod primitives;
-mod service;
-
 pub use primitives::*;
+
+mod service;
 pub use service::*;
 
 mod inbound;
