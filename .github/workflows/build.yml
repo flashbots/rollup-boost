@@ -4,10 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       service_name:
-        description: 'Service name to build'
-        required: true
+        description: 'Name of the service to build'
         default: 'rollup-boost'
-        type: string
+        type: choice
+        options:
+          - "rollup-boost"
+          - "flashblocks-rpc"
   push:
     branches:
       - main
