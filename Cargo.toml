@@ -38,5 +38,5 @@ op-alloy-rpc-types-engine = "0.18.7"
 op-alloy-consensus = "0.18.7"
 op-alloy-rpc-types = "0.18.7"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
-testcontainers = "0.23"
+testcontainers = "0.24"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
