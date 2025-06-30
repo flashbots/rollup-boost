@@ -1,5 +1,5 @@
-pub mod manager;
 pub mod provider;
+pub mod pubsub;
 
 mod primitives;
 pub use primitives::*;

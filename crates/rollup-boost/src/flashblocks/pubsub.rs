@@ -1,6 +1,3 @@
-use crate::flashblocks::inbound::FlashblocksReceiverService;
-use crate::{FlashblocksService, RpcClient};
-use core::net::SocketAddr;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use parking_lot::Mutex;
@@ -21,24 +18,6 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use super::FlashblocksPayloadV1;
-
-#[derive(thiserror::Error, Debug)]
-pub enum FlashblocksPubSubError {
-    #[error("Ping failed")]
-    PingFailed,
-    #[error("Missing pong response")]
-    MissingPong,
-    #[error(transparent)]
-    ConnectError(#[from] tungstenite::Error),
-    #[error(transparent)]
-    FlashblocksPayloadSendError(#[from] broadcast::error::SendError<FlashblocksPayloadV1>),
-    #[error(transparent)]
-    MessageSendError(#[from] watch::error::SendError<Message>),
-    #[error(transparent)]
-    RecvError(#[from] RecvError),
-    #[error(transparent)]
-    SerdeJsonError(#[from] serde_json::Error),
-}
 
 // NOTE: update to use FlashblocksPublisher and FlashblocksSubscriber
 pub struct FlashblocksPubSubManager;
@@ -138,7 +117,6 @@ impl FlashblocksSubscriber {
     }
 }
 
-// TODO: implement timeout logic here on when we expect a pong
 fn spawn_ping(
     mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pong_rx: tokio::sync::watch::Receiver<Message>,
@@ -165,4 +143,22 @@ impl FlashblocksPublisher {
     fn spawn(payload_rx: broadcast::Receiver<FlashblocksPayloadV1>) {
         todo!()
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum FlashblocksPubSubError {
+    #[error("Ping failed")]
+    PingFailed,
+    #[error("Missing pong response")]
+    MissingPong,
+    #[error(transparent)]
+    ConnectError(#[from] tungstenite::Error),
+    #[error(transparent)]
+    FlashblocksPayloadSendError(#[from] broadcast::error::SendError<FlashblocksPayloadV1>),
+    #[error(transparent)]
+    MessageSendError(#[from] watch::error::SendError<Message>),
+    #[error(transparent)]
+    RecvError(#[from] RecvError),
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
 }
