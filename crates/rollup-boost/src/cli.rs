@@ -17,9 +17,10 @@ use crate::{
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
-    manager::FlashblocksManager,
     payload::PayloadSource,
     probe::ProbeLayer,
+    provider::FlashblocksProvider,
+    pubsub::FlashblocksPubSubManager,
 };
 
 #[derive(Clone, Parser, Debug)]
@@ -178,20 +179,20 @@ impl Args {
             // TODO: update this to use a flashblocks client that queries the flashblocks manager
             // let flashblocks_provider = FlashblocksProvider::new(manager);
 
-            let flashblocks_manager = FlashblocksManager::new();
-            // TODO: return handles
-            flashblocks_manager.spawn();
+            let payload_rx = FlashblocksPubSubManager::spawn(builder_ws_url)?;
+            let flashblocks_provider =
+                Arc::new(FlashblocksProvider::new(builder_client, payload_rx));
 
-            let builder_client = Arc::new(FlashblocksManager::run(
-                builder_client.clone(),
-                builder_ws_url,
-                outbound_addr,
-                self.flashblocks.flashblock_builder_ws_reconnect_ms,
-            )?);
+            // let builder_client = Arc::new(FlashblocksManager::run(
+            //     builder_client.clone(),
+            //     builder_ws_url,
+            //     outbound_addr,
+            //     self.flashblocks.flashblock_builder_ws_reconnect_ms,
+            // )?);
 
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
-                builder_client,
+                flashblocks_provider,
                 execution_mode.clone(),
                 self.block_selection_policy,
                 probes.clone(),

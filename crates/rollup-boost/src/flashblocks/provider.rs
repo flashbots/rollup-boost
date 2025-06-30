@@ -24,17 +24,24 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::RwLock;
 use tokio::sync::mpsc;
+use tokio::sync::{RwLock, broadcast};
 use tracing::{error, info};
 
 pub struct FlashblocksProvider {
-    pub builder_client: Arc<RpcClient>,
+    builder_client: RpcClient,
+    // pub best_payload
 }
 
 impl FlashblocksProvider {
-    pub fn new(builder_client: Arc<RpcClient>) -> Self {
-        Self { builder_client }
+    pub fn new(
+        builder_client: RpcClient,
+        payload_rx: broadcast::Receiver<FlashblocksPayloadV1>,
+    ) -> Self {
+        let this = Self { builder_client };
+        // TODO: spawn task to handle payload stream
+
+        todo!()
     }
 }
 
