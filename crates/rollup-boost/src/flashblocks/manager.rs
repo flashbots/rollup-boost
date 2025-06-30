@@ -41,28 +41,18 @@ pub enum FlashblocksPubSubError {
 }
 
 // NOTE: update to use FlashblocksPublisher and FlashblocksSubscriber
-pub struct FlashblocksPubSubManager {
-    // TODO: ping timeout
-    // TODO: last ping
-}
+pub struct FlashblocksPubSubManager;
 
 impl FlashblocksPubSubManager {
-    pub fn new() -> Self {
-        todo!()
-    }
-
     pub fn spawn(
         builder_ws_endpoint: Url,
     ) -> Result<broadcast::Receiver<FlashblocksPayloadV1>, FlashblocksPubSubError> {
         let (payload_tx, payload_rx) = broadcast::channel(100);
+        let publisher_rx = payload_tx.subscribe();
         FlashblocksSubscriber::spawn(builder_ws_endpoint, payload_tx)?;
+        FlashblocksPublisher::spawn(publisher_rx);
 
         Ok(payload_rx)
-    }
-
-    // NOTE: multiplex flashblocks stream to multiple connections
-    fn publish_flashblocks(&self) {
-        todo!()
     }
 }
 
@@ -172,7 +162,7 @@ fn spawn_ping(
 pub struct FlashblocksPublisher;
 
 impl FlashblocksPublisher {
-    fn spawn() {
+    fn spawn(payload_rx: broadcast::Receiver<FlashblocksPayloadV1>) {
         todo!()
     }
 }
