@@ -23,7 +23,7 @@ use url::Url;
 use super::FlashblocksPayloadV1;
 
 #[derive(thiserror::Error, Debug)]
-pub enum FlashblocksManagerError {
+pub enum FlashblocksPubSubError {
     #[error("Ping failed")]
     PingFailed,
     #[error("Missing pong response")]
@@ -53,7 +53,7 @@ impl FlashblocksPubSubManager {
 
     pub fn spawn(
         builder_ws_endpoint: Url,
-    ) -> Result<broadcast::Receiver<FlashblocksPayloadV1>, FlashblocksManagerError> {
+    ) -> Result<broadcast::Receiver<FlashblocksPayloadV1>, FlashblocksPubSubError> {
         let (payload_tx, payload_rx) = broadcast::channel(100);
         FlashblocksSubscriber::spawn(builder_ws_endpoint, payload_tx)?;
 
@@ -74,7 +74,7 @@ impl FlashblocksSubscriber {
     fn spawn(
         builder_ws_endpoint: Url,
         payload_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    ) -> Result<(), FlashblocksManagerError> {
+    ) -> Result<(), FlashblocksPubSubError> {
         let payload_tx = Arc::new(payload_tx);
         tokio::spawn(async move {
             loop {
@@ -115,7 +115,7 @@ impl FlashblocksSubscriber {
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
         payload_tx: Arc<broadcast::Sender<FlashblocksPayloadV1>>,
         pong_tx: watch::Sender<Message>,
-    ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
+    ) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
         tokio::spawn(async move {
             while let Some(msg) = stream.next().await {
                 let msg = msg.map_err(|e| {
@@ -152,7 +152,7 @@ impl FlashblocksSubscriber {
 fn spawn_ping(
     mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pong_rx: tokio::sync::watch::Receiver<Message>,
-) -> JoinHandle<Result<(), FlashblocksManagerError>> {
+) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
     tokio::spawn(async move {
         let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
         loop {
@@ -160,13 +160,19 @@ fn spawn_ping(
             if pong_rx.has_changed()? {
                 sink.send(Message::Ping(Bytes::new()))
                     .await
-                    .map_err(|_| FlashblocksManagerError::PingFailed)?;
+                    .map_err(|_| FlashblocksPubSubError::PingFailed)?;
             } else {
                 tracing::error!("Missing pong response from builder stream");
-                return Err(FlashblocksManagerError::MissingPong);
+                return Err(FlashblocksPubSubError::MissingPong);
             }
         }
     })
 }
 
 pub struct FlashblocksPublisher;
+
+impl FlashblocksPublisher {
+    fn spawn() {
+        todo!()
+    }
+}
