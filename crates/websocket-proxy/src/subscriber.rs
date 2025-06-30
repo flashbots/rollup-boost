@@ -52,10 +52,10 @@ impl SubscriberOptions {
 impl Default for SubscriberOptions {
     fn default() -> Self {
         Self {
-            max_backoff_interval: Duration::from_secs(5),
+            max_backoff_interval: Duration::from_millis(20000),
             backoff_initial_interval: Duration::from_millis(500),
-            ping_interval: Duration::from_secs(1),
-            pong_timeout: Duration::from_secs(2),
+            ping_interval: Duration::from_millis(2000),
+            pong_timeout: Duration::from_millis(4000),
             initial_grace_period: Duration::from_secs(5),
         }
     }
@@ -173,6 +173,7 @@ where
         );
 
         self.metrics.upstream_connections.increment(1);
+        // Reset backoff timer on successful connection
         self.backoff.reset();
 
         let (mut write, mut read) = ws_stream.split();
@@ -196,7 +197,7 @@ where
             }
         });
 
-        let mut deadline_check = tokio::time::interval(Duration::from_millis(50));
+        let mut deadline_check = tokio::time::interval(self.options.pong_timeout / 4);
 
         let result = loop {
             select! {
@@ -533,6 +534,7 @@ mod tests {
         let _ = server1.send_message("Another message from server 1").await;
         let _ = server2.send_message("Another message from server 2").await;
 
+        // Wait for messages to be processed
         sleep(Duration::from_millis(500)).await;
 
         // Cancel the token to shut down subscribers
