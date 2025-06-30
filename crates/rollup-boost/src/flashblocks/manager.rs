@@ -31,7 +31,7 @@ pub enum FlashblocksManagerError {
     #[error(transparent)]
     ConnectError(#[from] tungstenite::Error),
     #[error(transparent)]
-    FlashblocksPayloadSendError(#[from] mpsc::error::SendError<FlashblocksPayloadV1>),
+    FlashblocksPayloadSendError(#[from] broadcast::error::SendError<FlashblocksPayloadV1>),
     #[error(transparent)]
     MessageSendError(#[from] watch::error::SendError<Message>),
     #[error(transparent)]
@@ -67,28 +67,18 @@ impl FlashblocksPubSubManager {
 }
 
 #[derive(Clone, Debug)]
-pub struct FlashblocksSubscriber {
-    pub builder_ws_endpoint: Url,
-}
+pub struct FlashblocksSubscriber;
 
 impl FlashblocksSubscriber {
-    pub fn new(builder_ws_endpoint: Url) -> Self {
-        Self {
-            builder_ws_endpoint,
-        }
-    }
-
     // TODO: decide if return joinhandle
     fn spawn(
-        // TODO: just make this arc
-        &self,
+        builder_ws_endpoint: Url,
         payload_tx: broadcast::Sender<FlashblocksPayloadV1>,
     ) -> Result<(), FlashblocksManagerError> {
-        let this = self.clone();
+        let payload_tx = Arc::new(payload_tx);
         tokio::spawn(async move {
             loop {
-                let Ok((ws_stream, _)) = connect_async(this.builder_ws_endpoint.as_str()).await
-                else {
+                let Ok((ws_stream, _)) = connect_async(builder_ws_endpoint.as_str()).await else {
                     // TODO: log error
                     tokio::time::sleep(Duration::from_millis(500)).await;
                     continue;
@@ -99,7 +89,11 @@ impl FlashblocksSubscriber {
                 pong_rx.mark_changed();
 
                 let ping_handle = spawn_ping(sink, pong_rx);
-                let stream_handle = this.handle_flashblocks_stream(stream, payload_tx, pong_tx);
+                let stream_handle = FlashblocksSubscriber::handle_flashblocks_stream(
+                    stream,
+                    payload_tx.clone(),
+                    pong_tx,
+                );
 
                 tokio::select! {
                     _ = ping_handle => {
@@ -118,9 +112,8 @@ impl FlashblocksSubscriber {
     }
 
     fn handle_flashblocks_stream(
-        &self,
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-        payload_tx: broadcast::Sender<FlashblocksPayloadV1>,
+        payload_tx: Arc<broadcast::Sender<FlashblocksPayloadV1>>,
         pong_tx: watch::Sender<Message>,
     ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
         tokio::spawn(async move {
@@ -134,7 +127,7 @@ impl FlashblocksSubscriber {
                     Message::Text(text) => {
                         let flashblock_payload =
                             serde_json::from_str::<FlashblocksPayloadV1>(&text)?;
-                        payload_tx.send(flashblock_payload).await?;
+                        payload_tx.send(flashblock_payload)?;
                     }
 
                     Message::Pong(_) => {
