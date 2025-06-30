@@ -3,11 +3,17 @@ use crate::{FlashblocksService, RpcClient};
 use core::net::SocketAddr;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
+use parking_lot::Mutex;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::watch;
+use tokio::sync::watch::error::RecvError;
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::{self, Message};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tokio_util::bytes::Bytes;
@@ -28,17 +34,18 @@ impl FlashblocksManager {
     }
 
     pub fn spawn(self) {
-        let (tx, rx) = mpsc::channel(100);
-        self.subscribe_flashblocks(tx);
+        let (payload_tx, payload_rx) = mpsc::channel(100);
+        self.subscribe_flashblocks(payload_tx);
 
         // TODO: serve stream to multiple connections
 
         todo!();
     }
 
+    // TODO: decide if return joinhandle
     fn subscribe_flashblocks(
         &self,
-        tx: Sender<FlashblocksPayloadV1>,
+        payload_tx: Sender<FlashblocksPayloadV1>,
     ) -> Result<(), FlashblocksManagerError> {
         let builder_ws_endpoint = self.builder_ws_endpoint.clone();
         tokio::spawn(async move {
@@ -50,18 +57,18 @@ impl FlashblocksManager {
                 };
 
                 let (sink, stream) = ws_stream.split();
+                let (pong_tx, mut pong_rx) = watch::channel(Message::Pong(Bytes::default()));
+                pong_rx.mark_changed();
 
-                // TODO: handle latest ping and timeout
-                let ping_handle = spawn_ping(sink);
-                // TODO: handle latest ping and timeout
-                let stream_handle = handle_flashblocks_stream(stream, tx);
+                let ping_handle = spawn_ping(sink, pong_rx);
+                let stream_handle = handle_flashblocks_stream(stream, payload_tx, pong_tx);
 
                 tokio::select! {
                     _ = ping_handle => {
-                        todo!()
+                        tracing::warn!("Ping handle resolved early, re-establing connection");
                     }
                     _ = stream_handle => {
-                        todo!()
+                        tracing::warn!("Flashblocks stream handle resolved early, re-establing connection");
                     }
                 }
 
@@ -75,7 +82,8 @@ impl FlashblocksManager {
 
 fn handle_flashblocks_stream(
     mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    tx: Sender<FlashblocksPayloadV1>,
+    payload_tx: Sender<FlashblocksPayloadV1>,
+    pong_tx: watch::Sender<Message>,
 ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
     tokio::spawn(async move {
         while let Some(msg) = stream.next().await {
@@ -87,11 +95,11 @@ fn handle_flashblocks_stream(
             match msg {
                 Message::Text(text) => {
                     let flashblock_payload = serde_json::from_str::<FlashblocksPayloadV1>(&text)?;
-                    tx.send(flashblock_payload).await?;
+                    payload_tx.send(flashblock_payload).await?;
                 }
 
                 Message::Pong(_) => {
-                    todo!("pong received")
+                    pong_tx.send(Message::Pong(Bytes::default()))?;
                 }
 
                 Message::Close(_) => {
@@ -110,14 +118,20 @@ fn handle_flashblocks_stream(
 // TODO: implement timeout logic here on when we expect a pong
 fn spawn_ping(
     mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+    pong_rx: tokio::sync::watch::Receiver<Message>,
 ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
     tokio::spawn(async move {
         let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
         loop {
             ping_interval.tick().await;
-            sink.send(Message::Ping(Bytes::new()))
-                .await
-                .map_err(|_| FlashblocksManagerError::PingFailed)?;
+            if pong_rx.has_changed()? {
+                sink.send(Message::Ping(Bytes::new()))
+                    .await
+                    .map_err(|_| FlashblocksManagerError::PingFailed)?;
+            } else {
+                tracing::error!("Missing pong response from builder stream");
+                return Err(FlashblocksManagerError::MissingPong);
+            }
         }
     })
 }
@@ -126,10 +140,16 @@ fn spawn_ping(
 pub enum FlashblocksManagerError {
     #[error("Ping failed")]
     PingFailed,
+    #[error("Missing pong response")]
+    MissingPong,
     #[error(transparent)]
     ConnectError(#[from] tungstenite::Error),
     #[error(transparent)]
-    SendError(#[from] SendError<FlashblocksPayloadV1>),
+    FlashblocksPayloadSendError(#[from] mpsc::error::SendError<FlashblocksPayloadV1>),
+    #[error(transparent)]
+    MessageSendError(#[from] watch::error::SendError<Message>),
+    #[error(transparent)]
+    RecvError(#[from] RecvError),
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
 }
