@@ -94,7 +94,7 @@ pub struct RollupBoostArgs {
     pub block_selection_policy: Option<BlockSelectionPolicy>,
 
     #[clap(flatten)]
-    pub flashblocks: Option<FlashblocksArgs>,
+    pub flashblocks: FlashblocksArgs,
 }
 
 impl RollupBoostArgs {
@@ -139,51 +139,51 @@ impl RollupBoostArgs {
         let (probe_layer, probes) = ProbeLayer::new();
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));
 
-        let (rpc_module, health_handle): (RpcModule<()>, _) =
-            if let Some(flashblocks_args) = self.flashblocks {
-                let inbound_url = flashblocks_args.flashblocks_builder_url;
-                let outbound_addr = SocketAddr::new(
-                    IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
-                    flashblocks_args.flashblocks_port,
-                );
+        let (rpc_module, health_handle): (RpcModule<()>, _) = if self.flashblocks.flashblocks {
+            let flashblocks_args = self.flashblocks;
+            let inbound_url = flashblocks_args.flashblocks_builder_url;
+            let outbound_addr = SocketAddr::new(
+                IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
+                flashblocks_args.flashblocks_port,
+            );
 
-                let builder_client = Arc::new(Flashblocks::run(
-                    builder_client.clone(),
-                    inbound_url,
-                    outbound_addr,
-                    flashblocks_args.flashblock_builder_ws_reconnect_ms,
-                )?);
+            let builder_client = Arc::new(Flashblocks::run(
+                builder_client.clone(),
+                inbound_url,
+                outbound_addr,
+                flashblocks_args.flashblock_builder_ws_reconnect_ms,
+            )?);
 
-                let rollup_boost = RollupBoostServer::new(
-                    l2_client,
-                    builder_client,
-                    execution_mode.clone(),
-                    self.block_selection_policy,
-                    probes.clone(),
-                );
+            let rollup_boost = RollupBoostServer::new(
+                l2_client,
+                builder_client,
+                execution_mode.clone(),
+                self.block_selection_policy,
+                probes.clone(),
+            );
 
-                let health_handle = rollup_boost
-                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
+            let health_handle = rollup_boost
+                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
-                // Spawn the debug server
-                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-                (rollup_boost.try_into()?, health_handle)
-            } else {
-                let rollup_boost = RollupBoostServer::new(
-                    l2_client,
-                    Arc::new(builder_client),
-                    execution_mode.clone(),
-                    self.block_selection_policy,
-                    probes.clone(),
-                );
+            // Spawn the debug server
+            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+            (rollup_boost.try_into()?, health_handle)
+        } else {
+            let rollup_boost = RollupBoostServer::new(
+                l2_client,
+                Arc::new(builder_client),
+                execution_mode.clone(),
+                self.block_selection_policy,
+                probes.clone(),
+            );
 
-                let health_handle = rollup_boost
-                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
+            let health_handle = rollup_boost
+                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
-                // Spawn the debug server
-                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-                (rollup_boost.try_into()?, health_handle)
-            };
+            // Spawn the debug server
+            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+            (rollup_boost.try_into()?, health_handle)
+        };
 
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);
