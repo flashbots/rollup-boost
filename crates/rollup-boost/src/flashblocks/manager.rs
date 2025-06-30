@@ -10,8 +10,8 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{self, Sender};
-use tokio::sync::watch;
 use tokio::sync::watch::error::RecvError;
+use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::{self, Message};
@@ -22,35 +22,73 @@ use url::Url;
 
 use super::FlashblocksPayloadV1;
 
-pub struct FlashblocksManager {
-    builder_ws_endpoint: Url,
+#[derive(thiserror::Error, Debug)]
+pub enum FlashblocksManagerError {
+    #[error("Ping failed")]
+    PingFailed,
+    #[error("Missing pong response")]
+    MissingPong,
+    #[error(transparent)]
+    ConnectError(#[from] tungstenite::Error),
+    #[error(transparent)]
+    FlashblocksPayloadSendError(#[from] mpsc::error::SendError<FlashblocksPayloadV1>),
+    #[error(transparent)]
+    MessageSendError(#[from] watch::error::SendError<Message>),
+    #[error(transparent)]
+    RecvError(#[from] RecvError),
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+}
+
+// NOTE: update to use FlashblocksPublisher and FlashblocksSubscriber
+pub struct FlashblocksPubSubManager {
     // TODO: ping timeout
     // TODO: last ping
 }
 
-impl FlashblocksManager {
+impl FlashblocksPubSubManager {
     pub fn new() -> Self {
         todo!()
     }
 
-    pub fn spawn(self) {
-        let (payload_tx, payload_rx) = mpsc::channel(100);
-        self.subscribe_flashblocks(payload_tx);
+    pub fn spawn(
+        builder_ws_endpoint: Url,
+    ) -> Result<broadcast::Receiver<FlashblocksPayloadV1>, FlashblocksManagerError> {
+        let (payload_tx, payload_rx) = broadcast::channel(100);
+        FlashblocksSubscriber::spawn(builder_ws_endpoint, payload_tx)?;
 
-        // TODO: serve stream to multiple connections
+        Ok(payload_rx)
+    }
 
-        todo!();
+    // NOTE: multiplex flashblocks stream to multiple connections
+    fn publish_flashblocks(&self) {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FlashblocksSubscriber {
+    pub builder_ws_endpoint: Url,
+}
+
+impl FlashblocksSubscriber {
+    pub fn new(builder_ws_endpoint: Url) -> Self {
+        Self {
+            builder_ws_endpoint,
+        }
     }
 
     // TODO: decide if return joinhandle
-    fn subscribe_flashblocks(
+    fn spawn(
+        // TODO: just make this arc
         &self,
-        payload_tx: Sender<FlashblocksPayloadV1>,
+        payload_tx: broadcast::Sender<FlashblocksPayloadV1>,
     ) -> Result<(), FlashblocksManagerError> {
-        let builder_ws_endpoint = self.builder_ws_endpoint.clone();
+        let this = self.clone();
         tokio::spawn(async move {
             loop {
-                let Ok((ws_stream, _)) = connect_async(builder_ws_endpoint.as_str()).await else {
+                let Ok((ws_stream, _)) = connect_async(this.builder_ws_endpoint.as_str()).await
+                else {
                     // TODO: log error
                     tokio::time::sleep(Duration::from_millis(500)).await;
                     continue;
@@ -61,7 +99,7 @@ impl FlashblocksManager {
                 pong_rx.mark_changed();
 
                 let ping_handle = spawn_ping(sink, pong_rx);
-                let stream_handle = handle_flashblocks_stream(stream, payload_tx, pong_tx);
+                let stream_handle = this.handle_flashblocks_stream(stream, payload_tx, pong_tx);
 
                 tokio::select! {
                     _ = ping_handle => {
@@ -78,41 +116,43 @@ impl FlashblocksManager {
 
         Ok(())
     }
-}
 
-fn handle_flashblocks_stream(
-    mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    payload_tx: Sender<FlashblocksPayloadV1>,
-    pong_tx: watch::Sender<Message>,
-) -> JoinHandle<Result<(), FlashblocksManagerError>> {
-    tokio::spawn(async move {
-        while let Some(msg) = stream.next().await {
-            let msg = msg.map_err(|e| {
-                tracing::error!("Ws connection error: {e}");
-                e
-            })?;
+    fn handle_flashblocks_stream(
+        &self,
+        mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        payload_tx: broadcast::Sender<FlashblocksPayloadV1>,
+        pong_tx: watch::Sender<Message>,
+    ) -> JoinHandle<Result<(), FlashblocksManagerError>> {
+        tokio::spawn(async move {
+            while let Some(msg) = stream.next().await {
+                let msg = msg.map_err(|e| {
+                    tracing::error!("Ws connection error: {e}");
+                    e
+                })?;
 
-            match msg {
-                Message::Text(text) => {
-                    let flashblock_payload = serde_json::from_str::<FlashblocksPayloadV1>(&text)?;
-                    payload_tx.send(flashblock_payload).await?;
+                match msg {
+                    Message::Text(text) => {
+                        let flashblock_payload =
+                            serde_json::from_str::<FlashblocksPayloadV1>(&text)?;
+                        payload_tx.send(flashblock_payload).await?;
+                    }
+
+                    Message::Pong(_) => {
+                        pong_tx.send(Message::Pong(Bytes::default()))?;
+                    }
+
+                    Message::Close(_) => {
+                        todo!("conection closed")
+                    }
+
+                    // TODO: handle other message types
+                    _ => {}
                 }
-
-                Message::Pong(_) => {
-                    pong_tx.send(Message::Pong(Bytes::default()))?;
-                }
-
-                Message::Close(_) => {
-                    todo!("conection closed")
-                }
-
-                // TODO: handle other message types
-                _ => {}
             }
-        }
 
-        Ok(())
-    })
+            Ok(())
+        })
+    }
 }
 
 // TODO: implement timeout logic here on when we expect a pong
@@ -136,20 +176,4 @@ fn spawn_ping(
     })
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum FlashblocksManagerError {
-    #[error("Ping failed")]
-    PingFailed,
-    #[error("Missing pong response")]
-    MissingPong,
-    #[error(transparent)]
-    ConnectError(#[from] tungstenite::Error),
-    #[error(transparent)]
-    FlashblocksPayloadSendError(#[from] mpsc::error::SendError<FlashblocksPayloadV1>),
-    #[error(transparent)]
-    MessageSendError(#[from] watch::error::SendError<Message>),
-    #[error(transparent)]
-    RecvError(#[from] RecvError),
-    #[error(transparent)]
-    SerdeJsonError(#[from] serde_json::Error),
-}
+pub struct FlashblocksPublisher;
