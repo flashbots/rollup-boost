@@ -14,12 +14,11 @@ mod tests {
     use reth_optimism_node::{OpNode, args::RollupArgs};
     use reth_optimism_primitives::OpReceipt;
     use reth_provider::providers::BlockchainProvider;
-    use reth_rpc_server_types::RpcModuleSelection;
     use reth_tasks::TaskManager;
     use rollup_boost::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
     };
-    use std::{any::Any, sync::Arc};
+    use std::{any::Any, net::SocketAddr, sync::Arc};
     use tokio::sync::{mpsc, oneshot};
     use url::Url;
 
@@ -27,6 +26,7 @@ mod tests {
         _node: Box<dyn Any>,
         _node_exit_future: NodeExitFuture,
         sender: mpsc::Sender<(FlashblocksPayloadV1, oneshot::Sender<()>)>,
+        http_api_addr: SocketAddr,
     }
 
     impl NodeContext {
@@ -38,7 +38,7 @@ mod tests {
         }
 
         pub async fn provider(&self) -> eyre::Result<RootProvider> {
-            let url = "http://localhost:8545";
+            let url = format!("http://{}", self.http_api_addr);
             let client = RpcClient::builder().http(url.parse()?);
 
             Ok(RootProvider::new(client))
@@ -80,10 +80,10 @@ mod tests {
                 .build(),
         );
 
-        // Enable the http API
-        let mut rpc = RpcServerArgs::default().with_http();
-        rpc.http_api = Some(RpcModuleSelection::All);
-        let node_config = NodeConfig::new(chain_spec.clone()).with_rpc(rpc);
+        // Use with_unused_ports() to let Reth allocate random ports and avoid port collisions
+        let node_config = NodeConfig::new(chain_spec.clone())
+            .with_rpc(RpcServerArgs::default().with_unused_ports().with_http())
+            .with_unused_ports();
 
         let node = OpNode::new(RollupArgs::default());
 
@@ -129,10 +129,16 @@ mod tests {
             })
             .await?;
 
+        let http_api_addr = node
+            .rpc_server_handle()
+            .http_local_addr()
+            .ok_or_else(|| eyre::eyre!("Failed to get http api address"))?;
+
         Ok(NodeContext {
             _node: Box::new(node),
             _node_exit_future: node_exit_future,
             sender,
+            http_api_addr,
         })
     }
 
