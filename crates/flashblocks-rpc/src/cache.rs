@@ -26,7 +26,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Metadata {
     pub receipts: HashMap<String, OpReceipt>,
     pub new_account_balances: HashMap<String, String>, // Address -> Balance (hex)
