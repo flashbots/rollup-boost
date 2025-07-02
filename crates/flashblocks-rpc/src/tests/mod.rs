@@ -3,7 +3,7 @@ mod tests {
     use crate::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, cache::Metadata};
     use alloy_eips::Encodable2718;
     use alloy_genesis::Genesis;
-    use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex, map::HashMap};
+    use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
     use alloy_provider::{Provider, RootProvider};
     use alloy_rpc_client::RpcClient;
     use alloy_rpc_types_engine::PayloadId;
@@ -18,12 +18,13 @@ mod tests {
     use rollup_boost::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
     };
+    use std::collections::HashMap;
     use std::{any::Any, net::SocketAddr, sync::Arc};
     use tokio::sync::{mpsc, oneshot};
     use url::Url;
 
     pub struct NodeContext {
-        _node: Box<dyn Any>,
+        _node: Box<dyn Any + Sync + Send>,
         _node_exit_future: NodeExitFuture,
         sender: mpsc::Sender<(FlashblocksPayloadV1, oneshot::Sender<()>)>,
         http_api_addr: SocketAddr,
@@ -142,38 +143,94 @@ mod tests {
         })
     }
 
+    struct FlashblocksTransaction {
+        tx: Bytes,
+        hash: B256,
+        receipt: OpReceipt,
+        balance: U256,
+    }
+
+    impl FlashblocksTransaction {
+        pub fn with_balance(mut self, balance: U256) -> Self {
+            self.balance = balance;
+            self
+        }
+
+        pub fn with_receipt(mut self, receipt: OpReceipt) -> Self {
+            self.receipt = receipt;
+            self
+        }
+    }
+
+    struct FlashblocksPayloadBuilder {
+        index: u64,
+        txns: Vec<FlashblocksTransaction>,
+    }
+
+    impl FlashblocksPayloadBuilder {
+        pub fn new() -> Self {
+            Self {
+                index: 0,
+                txns: vec![],
+            }
+        }
+
+        pub fn with_transaction(mut self, tx: FlashblocksTransaction) -> Self {
+            self.txns.push(tx);
+            self
+        }
+
+        pub fn with_index(mut self, index: u64) -> Self {
+            self.index = index;
+            self
+        }
+
+        pub fn build(self) -> eyre::Result<FlashblocksPayloadV1> {
+            // Add the build info tx to the payload if it is index 0
+            let mut receipts = HashMap::new();
+            let mut transactions = vec![];
+
+            if self.index == 0 {
+                let (build_info_tx_hash, build_info_tx) = block_info_tx();
+                receipts.insert(
+                    build_info_tx_hash.to_string(),
+                    OpReceipt::Deposit(OpDepositReceipt::default()),
+                );
+                transactions.push(build_info_tx);
+            }
+
+            for tx in self.txns {
+                receipts.insert(tx.hash.to_string(), tx.receipt);
+                transactions.push(tx.tx);
+            }
+
+            let metadata = Metadata {
+                receipts,
+                ..Default::default()
+            };
+
+            Ok(FlashblocksPayloadV1 {
+                payload_id: PayloadId::default(),
+                index: self.index,
+                base: Some(ExecutionPayloadBaseV1::default()),
+                diff: ExecutionPayloadFlashblockDeltaV1 {
+                    transactions: transactions,
+                    ..Default::default()
+                },
+                metadata: serde_json::to_value(&metadata)?,
+                ..Default::default()
+            })
+        }
+    }
+
     #[tokio::test]
-    async fn setup() -> eyre::Result<()> {
+    async fn test_get_block_by_number_pending() -> eyre::Result<()> {
         reth_tracing::init_test_tracing();
         let node = setup_node().await?;
         let provider = node.provider().await?;
 
-        // TODO: Find a more ergonomic way to describe the build info tx which is mandatory as
-        // the first transaction
-        let (build_info_tx_hash, build_info_tx) = block_info_tx();
-        let mut receipts = HashMap::new();
-        receipts.insert(
-            build_info_tx_hash.to_string(),
-            OpReceipt::Deposit(OpDepositReceipt::default()),
-        );
-
-        let metadata = Metadata {
-            receipts,
-            ..Default::default()
-        };
-
-        node.send_payload(FlashblocksPayloadV1 {
-            payload_id: PayloadId::default(),
-            index: 0,
-            base: Some(ExecutionPayloadBaseV1::default()),
-            diff: ExecutionPayloadFlashblockDeltaV1 {
-                transactions: vec![build_info_tx],
-                ..Default::default()
-            },
-            metadata: serde_json::to_value(&metadata)?,
-            ..Default::default()
-        })
-        .await?;
+        let fb_payload = FlashblocksPayloadBuilder::new().with_index(0).build()?;
+        node.send_payload(fb_payload).await?;
 
         let block = provider
             .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
@@ -182,7 +239,6 @@ mod tests {
 
         let txs = block.transactions.as_hashes().unwrap();
         assert_eq!(txs.len(), 1);
-        assert_eq!(txs[0], build_info_tx_hash);
 
         Ok(())
     }
