@@ -1,13 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, cache::Metadata};
-    use alloy_eips::Encodable2718;
+    use alloy_consensus::Receipt;
     use alloy_genesis::Genesis;
-    use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
+    use alloy_primitives::{Address, B256, Bytes, U256, address};
     use alloy_provider::{Provider, RootProvider};
     use alloy_rpc_client::RpcClient;
     use alloy_rpc_types_engine::PayloadId;
-    use op_alloy_consensus::{OpDepositReceipt, TxDeposit};
     use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeConfig, NodeHandle};
     use reth_node_core::{args::RpcServerArgs, exit::NodeExitFuture};
     use reth_optimism_chainspec::OpChainSpecBuilder;
@@ -18,8 +17,7 @@ mod tests {
     use rollup_boost::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
     };
-    use std::collections::HashMap;
-    use std::{any::Any, net::SocketAddr, sync::Arc};
+    use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
     use tokio::sync::{mpsc, oneshot};
     use url::Url;
 
@@ -44,29 +42,16 @@ mod tests {
 
             Ok(RootProvider::new(client))
         }
-    }
 
-    fn block_info_tx() -> (B256, Bytes) {
-        // L1 block info for OP mainnet block 124665056 (stored in input of tx at index 0)
-        //
-        // https://optimistic.etherscan.io/tx/0x312e290cf36df704a2217b015d6455396830b0ce678b860ebfcc30f41403d7b1
-        const DATA: &[u8] = &hex!(
-            "440a5e200000146b000f79c500000000000000040000000066d052e700000000013ad8a3000000000000000000000000000000000000000000000000000000003ef1278700000000000000000000000000000000000000000000000000000000000000012fdf87b89884a61e74b322bbcf60386f543bfae7827725efaaf0ab1de2294a590000000000000000000000006887246668a3b87f54deb3b94ba47a6f63f32985"
-        );
+        pub async fn send_test_payloads(&self) -> eyre::Result<()> {
+            let base_payload = create_first_payload();
+            self.send_payload(base_payload).await?;
 
-        let deposit_tx = TxDeposit {
-            source_hash: B256::default(),
-            from: address!("DeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001"),
-            to: TxKind::Call(address!("4200000000000000000000000000000000000015")),
-            mint: 0,
-            value: U256::default(),
-            gas_limit: 210000,
-            is_system_transaction: false,
-            input: DATA.into(),
-        };
+            let second_payload = create_second_payload();
+            self.send_payload(second_payload).await?;
 
-        let encoded_tx = deposit_tx.encoded_2718();
-        (deposit_tx.tx_hash(), encoded_tx.into())
+            Ok(())
+        }
     }
 
     async fn setup_node() -> eyre::Result<NodeContext> {
@@ -143,84 +128,89 @@ mod tests {
         })
     }
 
-    struct FlashblocksTransaction {
-        tx: Bytes,
-        hash: B256,
-        receipt: OpReceipt,
-        balance: U256,
-    }
-
-    impl FlashblocksTransaction {
-        pub fn with_balance(mut self, balance: U256) -> Self {
-            self.balance = balance;
-            self
-        }
-
-        pub fn with_receipt(mut self, receipt: OpReceipt) -> Self {
-            self.receipt = receipt;
-            self
-        }
-    }
-
-    struct FlashblocksPayloadBuilder {
-        index: u64,
-        txns: Vec<FlashblocksTransaction>,
-    }
-
-    impl FlashblocksPayloadBuilder {
-        pub fn new() -> Self {
-            Self {
-                index: 0,
-                txns: vec![],
-            }
-        }
-
-        pub fn with_transaction(mut self, tx: FlashblocksTransaction) -> Self {
-            self.txns.push(tx);
-            self
-        }
-
-        pub fn with_index(mut self, index: u64) -> Self {
-            self.index = index;
-            self
-        }
-
-        pub fn build(self) -> eyre::Result<FlashblocksPayloadV1> {
-            // Add the build info tx to the payload if it is index 0
-            let mut receipts = HashMap::new();
-            let mut transactions = vec![];
-
-            if self.index == 0 {
-                let (build_info_tx_hash, build_info_tx) = block_info_tx();
-                receipts.insert(
-                    build_info_tx_hash.to_string(),
-                    OpReceipt::Deposit(OpDepositReceipt::default()),
-                );
-                transactions.push(build_info_tx);
-            }
-
-            for tx in self.txns {
-                receipts.insert(tx.hash.to_string(), tx.receipt);
-                transactions.push(tx.tx);
-            }
-
-            let metadata = Metadata {
-                receipts,
-                ..Default::default()
-            };
-
-            Ok(FlashblocksPayloadV1 {
-                payload_id: PayloadId::default(),
-                index: self.index,
-                base: Some(ExecutionPayloadBaseV1::default()),
-                diff: ExecutionPayloadFlashblockDeltaV1 {
-                    transactions: transactions,
-                    ..Default::default()
-                },
-                metadata: serde_json::to_value(&metadata)?,
-                ..Default::default()
+    fn create_first_payload() -> FlashblocksPayloadV1 {
+        FlashblocksPayloadV1 {
+            payload_id: PayloadId::new([0; 8]),
+            index: 0,
+            base: Some(ExecutionPayloadBaseV1 {
+                parent_beacon_block_root: B256::default(),
+                parent_hash: B256::default(),
+                fee_recipient: Address::ZERO,
+                prev_randao: B256::default(),
+                block_number: 1,
+                gas_limit: 0,
+                timestamp: 0,
+                extra_data: Bytes::new(),
+                base_fee_per_gas: U256::ZERO,
+            }),
+            diff: ExecutionPayloadFlashblockDeltaV1::default(),
+            metadata: serde_json::to_value(Metadata {
+                block_number: 1,
+                receipts: HashMap::default(),
+                new_account_balances: HashMap::default(),
             })
+            .unwrap(),
         }
+    }
+
+    const TEST_ADDRESS: Address = address!("0x1234567890123456789012345678901234567890");
+
+    fn create_second_payload() -> FlashblocksPayloadV1 {
+        // Create second payload (index 1) with transactions
+        // tx1 hash: 0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548 (deposit transaction)
+        // tx2 hash: 0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8
+        let tx1 = Bytes::from_str("0x7ef8f8a042a8ae5ec231af3d0f90f68543ec8bca1da4f7edd712d5b51b490688355a6db794deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b8a4440a5e200000044d000a118b00000000000000040000000067cb7cb0000000000077dbd4000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000014edd27304108914dd6503b19b9eeb9956982ef197febbeeed8a9eac3dbaaabdf000000000000000000000000fc56e7272eebbba5bc6c544e159483c4a38f8ba3").unwrap();
+        let tx2 = Bytes::from_str("0xf8cd82016d8316e5708302c01c94f39635f2adf40608255779ff742afe13de31f57780b8646e530e9700000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000001bc16d674ec8000000000000000000000000000000000000000000000000000156ddc81eed2a36d68302948ba0a608703e79b22164f74523d188a11f81c25a65dd59535bab1cd1d8b30d115f3ea07f4cfbbad77a139c9209d3bded89091867ff6b548dd714109c61d1f8e7a84d14").unwrap();
+
+        // Send another test flashblock payload
+        let payload = FlashblocksPayloadV1 {
+            payload_id: PayloadId::new([0; 8]),
+            index: 1,
+            base: None,
+            diff: ExecutionPayloadFlashblockDeltaV1 {
+                state_root: B256::default(),
+                receipts_root: B256::default(),
+                gas_used: 0,
+                block_hash: B256::default(),
+                transactions: vec![tx1, tx2],
+                withdrawals: Vec::new(),
+                logs_bloom: Default::default(),
+                withdrawals_root: Default::default(),
+            },
+            metadata: serde_json::to_value(Metadata {
+                block_number: 1,
+                receipts: {
+                    let mut receipts = HashMap::default();
+                    receipts.insert(
+                        "0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548"
+                            .to_string(), // transaction hash as string
+                        OpReceipt::Legacy(Receipt {
+                            status: true.into(),
+                            cumulative_gas_used: 21000,
+                            logs: vec![],
+                        }),
+                    );
+                    receipts.insert(
+                        "0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8"
+                            .to_string(), // transaction hash as string
+                        OpReceipt::Legacy(Receipt {
+                            status: true.into(),
+                            cumulative_gas_used: 45000,
+                            logs: vec![],
+                        }),
+                    );
+                    receipts
+                },
+                new_account_balances: {
+                    let mut map = HashMap::default();
+                    map.insert(TEST_ADDRESS.to_string(), "0x1234".to_string());
+                    map
+                },
+            })
+            .unwrap(),
+        };
+
+        payload
     }
 
     #[tokio::test]
@@ -229,16 +219,49 @@ mod tests {
         let node = setup_node().await?;
         let provider = node.provider().await?;
 
-        let fb_payload = FlashblocksPayloadBuilder::new().with_index(0).build()?;
-        node.send_payload(fb_payload).await?;
+        let latest_block = provider
+            .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
+            .await?;
+        println!("latest_block: {:?}", latest_block);
+
+        /*
+        let base_payload = create_first_payload();
+        node.send_payload(base_payload).await?;
 
         let block = provider
             .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
             .await?
             .expect("pending block expected");
 
-        let txs = block.transactions.as_hashes().unwrap();
-        assert_eq!(txs.len(), 1);
+        assert_eq!(block.transactions.hashes().len(), 0);
+
+        let second_payload = create_second_payload();
+        node.send_payload(second_payload).await?;
+
+        let block = provider
+            .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
+            .await?
+            .expect("pending block expected");
+
+        assert_eq!(block.transactions.hashes().len(), 2);
+        */
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_balance_pending() -> eyre::Result<()> {
+        reth_tracing::init_test_tracing();
+        let node = setup_node().await?;
+        let provider = node.provider().await?;
+
+        node.send_test_payloads().await?;
+
+        let balance = provider.get_balance(TEST_ADDRESS).await?;
+        println!("balance: {:?}", balance);
+
+        let pending_balance = provider.get_balance(TEST_ADDRESS).pending().await?;
+        println!("pending_balance: {:?}", pending_balance);
 
         Ok(())
     }

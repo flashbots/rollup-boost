@@ -112,16 +112,23 @@ where
     ) -> RpcResult<U256> {
         debug!("get_balance: {:?}, {:?}", address, block_number);
 
+        println!("block_number: {:?}", block_number);
+
         let block_id = block_number.unwrap_or_default();
+        println!("block_id: {:?}", block_id);
         if block_id.is_pending() {
+            println!("pending");
             if let Some(balance) = self.flashblocks_api.get_balance(address).await {
                 return Ok(balance);
             }
         }
-
+        println!("not pending");
         EthState::balance(&self.eth_api, address, block_number)
             .await
-            .map_err(Into::into)
+            .map_err(|e| {
+                println!("error: {:?}", e);
+                e.into()
+            })
     }
 
     async fn get_transaction_count(

@@ -191,29 +191,33 @@ impl FlashblocksCacheInner {
             self.nonce_cache.insert(*address, *nonce);
         }
 
-        let mut l1_block_info = extract_l1_info(&block.body).expect("failed to extract l1 info");
+        if !block.body.transactions.is_empty() {
+            // The first transaction in an Op block is the L1 info transaction.
+            let mut l1_block_info =
+                extract_l1_info(&block.body).expect("failed to extract l1 info");
 
-        // build the receipts
-        for (indx, tx) in block.body.transactions.iter().enumerate() {
-            let receipt = all_receipts
-                .get(indx)
-                .expect("Receipt should exist for transaction");
+            // build the receipts
+            for (indx, tx) in block.body.transactions.iter().enumerate() {
+                let receipt = all_receipts
+                    .get(indx)
+                    .expect("Receipt should exist for transaction");
 
-            let meta = TransactionMeta::default();
+                let meta = TransactionMeta::default();
 
-            let rpc_receipt = OpReceiptBuilder::new(
-                &self.chain_spec.clone(),
-                tx,
-                meta,
-                receipt,
-                &all_receipts,
-                &mut l1_block_info,
-            )
-            .expect("failed to build receipt")
-            .build();
+                let rpc_receipt = OpReceiptBuilder::new(
+                    &self.chain_spec.clone(),
+                    tx,
+                    meta,
+                    receipt,
+                    &all_receipts,
+                    &mut l1_block_info,
+                )
+                .expect("failed to build receipt")
+                .build();
 
-            self.receipts_cache
-                .insert(tx.tx_hash(), rpc_receipt.clone());
+                self.receipts_cache
+                    .insert(tx.tx_hash(), rpc_receipt.clone());
+            }
         }
 
         self.block = Some(block);
@@ -232,6 +236,9 @@ impl FlashblocksCacheInner {
     }
 
     pub fn get_balance(&self, address: Address) -> Option<U256> {
+        println!("get_balance: {:?}", address);
+        println!("balance_cache: {:?}", self.balance_cache);
+
         self.balance_cache.get(&address).cloned()
     }
 
