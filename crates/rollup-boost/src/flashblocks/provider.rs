@@ -49,7 +49,7 @@ impl FlashblocksProvider {
         }
     }
 
-    pub fn handle_flashblock_stream(
+    fn handle_flashblock_stream(
         payload_id: Arc<Mutex<PayloadId>>,
         payload_builder: Arc<Mutex<FlashblockBuilder>>,
         mut payload_rx: broadcast::Receiver<FlashblocksPayloadV1>,
