@@ -1,3 +1,4 @@
+use super::FlashblocksPayloadV1;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use parking_lot::Mutex;
@@ -17,21 +18,28 @@ use tokio_util::bytes::Bytes;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-use super::FlashblocksPayloadV1;
-
-// NOTE: update to use FlashblocksPublisher and FlashblocksSubscriber
-pub struct FlashblocksPubSubManager;
+pub struct FlashblocksPubSubManager {
+    subscriber_handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
+    publisher_handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
+    payload_rx: broadcast::Receiver<FlashblocksPayloadV1>,
+}
 
 impl FlashblocksPubSubManager {
-    pub fn spawn(
-        builder_ws_endpoint: Url,
-    ) -> Result<broadcast::Receiver<FlashblocksPayloadV1>, FlashblocksPubSubError> {
+    pub fn spawn(builder_ws_endpoint: Url) -> Result<Self, FlashblocksPubSubError> {
         let (payload_tx, payload_rx) = broadcast::channel(100);
         let publisher_rx = payload_tx.subscribe();
-        FlashblocksSubscriber::spawn(builder_ws_endpoint, payload_tx)?;
-        FlashblocksPublisher::spawn(publisher_rx);
+        let subscriber = FlashblocksSubscriber::spawn(builder_ws_endpoint, payload_tx);
+        let publisher = FlashblocksPublisher::spawn(publisher_rx);
 
-        Ok(payload_rx)
+        Ok(Self {
+            subscriber_handle: subscriber,
+            publisher_handle: publisher,
+            payload_rx,
+        })
+    }
+
+    pub fn payload_rx(&self) -> broadcast::Receiver<FlashblocksPayloadV1> {
+        self.payload_rx.resubscribe()
     }
 }
 
@@ -43,7 +51,7 @@ impl FlashblocksSubscriber {
     fn spawn(
         builder_ws_endpoint: Url,
         payload_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    ) -> Result<(), FlashblocksPubSubError> {
+    ) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
         let payload_tx = Arc::new(payload_tx);
         tokio::spawn(async move {
             loop {
@@ -75,9 +83,7 @@ impl FlashblocksSubscriber {
 
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
-        });
-
-        Ok(())
+        })
     }
 
     fn handle_flashblocks_stream(
@@ -140,7 +146,9 @@ fn spawn_ping(
 pub struct FlashblocksPublisher;
 
 impl FlashblocksPublisher {
-    fn spawn(payload_rx: broadcast::Receiver<FlashblocksPayloadV1>) {
+    fn spawn(
+        payload_rx: broadcast::Receiver<FlashblocksPayloadV1>,
+    ) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
         todo!()
     }
 }

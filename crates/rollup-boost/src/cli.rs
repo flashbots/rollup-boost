@@ -179,16 +179,11 @@ impl Args {
             // TODO: update this to use a flashblocks client that queries the flashblocks manager
             // let flashblocks_provider = FlashblocksProvider::new(manager);
 
-            let payload_rx = FlashblocksPubSubManager::spawn(builder_ws_url)?;
-            let flashblocks_provider =
-                Arc::new(FlashblocksProvider::new(builder_client, payload_rx));
-
-            // let builder_client = Arc::new(FlashblocksManager::run(
-            //     builder_client.clone(),
-            //     builder_ws_url,
-            //     outbound_addr,
-            //     self.flashblocks.flashblock_builder_ws_reconnect_ms,
-            // )?);
+            let pubsub_manager = FlashblocksPubSubManager::spawn(builder_ws_url)?;
+            let flashblocks_provider = Arc::new(FlashblocksProvider::new(
+                builder_client,
+                pubsub_manager.payload_rx(),
+            ));
 
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
