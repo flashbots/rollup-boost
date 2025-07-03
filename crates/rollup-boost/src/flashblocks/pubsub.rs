@@ -1,21 +1,15 @@
 use super::FlashblocksPayloadV1;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use parking_lot::Mutex;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::watch::error::RecvError;
 use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::{self, Message};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tokio_util::bytes::Bytes;
-use tokio_util::sync::CancellationToken;
 use url::Url;
 
 pub struct FlashblocksPubSubManager {

@@ -1,9 +1,7 @@
-use super::outbound::WebSocketPublisher;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
 use crate::RpcClient;
-use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion,
     payload_id_optimism,
@@ -14,19 +12,14 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_engine::{ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus};
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use core::net::SocketAddr;
 use jsonrpsee::core::async_trait;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
-use serde::{Deserialize, Serialize};
-use std::io;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::mpsc;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::broadcast;
 use tracing::{error, info};
 
 pub struct FlashblocksProvider {
