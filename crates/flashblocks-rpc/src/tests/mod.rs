@@ -7,8 +7,12 @@ mod tests {
     use alloy_provider::{Provider, RootProvider};
     use alloy_rpc_client::RpcClient;
     use alloy_rpc_types_engine::PayloadId;
+    use op_alloy_network::Ethereum;
     use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeConfig, NodeHandle};
-    use reth_node_core::{args::RpcServerArgs, exit::NodeExitFuture};
+    use reth_node_core::{
+        args::{DevArgs, RpcServerArgs},
+        exit::NodeExitFuture,
+    };
     use reth_optimism_chainspec::OpChainSpecBuilder;
     use reth_optimism_node::{OpNode, args::RollupArgs};
     use reth_optimism_primitives::OpReceipt;
@@ -17,15 +21,17 @@ mod tests {
     use rollup_boost::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
     };
-    use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
+    use std::{
+        any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc, time::Duration,
+    };
     use tokio::sync::{mpsc, oneshot};
     use url::Url;
 
     pub struct NodeContext {
-        _node: Box<dyn Any + Sync + Send>,
-        _node_exit_future: NodeExitFuture,
         sender: mpsc::Sender<(FlashblocksPayloadV1, oneshot::Sender<()>)>,
         http_api_addr: SocketAddr,
+        _node_exit_future: NodeExitFuture,
+        _node: Box<dyn Any + Sync + Send>,
     }
 
     impl NodeContext {
@@ -105,14 +111,7 @@ mod tests {
 
                 Ok(())
             })
-            .launch_with_fn(|builder| {
-                let launcher = EngineNodeLauncher::new(
-                    builder.task_executor().clone(),
-                    builder.config().datadir(),
-                    Default::default(),
-                );
-                builder.launch_with(launcher)
-            })
+            .launch()
             .await?;
 
         let http_api_addr = node
@@ -120,11 +119,21 @@ mod tests {
             .http_local_addr()
             .ok_or_else(|| eyre::eyre!("Failed to get http api address"))?;
 
+        let url = format!("http://{}", http_api_addr);
+        let client = RpcClient::builder().http(url.parse()?);
+        let provider: RootProvider<Ethereum> = RootProvider::new(client);
+
+        let latest_block = provider
+            .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
+            .await?;
+
+        println!("latest_block: {:?}", latest_block);
+
         Ok(NodeContext {
-            _node: Box::new(node),
-            _node_exit_future: node_exit_future,
             sender,
             http_api_addr,
+            _node_exit_future: node_exit_future,
+            _node: Box::new(node),
         })
     }
 
@@ -217,6 +226,13 @@ mod tests {
     async fn test_get_block_by_number_pending() -> eyre::Result<()> {
         reth_tracing::init_test_tracing();
         let node = setup_node().await?;
+        let provider0 = node.provider().await?;
+
+        let latest_block = provider0
+            .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
+            .await?;
+        println!("latest_block: {:?}", latest_block);
+
         let provider = node.provider().await?;
 
         let latest_block = provider
