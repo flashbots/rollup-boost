@@ -4,7 +4,7 @@ use eyre::bail;
 use jsonrpsee::{RpcModule, server::Server};
 use parking_lot::Mutex;
 use std::{
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -171,15 +171,12 @@ impl Args {
 
         let (rpc_module, health_handle): (RpcModule<()>, _) = if self.flashblocks.flashblocks {
             let builder_ws_url = self.flashblocks.flashblocks_builder_url;
-            let outbound_addr = SocketAddr::new(
+            let listener_addr = SocketAddr::new(
                 IpAddr::from_str(&self.flashblocks.flashblocks_host)?,
                 self.flashblocks.flashblocks_port,
             );
 
-            // TODO: update this to use a flashblocks client that queries the flashblocks manager
-            // let flashblocks_provider = FlashblocksProvider::new(manager);
-
-            let pubsub_manager = FlashblocksPubSubManager::spawn(builder_ws_url)?;
+            let pubsub_manager = FlashblocksPubSubManager::spawn(builder_ws_url, listener_addr)?;
             let flashblocks_provider = Arc::new(FlashblocksProvider::new(
                 builder_client,
                 pubsub_manager.payload_rx(),
