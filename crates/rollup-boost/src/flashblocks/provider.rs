@@ -17,7 +17,8 @@ use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;
@@ -62,12 +63,10 @@ impl FlashblocksProvider {
                 let flashblock = serde_json::from_str::<FlashblocksPayloadV1>(&payload_bytes)?;
                 // self.metrics.messages_processed.increment(1);
 
-                let local_payload_id = payload_id.lock().unwrap();
+                let local_payload_id = payload_id.lock();
                 if *local_payload_id == flashblock.payload_id {
-                    let mut payload_builder = payload_builder.lock().unwrap();
-                    payload_builder
-                        .extend(flashblock)
-                        .expect("TODO: handle error");
+                    let mut payload_builder = payload_builder.lock();
+                    payload_builder.extend(flashblock)?;
                 } else {
                     // self.metrics.current_payload_id_mismatch.increment(1);
                     error!(
@@ -79,6 +78,29 @@ impl FlashblocksProvider {
                 }
             }
         })
+    }
+
+    fn take_payload(
+        &self,
+        version: PayloadVersion,
+        payload_id: PayloadId,
+    ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
+        // Check that we have flashblocks for correct payload
+        if *self.payload_id.lock() != payload_id {
+            // We have outdated `current_payload_id` so we should fallback to get_payload
+            // Clearing best_payload in here would cause situation when old `get_payload` would clear
+            // currently built correct flashblocks.
+            // This will self-heal on the next FCU.
+            return Err(FlashblocksError::MissingPayload);
+        }
+        // consume the best payload and reset the builder
+        let payload = {
+            let mut builder = self.payload_builder.lock();
+            // Take payload and place new one in its place in one go to avoid double locking
+            std::mem::replace(&mut *builder, FlashblockBuilder::new()).into_envelope(version)?
+        };
+
+        Ok(payload)
     }
 }
 
@@ -93,7 +115,7 @@ impl EngineApiExt for FlashblocksProvider {
         if let Some(attr) = &payload_attributes {
             let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attr, 3);
             tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
-            *self.payload_id.lock().expect("TODO: handle error ") = payload_id;
+            *self.payload_id.lock() = payload_id;
         }
 
         let resp = self
@@ -113,23 +135,13 @@ impl EngineApiExt for FlashblocksProvider {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> ClientResult<OpExecutionPayloadEnvelope> {
-        // Check that we have flashblocks for correct payload
-        let payload = if *self.payload_id.lock().expect("TODO: handle error ") == payload_id {
-            let mut builder = self.payload_builder.lock().expect("TODO: handle error ");
-            // Take payload and place new one in its place in one go to avoid double locking
-            std::mem::replace(&mut *builder, FlashblockBuilder::new())
-                .into_envelope(version)
-                .expect("TODO: handle error")
-        } else {
-            // We have outdated `current_payload_id` so we should fallback to get_payload
-            // Clearing best_payload in here would cause situation when old `get_payload` would clear
-            // currently built correct flashblocks.
-            // This will self-heal on the next FCU.
-            error!(target: "provider::get_payload", message = "Payload id mismatch");
-            self.builder_client.get_payload(payload_id, version).await?
-        };
-
-        Ok(payload)
+        match self.take_payload(version, payload_id) {
+            Ok(payload) => Ok(payload),
+            Err(e) => {
+                error!("Failed to get flashblocks payload, falling back: {e}");
+                self.builder_client.get_payload(payload_id, version).await
+            }
+        }
     }
 
     async fn get_block_by_number(
