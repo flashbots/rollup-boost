@@ -22,6 +22,7 @@ use thiserror::Error;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tracing::error;
 
 pub struct FlashblocksProvider {
@@ -32,10 +33,7 @@ pub struct FlashblocksProvider {
 }
 
 impl FlashblocksProvider {
-    pub fn new(
-        builder_client: RpcClient,
-        payload_rx: broadcast::Receiver<FlashblocksPayloadV1>,
-    ) -> Self {
+    pub fn new(builder_client: RpcClient, payload_rx: broadcast::Receiver<Utf8Bytes>) -> Self {
         let payload_id = Arc::new(Mutex::new(PayloadId::default()));
         let payload_builder = Arc::new(Mutex::new(FlashblockBuilder::default()));
 
@@ -56,11 +54,12 @@ impl FlashblocksProvider {
     fn handle_flashblock_stream(
         payload_id: Arc<Mutex<PayloadId>>,
         payload_builder: Arc<Mutex<FlashblockBuilder>>,
-        mut payload_rx: broadcast::Receiver<FlashblocksPayloadV1>,
+        mut payload_rx: broadcast::Receiver<Utf8Bytes>,
     ) -> JoinHandle<Result<(), FlashblocksError>> {
         tokio::spawn(async move {
             loop {
-                let flashblock = payload_rx.recv().await?;
+                let payload_bytes = payload_rx.recv().await?;
+                let flashblock = serde_json::from_str::<FlashblocksPayloadV1>(&payload_bytes)?;
                 // self.metrics.messages_processed.increment(1);
 
                 let local_payload_id = payload_id.lock().unwrap();
@@ -266,4 +265,6 @@ pub enum FlashblocksError {
     MissingPayload,
     #[error(transparent)]
     RecvError(#[from] RecvError),
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
 }
