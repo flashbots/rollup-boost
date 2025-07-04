@@ -3,16 +3,12 @@ mod tests {
     use crate::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, cache::Metadata};
     use alloy_consensus::Receipt;
     use alloy_genesis::Genesis;
-    use alloy_primitives::{Address, B256, Bytes, U256, address};
+    use alloy_primitives::{Address, B256, Bytes, TxHash, U256, address, b256};
     use alloy_provider::{Provider, RootProvider};
     use alloy_rpc_client::RpcClient;
     use alloy_rpc_types_engine::PayloadId;
-    use op_alloy_network::Ethereum;
-    use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeConfig, NodeHandle};
-    use reth_node_core::{
-        args::{DevArgs, RpcServerArgs},
-        exit::NodeExitFuture,
-    };
+    use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
+    use reth_node_core::{args::RpcServerArgs, exit::NodeExitFuture};
     use reth_optimism_chainspec::OpChainSpecBuilder;
     use reth_optimism_node::{OpNode, args::RollupArgs};
     use reth_optimism_primitives::OpReceipt;
@@ -21,9 +17,7 @@ mod tests {
     use rollup_boost::{
         ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
     };
-    use std::{
-        any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc, time::Duration,
-    };
+    use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
     use tokio::sync::{mpsc, oneshot};
     use url::Url;
 
@@ -32,6 +26,7 @@ mod tests {
         http_api_addr: SocketAddr,
         _node_exit_future: NodeExitFuture,
         _node: Box<dyn Any + Sync + Send>,
+        _task_manager: TaskManager,
     }
 
     impl NodeContext {
@@ -119,21 +114,12 @@ mod tests {
             .http_local_addr()
             .ok_or_else(|| eyre::eyre!("Failed to get http api address"))?;
 
-        let url = format!("http://{}", http_api_addr);
-        let client = RpcClient::builder().http(url.parse()?);
-        let provider: RootProvider<Ethereum> = RootProvider::new(client);
-
-        let latest_block = provider
-            .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
-            .await?;
-
-        println!("latest_block: {:?}", latest_block);
-
         Ok(NodeContext {
             sender,
             http_api_addr,
             _node_exit_future: node_exit_future,
             _node: Box::new(node),
+            _task_manager: tasks,
         })
     }
 
@@ -163,6 +149,12 @@ mod tests {
     }
 
     const TEST_ADDRESS: Address = address!("0x1234567890123456789012345678901234567890");
+    const PENDING_BALANCE: u64 = 4600;
+
+    const TX1_HASH: TxHash =
+        b256!("0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548");
+    const TX2_HASH: TxHash =
+        b256!("0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8");
 
     fn create_second_payload() -> FlashblocksPayloadV1 {
         // Create second payload (index 1) with transactions
@@ -191,8 +183,7 @@ mod tests {
                 receipts: {
                     let mut receipts = HashMap::default();
                     receipts.insert(
-                        "0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548"
-                            .to_string(), // transaction hash as string
+                        TX1_HASH.to_string(), // transaction hash as string
                         OpReceipt::Legacy(Receipt {
                             status: true.into(),
                             cumulative_gas_used: 21000,
@@ -200,8 +191,7 @@ mod tests {
                         }),
                     );
                     receipts.insert(
-                        "0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8"
-                            .to_string(), // transaction hash as string
+                        TX2_HASH.to_string(), // transaction hash as string
                         OpReceipt::Legacy(Receipt {
                             status: true.into(),
                             cumulative_gas_used: 45000,
@@ -212,7 +202,10 @@ mod tests {
                 },
                 new_account_balances: {
                     let mut map = HashMap::default();
-                    map.insert(TEST_ADDRESS.to_string(), "0x1234".to_string());
+                    map.insert(
+                        TEST_ADDRESS.to_string(),
+                        format!("0x{:x}", U256::from(PENDING_BALANCE)),
+                    );
                     map
                 },
             })
@@ -226,41 +219,43 @@ mod tests {
     async fn test_get_block_by_number_pending() -> eyre::Result<()> {
         reth_tracing::init_test_tracing();
         let node = setup_node().await?;
-        let provider0 = node.provider().await?;
-
-        let latest_block = provider0
-            .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
-            .await?;
-        println!("latest_block: {:?}", latest_block);
-
         let provider = node.provider().await?;
 
         let latest_block = provider
             .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
-            .await?;
-        println!("latest_block: {:?}", latest_block);
+            .await?
+            .expect("latest block expected");
+        assert_eq!(latest_block.number(), 0);
 
-        /*
+        // Querying pending block when it does not exists yet
+        let pending_block = provider
+            .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
+            .await?;
+        assert_eq!(pending_block.is_none(), true);
+
         let base_payload = create_first_payload();
         node.send_payload(base_payload).await?;
 
-        let block = provider
+        // Query pending block after sending the base payload with an empty delta
+        let pending_block = provider
             .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
             .await?
             .expect("pending block expected");
 
-        assert_eq!(block.transactions.hashes().len(), 0);
+        assert_eq!(pending_block.number(), 1);
+        assert_eq!(pending_block.transactions.hashes().len(), 0);
 
         let second_payload = create_second_payload();
         node.send_payload(second_payload).await?;
 
+        // Query pending block after sending the second payload with two transactions
         let block = provider
             .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
             .await?
             .expect("pending block expected");
 
+        assert_eq!(block.number(), 1);
         assert_eq!(block.transactions.hashes().len(), 2);
-        */
 
         Ok(())
     }
@@ -274,10 +269,33 @@ mod tests {
         node.send_test_payloads().await?;
 
         let balance = provider.get_balance(TEST_ADDRESS).await?;
-        println!("balance: {:?}", balance);
+        assert_eq!(balance, U256::ZERO);
 
         let pending_balance = provider.get_balance(TEST_ADDRESS).pending().await?;
-        println!("pending_balance: {:?}", pending_balance);
+        assert_eq!(pending_balance, U256::from(PENDING_BALANCE));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_transaction_receipt_pending() -> eyre::Result<()> {
+        reth_tracing::init_test_tracing();
+        let node = setup_node().await?;
+        let provider = node.provider().await?;
+
+        let receipt = provider.get_transaction_receipt(TX1_HASH).await?;
+        assert_eq!(receipt.is_none(), true);
+
+        node.send_test_payloads().await?;
+
+        let receipt = provider
+            .get_transaction_receipt(TX1_HASH)
+            .await?
+            .expect("receipt expected");
+        assert_eq!(receipt.gas_used, 21000);
+
+        // TODO: Add a new payload and validate that the receipts from the previous payload
+        // are not returned.
 
         Ok(())
     }

@@ -236,9 +236,6 @@ impl FlashblocksCacheInner {
     }
 
     pub fn get_balance(&self, address: Address) -> Option<U256> {
-        println!("get_balance: {:?}", address);
-        println!("balance_cache: {:?}", self.balance_cache);
-
         self.balance_cache.get(&address).cloned()
     }
 
