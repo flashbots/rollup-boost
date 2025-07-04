@@ -8,7 +8,10 @@ mod tests {
     use alloy_rpc_client::RpcClient;
     use alloy_rpc_types_engine::PayloadId;
     use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
-    use reth_node_core::{args::RpcServerArgs, exit::NodeExitFuture};
+    use reth_node_core::{
+        args::{DiscoveryArgs, NetworkArgs, RpcServerArgs},
+        exit::NodeExitFuture,
+    };
     use reth_optimism_chainspec::OpChainSpecBuilder;
     use reth_optimism_node::{OpNode, args::RollupArgs};
     use reth_optimism_primitives::OpReceipt;
@@ -67,8 +70,17 @@ mod tests {
                 .build(),
         );
 
+        let network_config = NetworkArgs {
+            discovery: DiscoveryArgs {
+                disable_discovery: true,
+                ..DiscoveryArgs::default()
+            },
+            ..NetworkArgs::default()
+        };
+
         // Use with_unused_ports() to let Reth allocate random ports and avoid port collisions
         let node_config = NodeConfig::new(chain_spec.clone())
+            .with_network(network_config.clone())
             .with_rpc(RpcServerArgs::default().with_unused_ports().with_http())
             .with_unused_ports();
 
