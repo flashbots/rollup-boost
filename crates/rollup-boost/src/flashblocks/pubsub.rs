@@ -1,4 +1,5 @@
 use super::FlashblocksPayloadV1;
+use super::metrics::FlashblocksSubscriberMetrics;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use std::net::SocketAddr;
@@ -39,7 +40,7 @@ impl FlashblocksPubSubManager {
 }
 
 #[derive(Clone, Debug)]
-pub struct FlashblocksSubscriber;
+pub struct FlashblocksSubscriber {}
 
 impl FlashblocksSubscriber {
     fn spawn(
@@ -47,6 +48,7 @@ impl FlashblocksSubscriber {
         payload_tx: broadcast::Sender<Utf8Bytes>,
     ) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
         let payload_tx = Arc::new(payload_tx);
+        let metrics = FlashblocksSubscriberMetrics::default();
 
         tokio::spawn(async move {
             loop {
