@@ -175,7 +175,6 @@ impl FlashblocksPublisher {
                 }
                 Err(RecvError::Lagged(skipped)) => {
                     tracing::warn!("Broadcast channel lagged, skipped {skipped} messages");
-                    // Optionally continue looping.
                 }
             }
         }
