@@ -1,5 +1,6 @@
 use super::FlashblocksPayloadV1;
 use super::metrics::FlashblocksSubscriberMetrics;
+use super::provider::FlashblocksProvider;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use std::net::SocketAddr;
@@ -15,42 +16,42 @@ use tokio_util::bytes::Bytes;
 use url::Url;
 
 pub struct FlashblocksPubSubManager {
-    subscriber_handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
-    publisher_handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
-    payload_rx: broadcast::Receiver<Utf8Bytes>,
+    subscriber: FlashblocksSubscriber,
+    publisher: FlashblocksPublisher,
 }
 
 impl FlashblocksPubSubManager {
     pub fn spawn(
         builder_ws_endpoint: Url,
         listen_addr: SocketAddr,
+        flashblocks_provider: Arc<FlashblocksProvider>,
     ) -> Result<Self, FlashblocksPubSubError> {
         let (payload_tx, payload_rx) = broadcast::channel(100);
 
         Ok(Self {
-            subscriber_handle: FlashblocksSubscriber::spawn(builder_ws_endpoint, payload_tx),
-            publisher_handle: FlashblocksPublisher::spawn(listen_addr, payload_rx.resubscribe()),
-            payload_rx,
+            subscriber: FlashblocksSubscriber::new(
+                builder_ws_endpoint,
+                payload_tx,
+                flashblocks_provider,
+            ),
+            publisher: FlashblocksPublisher::new(listen_addr, payload_rx),
         })
-    }
-
-    pub fn payload_rx(&self) -> broadcast::Receiver<Utf8Bytes> {
-        self.payload_rx.resubscribe()
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct FlashblocksSubscriber {}
+pub struct FlashblocksSubscriber {
+    handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
+}
 
 impl FlashblocksSubscriber {
-    fn spawn(
+    fn new(
         builder_ws_endpoint: Url,
         payload_tx: broadcast::Sender<Utf8Bytes>,
-    ) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
+        flashblocks_provider: Arc<FlashblocksProvider>,
+    ) -> Self {
         let payload_tx = Arc::new(payload_tx);
         let metrics = FlashblocksSubscriberMetrics::default();
-
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             loop {
                 let Ok((ws_stream, _)) = connect_async(builder_ws_endpoint.as_str()).await else {
                     // TODO: log error
@@ -65,8 +66,10 @@ impl FlashblocksSubscriber {
                 let ping_handle = spawn_ping(sink, pong_rx);
                 let stream_handle = FlashblocksSubscriber::handle_flashblocks_stream(
                     stream,
+                    flashblocks_provider.clone(),
                     payload_tx.clone(),
                     pong_tx,
+                    metrics.clone(),
                 );
 
                 tokio::select! {
@@ -80,13 +83,17 @@ impl FlashblocksSubscriber {
 
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
-        })
+        });
+
+        Self { handle }
     }
 
     fn handle_flashblocks_stream(
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        flashblocks_provider: Arc<FlashblocksProvider>,
         payload_tx: Arc<broadcast::Sender<Utf8Bytes>>,
         pong_tx: watch::Sender<Message>,
+        metrics: FlashblocksSubscriberMetrics,
     ) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
         tokio::spawn(async move {
             while let Some(msg) = stream.next().await {
@@ -97,6 +104,39 @@ impl FlashblocksSubscriber {
 
                 match msg {
                     Message::Text(bytes) => {
+                        if let Ok(flashblock) = serde_json::from_str::<FlashblocksPayloadV1>(&bytes)
+                        {
+                            let local_payload_id = flashblocks_provider.payload_id.lock();
+
+                            if *local_payload_id == flashblock.payload_id {
+                                let mut payload_builder =
+                                    flashblocks_provider.payload_builder.lock();
+                                let flashblock_index = flashblock.index;
+                                if let Err(e) = payload_builder.extend(flashblock) {
+                                    metrics.extend_payload_errors.increment(1);
+                                    tracing::error!(
+                                        message = "Failed to extend payload",
+                                        error = %e,
+                                        payload_id = %local_payload_id,
+                                        index = flashblock_index
+                                    );
+                                    continue;
+                                }
+                            } else {
+                                metrics.current_payload_id_mismatch.increment(1);
+                                tracing::error!(
+                                    message = "Payload ID mismatch",
+                                    payload_id = %flashblock.payload_id,
+                                    %local_payload_id,
+                                    index = flashblock.index,
+                                );
+                                continue;
+                            }
+                        } else {
+                            // TODO: error
+                            continue;
+                        }
+
                         payload_tx.send(bytes)?;
                     }
                     Message::Pong(_) => {
@@ -136,17 +176,17 @@ fn spawn_ping(
     })
 }
 
-pub struct FlashblocksPublisher;
+pub struct FlashblocksPublisher {
+    handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
+}
 
 impl FlashblocksPublisher {
-    fn spawn(
-        listen_addr: SocketAddr,
-        publisher_rx: broadcast::Receiver<Utf8Bytes>,
-    ) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
-        tokio::spawn(async move {
+    fn new(listen_addr: SocketAddr, publisher_rx: broadcast::Receiver<Utf8Bytes>) -> Self {
+        let handle = tokio::spawn(async move {
             let listener = TcpListener::bind(listen_addr)
                 .await
-                .expect("TODO: handle error");
+                .expect("Could not bind publisher to listener addr");
+
             loop {
                 let (tcp_stream, _) = listener.accept().await.expect("TODO: handle error");
 
@@ -154,7 +194,9 @@ impl FlashblocksPublisher {
                 let rx = publisher_rx.resubscribe();
                 tokio::spawn(Self::handle_connection(ws_stream, rx));
             }
-        })
+        });
+
+        Self { handle }
     }
 
     async fn handle_connection(

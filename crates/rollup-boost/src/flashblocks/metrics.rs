@@ -45,11 +45,7 @@ pub struct FlashblocksSubscriberMetrics {
 
     #[metric(describe = "Number of flashblock messages received from builder")]
     pub messages_received: Counter,
-}
 
-#[derive(Metrics, Clone)]
-#[metrics(scope = "flashblocks.provider")]
-pub struct FlashblocksProviderMetrics {
     #[metric(describe = "Number of errors when extending payload")]
     pub extend_payload_errors: Counter,
 

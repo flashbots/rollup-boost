@@ -176,11 +176,12 @@ impl Args {
                 self.flashblocks.flashblocks_port,
             );
 
-            let pubsub_manager = FlashblocksPubSubManager::spawn(builder_ws_url, listener_addr)?;
-            let flashblocks_provider = Arc::new(FlashblocksProvider::new(
-                builder_client,
-                pubsub_manager.payload_rx(),
-            ));
+            let flashblocks_provider = Arc::new(FlashblocksProvider::new(builder_client));
+            let pubsub_manager = FlashblocksPubSubManager::spawn(
+                builder_ws_url,
+                listener_addr,
+                flashblocks_provider.clone(),
+            )?;
 
             let rollup_boost = RollupBoostServer::new(
                 l2_client,

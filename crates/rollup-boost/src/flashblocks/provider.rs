@@ -1,4 +1,3 @@
-use super::metrics::FlashblocksProviderMetrics;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
@@ -21,79 +20,25 @@ use op_alloy_rpc_types_engine::{
 use parking_lot::Mutex;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::task::JoinHandle;
-use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tracing::error;
 
 pub struct FlashblocksProvider {
+    pub payload_id: Arc<Mutex<PayloadId>>,
+    pub payload_builder: Arc<Mutex<FlashblockBuilder>>,
     builder_client: RpcClient,
-    payload_id: Arc<Mutex<PayloadId>>,
-    payload_builder: Arc<Mutex<FlashblockBuilder>>,
-    stream_handle: JoinHandle<Result<(), FlashblocksError>>,
-    metrics: FlashblocksProviderMetrics,
 }
 
 impl FlashblocksProvider {
-    pub fn new(builder_client: RpcClient, payload_rx: broadcast::Receiver<Utf8Bytes>) -> Self {
+    pub fn new(builder_client: RpcClient) -> Self {
         let payload_id = Arc::new(Mutex::new(PayloadId::default()));
         let payload_builder = Arc::new(Mutex::new(FlashblockBuilder::default()));
-        let metrics = FlashblocksProviderMetrics::default();
-
-        let stream_handle = FlashblocksProvider::handle_flashblock_stream(
-            payload_id.clone(),
-            payload_builder.clone(),
-            payload_rx,
-            metrics.clone(),
-        );
 
         Self {
             builder_client,
             payload_id,
             payload_builder,
-            stream_handle,
-            metrics,
         }
-    }
-
-    fn handle_flashblock_stream(
-        payload_id: Arc<Mutex<PayloadId>>,
-        payload_builder: Arc<Mutex<FlashblockBuilder>>,
-        mut payload_rx: broadcast::Receiver<Utf8Bytes>,
-        metrics: FlashblocksProviderMetrics,
-    ) -> JoinHandle<Result<(), FlashblocksError>> {
-        tokio::spawn(async move {
-            loop {
-                let payload_bytes = payload_rx.recv().await?;
-                metrics.messages_processed.increment(1);
-                let flashblock = serde_json::from_str::<FlashblocksPayloadV1>(&payload_bytes)?;
-
-                let local_payload_id = payload_id.lock();
-
-                if *local_payload_id == flashblock.payload_id {
-                    let mut payload_builder = payload_builder.lock();
-                    let flashblock_index = flashblock.index;
-                    if let Err(e) = payload_builder.extend(flashblock) {
-                        metrics.extend_payload_errors.increment(1);
-                        error!(
-                            message = "Failed to extend payload",
-                            error = %e,
-                            payload_id = %local_payload_id,
-                            index = flashblock_index
-                        );
-                    }
-                } else {
-                    metrics.current_payload_id_mismatch.increment(1);
-                    error!(
-                        message = "Payload ID mismatch",
-                        payload_id = %flashblock.payload_id,
-                        %local_payload_id,
-                        index = flashblock.index,
-                    );
-                }
-            }
-        })
     }
 
     fn take_payload(
@@ -170,7 +115,7 @@ impl EngineApiExt for FlashblocksProvider {
 }
 
 #[derive(Debug, Default)]
-struct FlashblockBuilder {
+pub struct FlashblockBuilder {
     base: Option<ExecutionPayloadBaseV1>,
     flashblocks: Vec<ExecutionPayloadFlashblockDeltaV1>,
 }
