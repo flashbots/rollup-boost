@@ -99,7 +99,7 @@ impl EngineApiExt for FlashblocksProvider {
         match self.take_payload(version, payload_id) {
             Ok(payload) => Ok(payload),
             Err(e) => {
-                error!("Failed to get flashblocks payload, falling back: {e}");
+                error!("Failed to get flashblocks payload, falling back to builder: {e}");
                 self.builder_client.get_payload(payload_id, version).await
             }
         }

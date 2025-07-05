@@ -104,6 +104,7 @@ impl FlashblocksSubscriber {
 
                 match msg {
                     Message::Text(bytes) => {
+                        // TODO: docs
                         if let Ok(flashblock) = serde_json::from_str::<FlashblocksPayloadV1>(&bytes)
                         {
                             let local_payload_id = flashblocks_provider.payload_id.lock();
@@ -115,6 +116,7 @@ impl FlashblocksSubscriber {
                                 if let Err(e) = payload_builder.extend(flashblock) {
                                     metrics.extend_payload_errors.increment(1);
                                     tracing::error!(
+                                        target: "pubsub::handle_flashblocks_stream",
                                         message = "Failed to extend payload",
                                         error = %e,
                                         payload_id = %local_payload_id,
@@ -125,6 +127,7 @@ impl FlashblocksSubscriber {
                             } else {
                                 metrics.current_payload_id_mismatch.increment(1);
                                 tracing::error!(
+                                    target: "pubsub::handle_flashblocks_stream",
                                     message = "Payload ID mismatch",
                                     payload_id = %flashblock.payload_id,
                                     %local_payload_id,
@@ -133,7 +136,10 @@ impl FlashblocksSubscriber {
                                 continue;
                             }
                         } else {
-                            // TODO: error
+                            tracing::error!(
+                                target: "pubsub::handle_flashblocks_stream",
+                                message = "Failed deserialize payload",
+                            );
                             continue;
                         }
 
@@ -142,12 +148,19 @@ impl FlashblocksSubscriber {
                     Message::Pong(_) => {
                         pong_tx.send(Message::Pong(Bytes::default()))?;
                     }
-                    Message::Close(_) => {
-                        todo!("conection closed")
+                    Message::Close(frame) => {
+                        // TODO: report close reason and code
+                        tracing::warn!(
+                            target: "pubsub::handle_flashblocks_stream",
+                            message = "Connection closed",
+                        );
                     }
-
-                    // TODO: handle other message types
-                    _ => {}
+                    other => {
+                        tracing::warn!(
+                            target: "pubsub::handle_flashblocks_stream",
+                            message = format!("Unexpected message {other}")
+                        );
+                    }
                 }
             }
 
