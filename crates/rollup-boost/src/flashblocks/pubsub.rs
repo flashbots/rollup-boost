@@ -108,7 +108,6 @@ impl FlashblocksSubscriber {
                         if let Ok(flashblock) = serde_json::from_str::<FlashblocksPayloadV1>(&bytes)
                         {
                             let local_payload_id = flashblocks_provider.payload_id.lock();
-
                             if *local_payload_id == flashblock.payload_id {
                                 let mut payload_builder =
                                     flashblocks_provider.payload_builder.lock();
@@ -201,6 +200,7 @@ impl FlashblocksPublisher {
                 .expect("Could not bind publisher to listener addr");
 
             loop {
+                // TODO: handle error
                 let (tcp_stream, _) = listener.accept().await.expect("TODO: handle error");
 
                 let ws_stream = tokio_tungstenite::accept_async(tcp_stream).await?;
@@ -254,4 +254,45 @@ pub enum FlashblocksPubSubError {
     Utf8BytesSendError(#[from] broadcast::error::SendError<Utf8Bytes>),
     #[error(transparent)]
     RecvError(#[from] watch::error::RecvError),
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_ping_pong() {
+        todo!()
+    }
+
+    #[test]
+    fn test_missing_pong() {
+        todo!()
+    }
+
+    #[test]
+    fn test_payload_id_mismatch() {
+        todo!()
+    }
+
+    #[test]
+    fn current_payload_id_mismatch() {
+        todo!()
+    }
+
+    #[test]
+    fn test_malformed_flashblocks_payload() {
+        todo!()
+    }
+
+    #[test]
+    // NOTE: connection should be closed and re-established
+    fn test_publisher_stream_closed() {
+        todo!()
+    }
+
+    #[test]
+    // NOTE: connection should stay open
+    fn test_publisher_stream_lagged() {
+        todo!()
+    }
 }

@@ -241,3 +241,35 @@ pub enum FlashblocksError {
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
 }
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_take_payload() {
+        todo!()
+    }
+
+    #[test]
+    fn test_fork_choice_updated() {
+        todo!()
+    }
+
+    #[test]
+    fn test_get_payload() {
+        todo!()
+    }
+
+    #[test]
+    // TODO: separate into separate tests for failure cases
+    fn test_extend() {}
+
+    #[test]
+    fn test_extend_missing_base_payload() {}
+
+    #[test]
+    fn test_extend_unexpected_base_payload() {}
+
+    #[test]
+    fn test_into_envelope() {}
+}
