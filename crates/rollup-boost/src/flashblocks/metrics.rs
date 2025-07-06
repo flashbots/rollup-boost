@@ -1,4 +1,4 @@
-use metrics::{Counter, Gauge};
+use metrics::{Counter, Gauge, Histogram};
 use metrics_derive::Metrics;
 
 // TODO: unify metrics
@@ -30,6 +30,9 @@ pub struct FlashblocksServiceMetrics {
 
     #[metric(describe = "Number of messages processed by the service")]
     pub messages_processed: Counter,
+
+    #[metric(describe = "Number of flashblocks used to build a block")]
+    pub flashblocks_used: Histogram,
 }
 
 #[derive(Metrics, Clone)]

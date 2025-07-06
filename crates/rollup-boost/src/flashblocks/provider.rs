@@ -2,10 +2,7 @@ use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
 use crate::RpcClient;
-use crate::{
-    ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion,
-    payload_id_optimism,
-};
+use crate::{ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
@@ -18,6 +15,7 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use parking_lot::Mutex;
+use reth_optimism_payload_builder::payload_id_optimism;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::broadcast::error::RecvError;
@@ -154,7 +152,14 @@ impl FlashblockBuilder {
         self,
         version: PayloadVersion,
     ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
-        let base = self.base.ok_or(FlashblocksError::MissingPayload)?;
+        self.build_envelope(version)
+    }
+
+    pub fn build_envelope(
+        &self,
+        version: PayloadVersion,
+    ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
+        let base = self.base.as_ref().ok_or(FlashblocksError::MissingPayload)?;
 
         // There must be at least one delta
         let diff = self
@@ -162,14 +167,17 @@ impl FlashblockBuilder {
             .last()
             .ok_or(FlashblocksError::MissingDelta)?;
 
-        let (transactions, withdrawals) = self.flashblocks.iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut transactions, mut withdrawals), delta| {
-                transactions.extend(delta.transactions.clone());
-                withdrawals.extend(delta.withdrawals.clone());
-                (transactions, withdrawals)
-            },
-        );
+        let transactions = self
+            .flashblocks
+            .iter()
+            .flat_map(|diff| diff.transactions.clone())
+            .collect();
+
+        let withdrawals = self
+            .flashblocks
+            .iter()
+            .flat_map(|diff| diff.withdrawals.clone())
+            .collect();
 
         let withdrawals_root = diff.withdrawals_root;
 
@@ -189,7 +197,7 @@ impl FlashblockBuilder {
                     gas_limit: base.gas_limit,
                     gas_used: diff.gas_used,
                     timestamp: base.timestamp,
-                    extra_data: base.extra_data,
+                    extra_data: base.extra_data.clone(),
                     base_fee_per_gas: base.base_fee_per_gas,
                     block_hash: diff.block_hash,
                     transactions,
