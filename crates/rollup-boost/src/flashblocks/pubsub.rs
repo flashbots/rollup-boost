@@ -238,7 +238,7 @@ impl FlashblocksPublisher {
     }
 }
 
-#[derive(thiserror::Error, Debug, PartialEq)]
+#[derive(thiserror::Error, Debug)]
 pub enum FlashblocksPubSubError {
     #[error("Ping failed")]
     PingFailed,
@@ -369,7 +369,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         let res = subscriber.handle.await?;
-        assert_eq!(res.unwrap_err(), FlashblocksPubSubError::MissingPong);
+        matches!(res, Err(FlashblocksPubSubError::MissingPong));
 
         Ok(())
     }
