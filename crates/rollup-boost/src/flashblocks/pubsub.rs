@@ -238,7 +238,7 @@ impl FlashblocksPublisher {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 pub enum FlashblocksPubSubError {
     #[error("Ping failed")]
     PingFailed,
@@ -259,14 +259,119 @@ pub enum FlashblocksPubSubError {
 #[cfg(test)]
 mod tests {
 
-    #[test]
-    fn test_ping_pong() {
-        todo!()
+    use std::sync::Arc;
+
+    use futures::{SinkExt, StreamExt};
+    use http::Uri;
+    use reth_rpc_layer::JwtSecret;
+    use tokio::{net::TcpListener, sync::broadcast, task::JoinHandle};
+    use tokio_tungstenite::{accept_async, tungstenite::Message};
+    use url::Url;
+
+    use crate::{
+        PayloadSource, RpcClient,
+        provider::FlashblocksProvider,
+        pubsub::{FlashblocksPubSubError, FlashblocksSubscriber, spawn_ping},
+    };
+
+    pub struct MockClient {
+        addr: std::net::SocketAddr,
+        handle: tokio::task::JoinHandle<()>,
     }
 
-    #[test]
-    fn test_missing_pong() {
-        todo!()
+    impl MockClient {
+        pub async fn spawn(pong: bool) -> Self {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind failed");
+
+            let addr = listener.local_addr().unwrap();
+
+            let handle = tokio::spawn(async move {
+                loop {
+                    let (tcp, _) = listener.accept().await.expect("accept failed");
+                    let mut ws = tokio_tungstenite::accept_async(tcp)
+                        .await
+                        .expect("accept ws failed");
+
+                    while let Some(msg) = ws.next().await {
+                        let msg = match msg {
+                            Ok(m) => m,
+                            Err(_) => break,
+                        };
+
+                        match msg {
+                            Message::Ping(payload) => {
+                                if pong {
+                                    ws.send(Message::Pong(payload))
+                                        .await
+                                        .expect("send pong failed");
+                                }
+                            }
+                            Message::Close(_) => break,
+                            _ => {}
+                        }
+                    }
+                }
+            });
+
+            Self { addr, handle }
+        }
+
+        /// Returns ws:// URL to connect to this client
+        pub fn ws_url(&self) -> Url {
+            Url::parse(&format!("ws://{}", self.addr)).expect("invalid URL")
+        }
+    }
+
+    impl Drop for MockClient {
+        fn drop(&mut self) {
+            self.handle.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ping_pong() -> eyre::Result<()> {
+        let mock = MockClient::spawn(true).await;
+
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )?;
+
+        let provider = Arc::new(FlashblocksProvider::new(rpc_client));
+        let (tx, _rx) = broadcast::channel(10);
+        let subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider);
+
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        assert!(!subscriber.handle.is_finished());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_missing_pong() -> eyre::Result<()> {
+        let mock = MockClient::spawn(true).await;
+
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )?;
+
+        let provider = Arc::new(FlashblocksProvider::new(rpc_client));
+        let (tx, _rx) = broadcast::channel(10);
+        let subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider);
+
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        let res = subscriber.handle.await?;
+        assert_eq!(res.unwrap_err(), FlashblocksPubSubError::MissingPong);
+
+        Ok(())
     }
 
     #[test]
