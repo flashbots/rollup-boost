@@ -276,23 +276,18 @@ mod tests {
 
     pub struct MockClient {
         addr: std::net::SocketAddr,
-        handle: tokio::task::JoinHandle<()>,
+        handle: tokio::task::JoinHandle<eyre::Result<()>>,
     }
 
     impl MockClient {
-        pub async fn spawn(pong: bool) -> Self {
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-                .await
-                .expect("bind failed");
-
-            let addr = listener.local_addr().unwrap();
+        pub async fn spawn(pong: bool) -> eyre::Result<Self> {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+            let addr = listener.local_addr()?;
 
             let handle = tokio::spawn(async move {
                 loop {
                     let (tcp, _) = listener.accept().await.expect("accept failed");
-                    let mut ws = tokio_tungstenite::accept_async(tcp)
-                        .await
-                        .expect("accept ws failed");
+                    let mut ws = tokio_tungstenite::accept_async(tcp).await?;
 
                     while let Some(msg) = ws.next().await {
                         let msg = match msg {
@@ -303,9 +298,7 @@ mod tests {
                         match msg {
                             Message::Ping(payload) => {
                                 if pong {
-                                    ws.send(Message::Pong(payload))
-                                        .await
-                                        .expect("send pong failed");
+                                    ws.send(Message::Pong(payload)).await?;
                                 }
                             }
                             Message::Close(_) => break,
@@ -315,10 +308,9 @@ mod tests {
                 }
             });
 
-            Self { addr, handle }
+            Ok(Self { addr, handle })
         }
 
-        /// Returns ws:// URL to connect to this client
         pub fn ws_url(&self) -> Url {
             Url::parse(&format!("ws://{}", self.addr)).expect("invalid URL")
         }
@@ -332,7 +324,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ping_pong() -> eyre::Result<()> {
-        let mock = MockClient::spawn(true).await;
+        let mock = MockClient::spawn(true).await?;
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -353,7 +345,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_missing_pong() -> eyre::Result<()> {
-        let mock = MockClient::spawn(true).await;
+        let mock = MockClient::spawn(false).await?;
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
