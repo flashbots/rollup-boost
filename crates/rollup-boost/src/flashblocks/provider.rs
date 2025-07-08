@@ -114,8 +114,8 @@ impl EngineApiExt for FlashblocksProvider {
 
 #[derive(Debug, Default)]
 pub struct FlashblockBuilder {
-    base: Option<ExecutionPayloadBaseV1>,
-    flashblocks: Vec<ExecutionPayloadFlashblockDeltaV1>,
+    pub base: Option<ExecutionPayloadBaseV1>,
+    pub flashblocks: Vec<ExecutionPayloadFlashblockDeltaV1>,
 }
 
 impl FlashblockBuilder {

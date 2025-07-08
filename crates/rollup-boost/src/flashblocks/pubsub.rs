@@ -259,64 +259,99 @@ pub enum FlashblocksPubSubError {
 #[cfg(test)]
 mod tests {
 
-    use std::sync::Arc;
+    use std::{default, sync::Arc};
 
-    use futures::{SinkExt, StreamExt};
+    use alloy_eips::BlockNumberOrTag;
+    use alloy_primitives::{B256, Bytes};
+    use alloy_rpc_types_engine::{
+        ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadId,
+        PayloadStatus,
+    };
+    use alloy_rpc_types_eth::Block;
+    use futures::{SinkExt, StreamExt, stream::SplitSink};
     use http::Uri;
+    use jsonrpsee::core::{RpcResult, async_trait};
+    use op_alloy_rpc_types_engine::{
+        OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
+        OpPayloadAttributes,
+    };
+    use rand::random;
+    use reth_optimism_payload_builder::payload_id_optimism;
     use reth_rpc_layer::JwtSecret;
-    use tokio::{net::TcpListener, sync::broadcast, task::JoinHandle};
-    use tokio_tungstenite::{accept_async, tungstenite::Message};
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        sync::{Mutex, broadcast},
+        task::JoinHandle,
+    };
+    use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message};
     use url::Url;
 
     use crate::{
-        PayloadSource, RpcClient,
+        EngineApiExt, EngineApiServer, ExecutionPayloadBaseV1, FlashblocksPayloadV1, PayloadSource,
+        RpcClient,
         provider::FlashblocksProvider,
         pubsub::{FlashblocksPubSubError, FlashblocksSubscriber, spawn_ping},
     };
 
-    pub struct MockClient {
+    pub struct MockBuilder {
         addr: std::net::SocketAddr,
         handle: tokio::task::JoinHandle<eyre::Result<()>>,
+        payload_id: Arc<Mutex<PayloadId>>,
+        sink: Arc<Mutex<SplitSink<WebSocketStream<TcpStream>, Message>>>,
     }
 
-    impl MockClient {
+    impl MockBuilder {
         pub async fn spawn(pong: bool) -> eyre::Result<Self> {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
             let addr = listener.local_addr()?;
+            let (tcp, _) = listener.accept().await.expect("accept failed");
+            let ws = tokio_tungstenite::accept_async(tcp).await?;
+            let (sink, mut stream) = ws.split();
+
+            let sink = Arc::new(Mutex::new(sink));
+            let pong_sink = sink.clone();
 
             let handle = tokio::spawn(async move {
-                loop {
-                    let (tcp, _) = listener.accept().await.expect("accept failed");
-                    let mut ws = tokio_tungstenite::accept_async(tcp).await?;
+                while let Some(msg) = stream.next().await {
+                    let msg = match msg {
+                        Ok(m) => m,
+                        Err(_) => break,
+                    };
 
-                    while let Some(msg) = ws.next().await {
-                        let msg = match msg {
-                            Ok(m) => m,
-                            Err(_) => break,
-                        };
-
-                        match msg {
-                            Message::Ping(payload) => {
-                                if pong {
-                                    ws.send(Message::Pong(payload)).await?;
-                                }
+                    match msg {
+                        Message::Ping(payload) => {
+                            if pong {
+                                pong_sink.lock().await.send(Message::Pong(payload)).await?;
                             }
-                            Message::Close(_) => break,
-                            _ => {}
                         }
+                        Message::Close(_) => break,
+                        _ => {}
                     }
                 }
+
+                Ok(())
             });
 
-            Ok(Self { addr, handle })
+            let payload_id = Arc::new(Mutex::new(PayloadId::new([0; 8])));
+            Ok(Self {
+                addr,
+                handle,
+                payload_id,
+                sink,
+            })
         }
 
         pub fn ws_url(&self) -> Url {
             Url::parse(&format!("ws://{}", self.addr)).expect("invalid URL")
         }
+
+        async fn send_message(&self, msg: Message) -> eyre::Result<()> {
+            self.sink.lock().await.send(msg).await?;
+            Ok(())
+        }
     }
 
-    impl Drop for MockClient {
+    impl Drop for MockBuilder {
         fn drop(&mut self) {
             self.handle.abort();
         }
@@ -324,7 +359,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ping_pong() -> eyre::Result<()> {
-        let mock = MockClient::spawn(true).await?;
+        let mock = MockBuilder::spawn(true).await?;
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -345,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_missing_pong() -> eyre::Result<()> {
-        let mock = MockClient::spawn(false).await?;
+        let mock = MockBuilder::spawn(false).await?;
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -366,14 +401,104 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_payload_id_mismatch() {
-        todo!()
+    #[tokio::test]
+    async fn test_send_flashblock() -> eyre::Result<()> {
+        let mock = MockBuilder::spawn(false).await?;
+
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )?;
+
+        let provider = Arc::new(FlashblocksProvider::new(rpc_client));
+        let (tx, _rx) = broadcast::channel(10);
+        let _subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider.clone());
+
+        let fcu_state = ForkchoiceState {
+            head_block_hash: B256::random(),
+            ..Default::default()
+        };
+
+        let payload_attributes = OpPayloadAttributes {
+            payload_attributes: PayloadAttributes {
+                timestamp: random(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        provider
+            .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
+            .await?;
+
+        // Send flashblock with mismatched payload id
+        let payload_id = payload_id_optimism(&fcu_state.head_block_hash, &payload_attributes, 3);
+        let flashblock_payload = FlashblocksPayloadV1 {
+            index: 0,
+            payload_id,
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&flashblock_payload)?;
+        let msg = Message::Text(json.into());
+        mock.send_message(msg).await?;
+
+        assert_eq!(provider.payload_builder.lock().flashblocks.len(), 1);
+
+        Ok(())
     }
 
-    #[test]
-    fn current_payload_id_mismatch() {
-        todo!()
+    #[tokio::test]
+    async fn test_payload_id_mismatch() -> eyre::Result<()> {
+        let mock = MockBuilder::spawn(false).await?;
+
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )?;
+
+        let provider = Arc::new(FlashblocksProvider::new(rpc_client));
+        let (tx, _rx) = broadcast::channel(10);
+        let _subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider.clone());
+
+        let fcu_state = ForkchoiceState {
+            head_block_hash: B256::random(),
+            ..Default::default()
+        };
+
+        let payload_attributes = OpPayloadAttributes {
+            payload_attributes: PayloadAttributes {
+                timestamp: random(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        provider
+            .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
+            .await?;
+
+        // Send flashblock with mismatched payload id
+        let payload_id = payload_id_optimism(&B256::random(), &payload_attributes, 3);
+        let flashblock_payload = FlashblocksPayloadV1 {
+            index: 0,
+            payload_id,
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&flashblock_payload)?;
+        let msg = Message::Text(json.into());
+        mock.send_message(msg).await?;
+
+        assert_eq!(provider.payload_builder.lock().flashblocks.len(), 0);
+
+        Ok(())
     }
 
     #[test]
