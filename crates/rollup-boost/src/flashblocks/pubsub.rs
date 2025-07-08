@@ -296,15 +296,14 @@ mod tests {
     pub struct MockBuilder {
         addr: std::net::SocketAddr,
         handle: tokio::task::JoinHandle<eyre::Result<()>>,
-        payload_id: Arc<Mutex<PayloadId>>,
         sink: Arc<Mutex<SplitSink<WebSocketStream<TcpStream>, Message>>>,
     }
 
     impl MockBuilder {
-        pub async fn spawn(pong: bool) -> eyre::Result<Self> {
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        pub async fn spawn(pong: bool, listener: TcpListener) -> eyre::Result<Self> {
             let addr = listener.local_addr()?;
             let (tcp, _) = listener.accept().await.expect("accept failed");
+
             let ws = tokio_tungstenite::accept_async(tcp).await?;
             let (sink, mut stream) = ws.split();
 
@@ -312,37 +311,27 @@ mod tests {
             let pong_sink = sink.clone();
 
             let handle = tokio::spawn(async move {
-                while let Some(msg) = stream.next().await {
-                    let msg = match msg {
-                        Ok(m) => m,
-                        Err(_) => break,
-                    };
+                loop {
+                    while let Some(msg) = stream.next().await {
+                        let msg = match msg {
+                            Ok(m) => m,
+                            Err(_) => break,
+                        };
 
-                    match msg {
-                        Message::Ping(payload) => {
-                            if pong {
-                                pong_sink.lock().await.send(Message::Pong(payload)).await?;
+                        match msg {
+                            Message::Ping(payload) => {
+                                if pong {
+                                    pong_sink.lock().await.send(Message::Pong(payload)).await?;
+                                }
                             }
+                            Message::Close(_) => break,
+                            _ => {}
                         }
-                        Message::Close(_) => break,
-                        _ => {}
                     }
                 }
-
-                Ok(())
             });
 
-            let payload_id = Arc::new(Mutex::new(PayloadId::new([0; 8])));
-            Ok(Self {
-                addr,
-                handle,
-                payload_id,
-                sink,
-            })
-        }
-
-        pub fn ws_url(&self) -> Url {
-            Url::parse(&format!("ws://{}", self.addr)).expect("invalid URL")
+            Ok(Self { addr, handle, sink })
         }
 
         async fn send_message(&self, msg: Message) -> eyre::Result<()> {
@@ -359,7 +348,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_ping_pong() -> eyre::Result<()> {
-        let mock = MockBuilder::spawn(true).await?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let ws_endpoint =
+            Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -370,7 +361,8 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider);
+        let subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider);
+        let _mock = MockBuilder::spawn(true, listener).await?;
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         assert!(!subscriber.handle.is_finished());
@@ -380,7 +372,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_missing_pong() -> eyre::Result<()> {
-        let mock = MockBuilder::spawn(false).await?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let ws_endpoint =
+            Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -391,7 +385,8 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider);
+        let subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider);
+        let _mock = MockBuilder::spawn(false, listener).await?;
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
@@ -403,7 +398,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_flashblock() -> eyre::Result<()> {
-        let mock = MockBuilder::spawn(false).await?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let ws_endpoint =
+            Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -414,7 +411,8 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let _subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider.clone());
+        let _subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider.clone());
+        let mock = MockBuilder::spawn(false, listener).await?;
 
         let fcu_state = ForkchoiceState {
             head_block_hash: B256::random(),
@@ -453,7 +451,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_payload_id_mismatch() -> eyre::Result<()> {
-        let mock = MockBuilder::spawn(false).await?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let ws_endpoint =
+            Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -464,7 +464,8 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let _subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider.clone());
+        let _subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider.clone());
+        let mock = MockBuilder::spawn(false, listener).await?;
 
         let fcu_state = ForkchoiceState {
             head_block_hash: B256::random(),
@@ -495,6 +496,18 @@ mod tests {
         let json = serde_json::to_string(&flashblock_payload)?;
         let msg = Message::Text(json.into());
         mock.send_message(msg).await?;
+        iet mock = MockBuilder::spawn(false).await?;
+
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )?;
+
+        let provider = Arc::new(FlashblocksProvider::new(rpc_client));
+        let (tx, _rx) = broadcast::channel(10);
+        let _subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider.clone());
 
         assert_eq!(provider.payload_builder.lock().flashblocks.len(), 0);
 
