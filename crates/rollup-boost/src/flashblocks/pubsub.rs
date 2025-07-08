@@ -200,12 +200,20 @@ impl FlashblocksPublisher {
                 .expect("Could not bind publisher to listener addr");
 
             loop {
-                // TODO: handle error
-                let (tcp_stream, _) = listener.accept().await.expect("TODO: handle error");
+                match listener.accept().await {
+                    Ok((tcp_stream, _)) => {
+                        let ws_stream = tokio_tungstenite::accept_async(tcp_stream).await?;
+                        let rx = publisher_rx.resubscribe();
+                        tokio::spawn(Self::handle_connection(ws_stream, rx));
+                    }
 
-                let ws_stream = tokio_tungstenite::accept_async(tcp_stream).await?;
-                let rx = publisher_rx.resubscribe();
-                tokio::spawn(Self::handle_connection(ws_stream, rx));
+                    Err(e) => {
+                        tracing::error!(
+                            target = "flashblocks_publisher::new",
+                            "Error when accepting connection from listener {e}"
+                        );
+                    }
+                }
             }
         });
 
