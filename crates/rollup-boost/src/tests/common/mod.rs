@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 use crate::DebugClient;
+use crate::tests::common::services::op_rbuilder::{
+    FLASHBLOCKS_PORT, OpRbuilderConfig, OpRbuilderImage, OpRbuilderMehods,
+};
 use crate::{AuthLayer, AuthService};
 use crate::{EngineApiClient, OpExecutionPayloadEnvelope, PayloadVersion};
 use crate::{NewPayload, PayloadSource};
@@ -15,6 +18,7 @@ use bytes::BytesMut;
 use eyre::{Context, ContextCompat};
 use futures::FutureExt;
 use futures::future::BoxFuture;
+use http::Uri;
 use jsonrpsee::core::middleware::layer::RpcLogger;
 use jsonrpsee::http_client::RpcService;
 use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
@@ -218,10 +222,38 @@ impl Genesis {
     }
 }
 
+pub enum Builder {
+    Flashblocks(ContainerAsync<OpRbuilderImage>),
+    Reth(ContainerAsync<OpRethImage>),
+}
+
+impl Builder {
+    pub fn id(&self) -> &str {
+        match self {
+            Builder::Flashblocks(builder) => builder.id(),
+            Builder::Reth(builder) => builder.id(),
+        }
+    }
+
+    pub async fn auth_rpc_port(&self) -> eyre::Result<u16> {
+        match self {
+            Builder::Flashblocks(builder) => builder.auth_rpc_port().await,
+            Builder::Reth(builder) => builder.auth_rpc_port().await,
+        }
+    }
+
+    pub async fn auth_rpc(&self) -> eyre::Result<Uri> {
+        match self {
+            Builder::Flashblocks(builder) => builder.auth_rpc().await,
+            Builder::Reth(builder) => builder.auth_rpc().await,
+        }
+    }
+}
+
 /// Test flavor that sets up one Rollup-boost instance connected to two Reth nodes
 pub struct RollupBoostTestHarness {
     pub l2: ContainerAsync<OpRethImage>,
-    pub builder: ContainerAsync<OpRethImage>,
+    pub builder: Builder,
     pub rollup_boost: RollupBoost,
     pub genesis: Genesis,
 }
@@ -231,6 +263,7 @@ pub struct RollupBoostTestHarnessBuilder {
     proxy_handler: Option<Arc<dyn BuilderProxyHandler>>,
     isthmus_block: Option<u64>,
     block_time: u64,
+    flashblocks: bool,
 }
 
 impl RollupBoostTestHarnessBuilder {
@@ -240,7 +273,13 @@ impl RollupBoostTestHarnessBuilder {
             proxy_handler: None,
             isthmus_block: None,
             block_time: 1,
+            flashblocks: false,
         }
+    }
+
+    pub fn with_flashblocks(mut self, flashblocks: bool) -> Self {
+        self.flashblocks = flashblocks;
+        self
     }
 
     pub fn with_isthmus_block(mut self, isthmus_block: u64) -> Self {
@@ -332,17 +371,37 @@ impl RollupBoostTestHarnessBuilder {
         let l2_enode = format!("enode://{}@{}:{}", L2_P2P_ENODE, name, P2P_PORT);
 
         let builder_p2p_port = get_available_port();
-        let builder = OpRethConfig::default()
-            .set_trusted_peers(vec![l2_enode])
-            .set_genesis(genesis_str)
-            .build()?
-            .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(P2P_PORT))
-            .with_mapped_port(builder_p2p_port, ContainerPort::Udp(P2P_PORT))
-            .with_mapped_port(get_available_port(), ContainerPort::Tcp(AUTH_RPC_PORT))
-            .with_network(&network)
-            .with_log_consumer(builder_log_consumer)
-            .start()
-            .await?;
+        let builder = if self.flashblocks {
+            let builder = OpRbuilderConfig::default()
+                .set_trusted_peers(vec![l2_enode])
+                .set_genesis(genesis_str)
+                .set_flashblocks(self.flashblocks)
+                .build()?
+                .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(P2P_PORT))
+                .with_mapped_port(builder_p2p_port, ContainerPort::Udp(P2P_PORT))
+                .with_mapped_port(get_available_port(), ContainerPort::Tcp(AUTH_RPC_PORT))
+                .with_mapped_port(get_available_port(), ContainerPort::Tcp(FLASHBLOCKS_PORT))
+                .with_network(&network)
+                .with_log_consumer(builder_log_consumer)
+                .start()
+                .await?;
+
+            Builder::Flashblocks(builder)
+        } else {
+            let builder = OpRethConfig::default()
+                .set_trusted_peers(vec![l2_enode])
+                .set_genesis(genesis_str)
+                .build()?
+                .with_mapped_port(builder_p2p_port, ContainerPort::Tcp(P2P_PORT))
+                .with_mapped_port(builder_p2p_port, ContainerPort::Udp(P2P_PORT))
+                .with_mapped_port(get_available_port(), ContainerPort::Tcp(AUTH_RPC_PORT))
+                .with_network(&network)
+                .with_log_consumer(builder_log_consumer)
+                .start()
+                .await?;
+
+            Builder::Reth(builder)
+        };
 
         println!("l2 authrpc: {}", l2.auth_rpc().await?);
         println!("builder authrpc: {}", builder.auth_rpc().await?);
