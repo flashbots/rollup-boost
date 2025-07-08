@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_malformed_flashblocks_payload() {
+    async fn test_malformed_flashblocks_payload() -> eyre::Result<()> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let ws_endpoint =
             Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
