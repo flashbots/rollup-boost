@@ -496,18 +496,6 @@ mod tests {
         let json = serde_json::to_string(&flashblock_payload)?;
         let msg = Message::Text(json.into());
         mock.send_message(msg).await?;
-        iet mock = MockBuilder::spawn(false).await?;
-
-        let rpc_client = RpcClient::new(
-            "http://localhost:8545".parse().unwrap(),
-            JwtSecret::random(),
-            1000,
-            PayloadSource::Builder,
-        )?;
-
-        let provider = Arc::new(FlashblocksProvider::new(rpc_client));
-        let (tx, _rx) = broadcast::channel(10);
-        let _subscriber = FlashblocksSubscriber::new(mock.ws_url(), tx, provider.clone());
 
         assert_eq!(provider.payload_builder.lock().flashblocks.len(), 0);
 
