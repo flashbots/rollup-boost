@@ -520,15 +520,6 @@ mod tests {
             .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
             .await?;
 
-        // Send flashblock with mismatched payload id
-        let payload_id = payload_id_optimism(&B256::random(), &payload_attributes, 3);
-        let flashblock_payload = FlashblocksPayloadV1 {
-            index: 0,
-            payload_id,
-            base: Some(ExecutionPayloadBaseV1::default()),
-            ..Default::default()
-        };
-
         let msg = Message::Text("0xbad".into());
         mock.send_message(msg).await?;
 
