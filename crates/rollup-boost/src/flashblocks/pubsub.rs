@@ -259,51 +259,34 @@ pub enum FlashblocksPubSubError {
 #[cfg(test)]
 mod tests {
 
-    use std::{default, sync::Arc};
-
-    use alloy_eips::BlockNumberOrTag;
-    use alloy_primitives::{B256, Bytes};
-    use alloy_rpc_types_engine::{
-        ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadId,
-        PayloadStatus,
+    use crate::{
+        EngineApiExt, ExecutionPayloadBaseV1, FlashblocksPayloadV1, PayloadSource, RpcClient,
+        provider::FlashblocksProvider,
+        pubsub::{FlashblocksPubSubError, FlashblocksSubscriber},
     };
-    use alloy_rpc_types_eth::Block;
+    use alloy_primitives::B256;
+    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
     use futures::{SinkExt, StreamExt, stream::SplitSink};
-    use http::Uri;
-    use jsonrpsee::core::{RpcResult, async_trait};
-    use op_alloy_rpc_types_engine::{
-        OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
-        OpPayloadAttributes,
-    };
+    use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;
     use reth_rpc_layer::JwtSecret;
+    use std::sync::Arc;
     use tokio::{
         net::{TcpListener, TcpStream},
         sync::{Mutex, broadcast},
-        task::JoinHandle,
     };
-    use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message};
+    use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
     use url::Url;
 
-    use crate::{
-        EngineApiExt, EngineApiServer, ExecutionPayloadBaseV1, FlashblocksPayloadV1, PayloadSource,
-        RpcClient,
-        provider::FlashblocksProvider,
-        pubsub::{FlashblocksPubSubError, FlashblocksSubscriber, spawn_ping},
-    };
-
     pub struct MockBuilder {
-        addr: std::net::SocketAddr,
         handle: tokio::task::JoinHandle<eyre::Result<()>>,
         sink: Arc<Mutex<SplitSink<WebSocketStream<TcpStream>, Message>>>,
     }
 
     impl MockBuilder {
         pub async fn spawn(pong: bool, listener: TcpListener) -> eyre::Result<Self> {
-            let addr = listener.local_addr()?;
-            let (tcp, _) = listener.accept().await.expect("accept failed");
-
+            let (tcp, _) = listener.accept().await?;
             let ws = tokio_tungstenite::accept_async(tcp).await?;
             let (sink, mut stream) = ws.split();
 
@@ -331,7 +314,7 @@ mod tests {
                 }
             });
 
-            Ok(Self { addr, handle, sink })
+            Ok(Self { handle, sink })
         }
 
         async fn send_message(&self, msg: Message) -> eyre::Result<()> {
