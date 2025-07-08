@@ -485,9 +485,56 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_malformed_flashblocks_payload() {
-        todo!()
+    #[tokio::test]
+    async fn test_malformed_flashblocks_payload() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let ws_endpoint =
+            Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
+
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )?;
+
+        let provider = Arc::new(FlashblocksProvider::new(rpc_client));
+        let (tx, _rx) = broadcast::channel(10);
+        let _subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider.clone());
+        let mock = MockBuilder::spawn(false, listener).await?;
+
+        let fcu_state = ForkchoiceState {
+            head_block_hash: B256::random(),
+            ..Default::default()
+        };
+
+        let payload_attributes = OpPayloadAttributes {
+            payload_attributes: PayloadAttributes {
+                timestamp: random(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        provider
+            .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
+            .await?;
+
+        // Send flashblock with mismatched payload id
+        let payload_id = payload_id_optimism(&B256::random(), &payload_attributes, 3);
+        let flashblock_payload = FlashblocksPayloadV1 {
+            index: 0,
+            payload_id,
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let msg = Message::Text("0xbad".into());
+        mock.send_message(msg).await?;
+
+        assert_eq!(provider.payload_builder.lock().flashblocks.len(), 0);
+
+        Ok(())
     }
 
     #[test]
