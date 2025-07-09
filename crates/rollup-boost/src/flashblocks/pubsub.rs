@@ -277,8 +277,12 @@ mod tests {
         pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber},
     };
     use alloy_primitives::B256;
+    use alloy_rpc_types_engine::PayloadId;
     use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
+    use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum};
     use futures::{SinkExt, StreamExt, stream::SplitSink};
+    use jsonrpsee::RpcModule;
+    use jsonrpsee::server::ServerBuilder;
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;
@@ -467,13 +471,7 @@ mod tests {
             ..Default::default()
         };
 
-        let payload_attributes = OpPayloadAttributes {
-            payload_attributes: PayloadAttributes {
-                timestamp: random(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let payload_attributes = OpPayloadAttributes::default();
 
         provider
             .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
@@ -520,13 +518,7 @@ mod tests {
             ..Default::default()
         };
 
-        let payload_attributes = OpPayloadAttributes {
-            payload_attributes: PayloadAttributes {
-                timestamp: random(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let payload_attributes = OpPayloadAttributes::default();
 
         provider
             .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
@@ -558,13 +550,7 @@ mod tests {
             ..Default::default()
         };
 
-        let payload_attributes = OpPayloadAttributes {
-            payload_attributes: PayloadAttributes {
-                timestamp: random(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let payload_attributes = OpPayloadAttributes::default();
 
         let payload_id = payload_id_optimism(&fcu_state.head_block_hash, &payload_attributes, 3);
 
