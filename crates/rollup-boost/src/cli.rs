@@ -1,19 +1,5 @@
-use alloy_rpc_types_engine::JwtSecret;
-use clap::{Parser, Subcommand};
-use eyre::bail;
-use jsonrpsee::{RpcModule, server::Server};
-use parking_lot::Mutex;
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-};
-use tokio::signal::unix::{SignalKind, signal as unix_signal};
-use tracing::{Level, info};
-
 use crate::{
-    BlockSelectionPolicy, DebugClient, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
+    BlockSelectionPolicy, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
@@ -22,13 +8,23 @@ use crate::{
     provider::FlashblocksProvider,
     pubsub::FlashblocksPubSubManager,
 };
+use alloy_rpc_types_engine::JwtSecret;
+use clap::Parser;
+use eyre::bail;
+use jsonrpsee::{RpcModule, server::Server};
+use parking_lot::Mutex;
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+};
+use tokio::signal::unix::{SignalKind, signal as unix_signal};
+use tracing::{Level, info};
 
 #[derive(Clone, Parser, Debug)]
 #[clap(author, version = get_version(), about)]
-pub struct Args {
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-
+pub struct RollupBoostArgs {
     #[clap(flatten)]
     pub builder: BuilderArgs,
 
@@ -102,37 +98,12 @@ pub struct Args {
     pub flashblocks: FlashblocksArgs,
 }
 
-impl Args {
+impl RollupBoostArgs {
     pub async fn run(self) -> eyre::Result<()> {
         let _ = rustls::crypto::ring::default_provider().install_default();
-
-        let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
-
-        // Handle commands if present
-        if let Some(cmd) = self.command {
-            let debug_addr = format!("http://{debug_addr}");
-            return match cmd {
-                Commands::Debug { command } => match command {
-                    DebugCommands::SetExecutionMode { execution_mode } => {
-                        let client = DebugClient::new(debug_addr.as_str())?;
-                        let result = client.set_execution_mode(execution_mode).await?;
-                        println!("Response: {:?}", result.execution_mode);
-
-                        Ok(())
-                    }
-                    DebugCommands::ExecutionMode {} => {
-                        let client = DebugClient::new(debug_addr.as_str())?;
-                        let result = client.get_execution_mode().await?;
-                        println!("Execution mode: {:?}", result.execution_mode);
-
-                        Ok(())
-                    }
-                },
-            };
-        }
-
         init_metrics(&self)?;
 
+        let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
         let l2_client_args = self.l2_client;
 
         let l2_auth_jwt = if let Some(secret) = l2_client_args.l2_jwt_token {
@@ -229,7 +200,6 @@ impl Args {
                     builder_args.builder_timeout,
                 ));
 
-        // NOTE: clean this up
         let server = Server::builder()
             .set_http_middleware(http_middleware)
             .build(format!("{}:{}", self.rpc_host, self.rpc_port).parse::<SocketAddr>()?)
@@ -280,22 +250,4 @@ impl std::str::FromStr for LogFormat {
             _ => Err("Invalid log format".into()),
         }
     }
-}
-
-#[derive(Clone, Subcommand, Debug)]
-pub enum Commands {
-    /// Debug commands
-    Debug {
-        #[command(subcommand)]
-        command: DebugCommands,
-    },
-}
-
-#[derive(Clone, Subcommand, Debug)]
-pub enum DebugCommands {
-    /// Set the execution mode
-    SetExecutionMode { execution_mode: ExecutionMode },
-
-    /// Get the execution mode
-    ExecutionMode {},
 }
