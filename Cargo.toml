@@ -1,10 +1,13 @@
 [workspace]
 resolver = "3"
+edition = "2024"
+license = "MIT"
 
 members = [
     "crates/rollup-boost",
     "crates/websocket-proxy",
     "crates/flashblocks-rpc",
+    "crates/flashblocks-p2p",
 ]
 
 [workspace.dependencies]
@@ -20,12 +23,17 @@ serde_json = "1.0.96"
 metrics = "0.24.0"
 metrics-derive = "0.1"
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1.17"
 eyre = "0.6.12"
 url = "2.2.0"
 sha2 = { version = "0.10", default-features = false }
 
 # Reth deps
 reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.13"

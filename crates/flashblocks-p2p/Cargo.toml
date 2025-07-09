@@ -1,0 +1,35 @@
+[package]
+name = "flashblocks-p2p"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+reth.workspace = true
+reth-ethereum = { workspace = true, features = ["node", "network", "cli"] }
+reth-eth-wire = { workspace = true }
+reth-network = { workspace = true }
+# reth-node-builder.workspace = true
+# reth-optimism-chainspec.workspace = true
+# reth-optimism-node.workspace = true
+# reth-optimism-primitives.workspace = true
+# reth-optimism-payload-builder.workspace = true
+# reth-optimism-rpc.workspace = true
+# reth-optimism-forks.workspace = true
+# reth-provider.workspace = true
+# reth-trie-db.workspace = true
+# reth-transaction-pool.workspace = true
+# reth-node-api.workspace = true
+# alloy-primitives.workspace = true
+# op-alloy-consensus.workspace = true
+# alloy-rpc-types-eth.workspace = true
+
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+eyre.workspace = true
+futures = { workspace = true }
+clap.workspace = true
+tracing.workspace = true
+alloy-primitives.workspace = true
+
+rollup-boost = { path = "../rollup-boost" }
