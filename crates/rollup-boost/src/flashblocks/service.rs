@@ -5,7 +5,6 @@ use super::primitives::{
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
-    payload_id_optimism,
 };
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
@@ -19,6 +18,7 @@ use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
+use reth_optimism_payload_builder::payload_id_optimism;
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
@@ -27,7 +27,7 @@ use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum FlashblocksError {
     #[error("Missing base payload for initial flashblock")]
     MissingBasePayload,
@@ -56,7 +56,7 @@ enum FlashblocksEngineMessage {
 }
 
 #[derive(Debug, Default)]
-struct FlashblockBuilder {
+pub struct FlashblockBuilder {
     base: Option<ExecutionPayloadBaseV1>,
     flashblocks: Vec<ExecutionPayloadFlashblockDeltaV1>,
 }
@@ -95,7 +95,14 @@ impl FlashblockBuilder {
         self,
         version: PayloadVersion,
     ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
-        let base = self.base.ok_or(FlashblocksError::MissingPayload)?;
+        self.build_envelope(version)
+    }
+
+    pub fn build_envelope(
+        &self,
+        version: PayloadVersion,
+    ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
+        let base = self.base.as_ref().ok_or(FlashblocksError::MissingPayload)?;
 
         // There must be at least one delta
         let diff = self
@@ -130,7 +137,7 @@ impl FlashblockBuilder {
                     gas_limit: base.gas_limit,
                     gas_used: diff.gas_used,
                     timestamp: base.timestamp,
-                    extra_data: base.extra_data,
+                    extra_data: base.extra_data.clone(),
                     base_fee_per_gas: base.base_fee_per_gas,
                     block_hash: diff.block_hash,
                     transactions,
@@ -210,6 +217,11 @@ impl FlashblocksService {
         // consume the best payload and reset the builder
         let payload = {
             let mut builder = self.best_payload.write().await;
+            let flashblocks_number = builder.flashblocks.len();
+            self.metrics
+                .flashblocks_used
+                .record(flashblocks_number as f64);
+            tracing::Span::current().record("flashblocks_count", flashblocks_number);
             // Take payload and place new one in its place in one go to avoid double locking
             std::mem::replace(&mut *builder, FlashblockBuilder::new()).into_envelope(version)?
         };
@@ -418,6 +430,64 @@ mod tests {
 
         let get_payload_requests_builder = builder_mock.get_payload_requests.clone();
         assert_eq!(get_payload_requests_builder.lock().len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_flashblocks_builder() -> eyre::Result<()> {
+        let mut builder = FlashblockBuilder::new();
+
+        // Error: First payload must have a base
+        let result = builder.extend(FlashblocksPayloadV1 {
+            payload_id: PayloadId::default(),
+            index: 0,
+            ..Default::default()
+        });
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), FlashblocksError::MissingBasePayload);
+
+        // Error: First payload must have index 0
+        let result = builder.extend(FlashblocksPayloadV1 {
+            payload_id: PayloadId::default(),
+            index: 1,
+            base: Some(ExecutionPayloadBaseV1 {
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), FlashblocksError::UnexpectedBasePayload);
+
+        // Ok: First payload is correct if it has base and index 0
+        let result = builder.extend(FlashblocksPayloadV1 {
+            payload_id: PayloadId::default(),
+            index: 0,
+            base: Some(ExecutionPayloadBaseV1 {
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        assert!(result.is_ok());
+
+        // Error: Second payload must have a follow-up index
+        let result = builder.extend(FlashblocksPayloadV1 {
+            payload_id: PayloadId::default(),
+            index: 2,
+            base: None,
+            ..Default::default()
+        });
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), FlashblocksError::InvalidIndex);
+
+        // Ok: Second payload has the correct index
+        let result = builder.extend(FlashblocksPayloadV1 {
+            payload_id: PayloadId::default(),
+            index: 1,
+            base: None,
+            ..Default::default()
+        });
+        assert!(result.is_ok());
 
         Ok(())
     }
