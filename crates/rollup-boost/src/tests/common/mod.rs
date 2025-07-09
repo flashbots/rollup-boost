@@ -142,6 +142,7 @@ impl EngineApi {
                 finalized_block_hash: current_head,
             },
             payload_attributes,
+            None,
         )
         .await?)
     }

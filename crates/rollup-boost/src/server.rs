@@ -1,5 +1,5 @@
 use crate::debug_api::ExecutionMode;
-use crate::{BlockSelectionPolicy, EngineApiExt};
+use crate::{BlockSelectionPolicy, EngineApiExt, FlashblocksP2PError};
 use crate::{
     client::rpc::RpcClient,
     debug_api::DebugServer,
@@ -16,6 +16,7 @@ use alloy_rpc_types_engine::{
     PayloadStatus,
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use http_body_util::{BodyExt, Full};
 use jsonrpsee::RpcModule;
 use jsonrpsee::core::BoxError;
@@ -33,6 +34,7 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -285,6 +287,41 @@ where
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Authorization {
+    pub payload_id: PayloadId,
+    pub builder_pub: VerifyingKey,
+    pub authorizer_sig: Signature,
+}
+
+impl Authorization {
+    pub fn new(
+        authorizer_sk: &SigningKey,
+        builder_pub: VerifyingKey,
+        payload_id: PayloadId,
+    ) -> Self {
+        let mut msg = payload_id.0.to_vec();
+        msg.extend_from_slice(builder_pub.as_bytes());
+        let hash = blake3::hash(&msg);
+        let sig = authorizer_sk.sign(hash.as_bytes());
+
+        Self {
+            payload_id,
+            builder_pub,
+            authorizer_sig: sig,
+        }
+    }
+
+    pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
+        let mut msg = self.payload_id.0.to_vec();
+        msg.extend_from_slice(self.builder_pub.as_bytes());
+        let hash = blake3::hash(&msg);
+        authorizer_pub
+            .verify(hash.as_bytes(), &self.authorizer_sig)
+            .map_err(|_| FlashblocksP2PError::InvalidAuthorizerSig)
+    }
+}
+
 #[rpc(server, client)]
 pub trait EngineApi {
     #[method(name = "engine_forkchoiceUpdatedV3")]
@@ -292,6 +329,7 @@ pub trait EngineApi {
         &self,
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
+        flashblocks_authorization: Option<Authorization>,
     ) -> RpcResult<ForkchoiceUpdated>;
 
     #[method(name = "engine_getPayloadV3")]
@@ -346,6 +384,7 @@ where
         &self,
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
+        _flashblocks_authorization: Option<Authorization>,
     ) -> RpcResult<ForkchoiceUpdated> {
         // Send the FCU to the default l2 client
         let l2_fut = self
@@ -652,8 +691,15 @@ pub mod tests {
             let (builder_server, builder_server_addr) = spawn_server(builder_mock.clone()).await;
 
             let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-            let l2_client =
-                RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
+            let l2_client = RpcClient::new(
+                l2_auth_rpc.clone(),
+                jwt_secret,
+                2000,
+                PayloadSource::L2,
+                None,
+                None,
+            )
+            .unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
             let builder_client = Arc::new(
@@ -662,6 +708,8 @@ pub mod tests {
                     jwt_secret,
                     2000,
                     PayloadSource::Builder,
+                    None,
+                    None,
                 )
                 .unwrap(),
             );
@@ -752,7 +800,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, None)
+            .fork_choice_updated_v3(fcu, None, None)
             .await;
         assert!(fcu_response.is_ok());
         let fcu_requests = test_harness.l2_mock.fcu_requests.clone();
@@ -933,7 +981,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, None)
+            .fork_choice_updated_v3(fcu, None, None)
             .await;
         assert!(fcu_response.is_ok());
 
@@ -1006,7 +1054,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes.clone()))
+            .fork_choice_updated_v3(fcu, Some(payload_attributes.clone()), None)
             .await;
         assert!(fcu_response.is_ok());
 
@@ -1018,7 +1066,7 @@ pub mod tests {
         payload_attributes.no_tx_pool = Some(true);
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes))
+            .fork_choice_updated_v3(fcu, Some(payload_attributes), None)
             .await;
         assert!(fcu_response.is_ok());
 
@@ -1050,7 +1098,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, None)
+            .fork_choice_updated_v3(fcu, None, None)
             .await;
         assert!(fcu_response.is_err());
 
@@ -1060,7 +1108,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes))
+            .fork_choice_updated_v3(fcu, Some(payload_attributes), None)
             .await;
         assert!(fcu_response.is_err());
     }

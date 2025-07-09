@@ -1,10 +1,15 @@
 use clap::Parser;
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use eyre::Context;
 use url::Url;
+
+use hex::FromHex;
 
 #[derive(Parser, Clone, Debug)]
 pub struct FlashblocksArgs {
     /// Enable Flashblocks client
-    #[arg(long, env, default_value = "false")]
+    /// TODO: validate input
+    #[arg(long, env)]
     pub flashblocks: bool,
 
     /// Flashblocks Builder WebSocket URL
@@ -22,4 +27,21 @@ pub struct FlashblocksArgs {
     /// Time used for timeout if builder disconnected
     #[arg(long, env, default_value = "5000")]
     pub flashblock_builder_ws_reconnect_ms: u64,
+
+    #[arg(long, env = "FLASHBLOCKS_AUTHORIZATION_SK", value_parser = parse_sk)]
+    pub flashblocks_authorization_sk: SigningKey,
+
+    #[arg(long, env = "FLASHBLOCKS_BUILDER_VK", value_parser = parse_vk)]
+    pub flashblocks_builder_vk: VerifyingKey,
+}
+
+fn parse_sk(s: &str) -> eyre::Result<SigningKey> {
+    let bytes =
+        <[u8; 32]>::from_hex(s.trim()).context("failed parsing flashblocks_authorization_sk")?;
+    Ok(SigningKey::from_bytes(&bytes))
+}
+
+fn parse_vk(s: &str) -> eyre::Result<VerifyingKey> {
+    let bytes = <[u8; 32]>::from_hex(s.trim()).context("failed parsing flashblocks_builder_vk")?;
+    Ok(VerifyingKey::from_bytes(&bytes)?)
 }
