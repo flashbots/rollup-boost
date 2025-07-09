@@ -563,29 +563,34 @@ mod tests {
         };
 
         let payload_id = payload_id_optimism(&fcu_state.head_block_hash, &payload_attributes, 3);
-        let flashblock_payload = FlashblocksPayloadV1 {
-            index: 0,
-            payload_id,
-            base: Some(ExecutionPayloadBaseV1::default()),
-            ..Default::default()
-        };
 
-        let json = serde_json::to_string(&flashblock_payload)?;
-        let message_bytes = json.into();
+        let num_flashblocks = 5_usize;
+        let mut sent_flashblocks = vec![];
+        for i in 0..num_flashblocks {
+            let flashblock_payload = FlashblocksPayloadV1 {
+                index: i as u64,
+                payload_id,
+                base: Some(ExecutionPayloadBaseV1::default()),
+                ..Default::default()
+            };
 
-        tx.send(message_bytes)?;
+            let json = serde_json::to_string(&flashblock_payload)?;
+            let message_bytes = json.into();
 
-        let Message::Text(msg) = stream.next().await.unwrap()? else {
-            panic!("Unexpected message");
-        };
+            tx.send(message_bytes)?;
+            sent_flashblocks.push(flashblock_payload);
+        }
 
-        let received_flashblock: FlashblocksPayloadV1 = serde_json::from_str(&msg)?;
+        for flashblock in sent_flashblocks {
+            let Message::Text(msg) = stream.next().await.unwrap()? else {
+                panic!("Unexpected message");
+            };
 
-        assert_eq!(received_flashblock.index, flashblock_payload.index);
-        assert_eq!(
-            received_flashblock.payload_id,
-            flashblock_payload.payload_id
-        );
+            let received_flashblock: FlashblocksPayloadV1 = serde_json::from_str(&msg)?;
+
+            assert_eq!(received_flashblock.index, flashblock.index);
+            assert_eq!(received_flashblock.payload_id, flashblock.payload_id,);
+        }
 
         Ok(())
     }
