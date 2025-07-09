@@ -1,4 +1,4 @@
-use super::event::ProtocolEvent;
+use super::event::FlashblocksP2PEvent;
 use crate::connection::handler::FlashblocksConnectionHandler;
 use reth_ethereum::network::{api::PeerId, protocol::ProtocolHandler};
 use std::net::SocketAddr;
@@ -6,14 +6,14 @@ use tokio::sync::mpsc;
 
 /// Protocol state is an helper struct to store the protocol events.
 #[derive(Clone, Debug)]
-pub(crate) struct ProtocolState {
-    pub(crate) events: mpsc::UnboundedSender<ProtocolEvent>,
+pub(crate) struct FlashblocksP2PState {
+    pub(crate) events: mpsc::UnboundedSender<FlashblocksP2PEvent>,
 }
 
 /// The protocol handler takes care of incoming and outgoing connections.
 #[derive(Debug)]
 pub(crate) struct FlashblocksProtoHandler {
-    pub state: ProtocolState,
+    pub state: FlashblocksP2PState,
 }
 
 impl ProtocolHandler for FlashblocksProtoHandler {

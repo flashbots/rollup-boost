@@ -1,6 +1,6 @@
 use super::FlashblocksConnection;
 use crate::protocol::{
-    event::ProtocolEvent, handler::ProtocolState, proto::FlashblocksProtoMessage,
+    event::FlashblocksP2PEvent, handler::FlashblocksP2PState, proto::FlashblocksProtoMessage,
 };
 use reth_ethereum::network::{
     api::{Direction, PeerId},
@@ -12,7 +12,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 /// The connection handler for the flashblocks RLPx protocol.
 pub(crate) struct FlashblocksConnectionHandler {
-    pub(crate) state: ProtocolState,
+    pub(crate) state: FlashblocksP2PState,
 }
 
 impl ConnectionHandler for FlashblocksConnectionHandler {
@@ -40,7 +40,7 @@ impl ConnectionHandler for FlashblocksConnectionHandler {
         let (tx, rx) = mpsc::unbounded_channel();
         self.state
             .events
-            .send(ProtocolEvent::Established {
+            .send(FlashblocksP2PEvent::Established {
                 direction,
                 peer_id,
                 to_connection: tx,
@@ -49,6 +49,7 @@ impl ConnectionHandler for FlashblocksConnectionHandler {
         FlashblocksConnection {
             conn,
             commands: UnboundedReceiverStream::new(rx),
+            state: self.state,
         }
     }
 }

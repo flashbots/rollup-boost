@@ -1,4 +1,4 @@
-use crate::protocol::auth::Authorized;
+use crate::protocol::{auth::Authorized, event::FlashblocksP2PEvent, handler::FlashblocksP2PState};
 
 use super::protocol::proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind};
 use alloy_primitives::bytes::BytesMut;
@@ -9,7 +9,6 @@ use std::{
     pin::Pin,
     task::{Context, Poll, ready},
 };
-use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 pub(crate) mod handler;
@@ -25,6 +24,7 @@ pub(crate) enum FlashblocksCommand {
 pub(crate) struct FlashblocksConnection {
     conn: ProtocolConnection,
     commands: UnboundedReceiverStream<FlashblocksCommand>,
+    state: FlashblocksP2PState,
 }
 
 impl Stream for FlashblocksConnection {
@@ -52,13 +52,13 @@ impl Stream for FlashblocksConnection {
 
             match msg.message {
                 FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload) => {
-                    // Process the received payload (could emit an event here)
-                    // For now, we just continue to the next message
+                    this.state
+                        .events
+                        .send(FlashblocksP2PEvent::FlashblocksPayloadV1(payload))
+                        .ok();
                     continue;
                 }
             }
-
-            return Poll::Pending;
         }
     }
 }
