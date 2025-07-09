@@ -24,6 +24,12 @@ reth-network = { workspace = true }
 # op-alloy-consensus.workspace = true
 # alloy-rpc-types-eth.workspace = true
 
+ed25519-dalek = { version = "2", features = ["serde"] }
+rand_core = "0.6"                                       # for secure RNG
+blake3 = "1"                                            # fast hashing for payload IDs
+serde = { version = "1", features = ["derive"] }
+bincode = "2"                                           # stable, deterministic encoding
+
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 eyre.workspace = true
@@ -31,5 +37,8 @@ futures = { workspace = true }
 clap.workspace = true
 tracing.workspace = true
 alloy-primitives.workspace = true
+serde_json = "1.0"
+thiserror = "2"
+
 
 rollup-boost = { path = "../rollup-boost" }

@@ -10,7 +10,7 @@ use reth_ethereum::network::{
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-/// The connection handler for the custom RLPx protocol.
+/// The connection handler for the flashblocks RLPx protocol.
 pub(crate) struct FlashblocksConnectionHandler {
     pub(crate) state: ProtocolState,
 }
@@ -48,9 +48,7 @@ impl ConnectionHandler for FlashblocksConnectionHandler {
             .ok();
         FlashblocksConnection {
             conn,
-            initial_ping: direction.is_outgoing().then(FlashblocksProtoMessage::ping),
             commands: UnboundedReceiverStream::new(rx),
-            pending_pong: None,
         }
     }
 }

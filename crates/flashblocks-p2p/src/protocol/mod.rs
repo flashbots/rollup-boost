@@ -1,3 +1,5 @@
-pub(crate) mod event;
-pub(crate) mod handler;
-pub(crate) mod proto;
+pub mod auth;
+pub mod error;
+pub mod event;
+pub mod handler;
+pub mod proto;

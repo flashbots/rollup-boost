@@ -1,24 +1,22 @@
-//! Simple RLPx Ping Pong protocol that also support sending messages,
+//! Simple RLPx Flashblocks protocol for propagating FlashblocksPayloadV1 messages
 //! following [RLPx specs](https://github.com/ethereum/devp2p/blob/master/rlpx.md)
 
 use alloy_primitives::bytes::{Buf, BufMut, BytesMut};
 use reth_ethereum::network::eth_wire::{Capability, protocol::Protocol};
+use rollup_boost::FlashblocksPayloadV1;
+use serde_json;
+
+use crate::protocol::auth::Authorized;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FlashblocksProtoMessageId {
-    Ping = 0x00,
-    Pong = 0x01,
-    PingMessage = 0x02,
-    PongMessage = 0x03,
+    FlashblocksPayloadV1 = 0x00,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FlashblocksProtoMessageKind {
-    Ping,
-    Pong,
-    PingMessage(String),
-    PongMessage(String),
+    FlashblocksPayloadV1(Authorized<FlashblocksPayloadV1>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,44 +26,21 @@ pub(crate) struct FlashblocksProtoMessage {
 }
 
 impl FlashblocksProtoMessage {
-    /// Returns the capability for the `custom_rlpx` protocol.
+    /// Returns the capability for the `flashblocks` protocol.
     pub fn capability() -> Capability {
         Capability::new_static("flashblocks", 1)
     }
 
-    /// Returns the protocol for the `custom_rlpx` protocol.
+    /// Returns the protocol for the `flashblocks` protocol.
     pub fn protocol() -> Protocol {
-        Protocol::new(Self::capability(), 4)
+        Protocol::new(Self::capability(), 1)
     }
 
-    /// Creates a ping message
-    pub fn ping_message(msg: impl Into<String>) -> Self {
+    /// Creates a flashblocks payload message
+    pub fn flashblocks_payload(payload: Authorized<FlashblocksPayloadV1>) -> Self {
         Self {
-            message_type: FlashblocksProtoMessageId::PingMessage,
-            message: FlashblocksProtoMessageKind::PingMessage(msg.into()),
-        }
-    }
-    /// Creates a pong message
-    pub fn pong_message(msg: impl Into<String>) -> Self {
-        Self {
-            message_type: FlashblocksProtoMessageId::PongMessage,
-            message: FlashblocksProtoMessageKind::PongMessage(msg.into()),
-        }
-    }
-
-    /// Creates a ping message
-    pub fn ping() -> Self {
-        Self {
-            message_type: FlashblocksProtoMessageId::Ping,
-            message: FlashblocksProtoMessageKind::Ping,
-        }
-    }
-
-    /// Creates a pong message
-    pub fn pong() -> Self {
-        Self {
-            message_type: FlashblocksProtoMessageId::Pong,
-            message: FlashblocksProtoMessageKind::Pong,
+            message_type: FlashblocksProtoMessageId::FlashblocksPayloadV1,
+            message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload),
         }
     }
 
@@ -74,10 +49,10 @@ impl FlashblocksProtoMessage {
         let mut buf = BytesMut::new();
         buf.put_u8(self.message_type as u8);
         match &self.message {
-            FlashblocksProtoMessageKind::Ping | FlashblocksProtoMessageKind::Pong => {}
-            FlashblocksProtoMessageKind::PingMessage(msg)
-            | FlashblocksProtoMessageKind::PongMessage(msg) => {
-                buf.put(msg.as_bytes());
+            FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload) => {
+                // Serialize the payload as JSON for transmission
+                let json = serde_json::to_string(payload).unwrap_or_default();
+                buf.put(json.as_bytes());
             }
         }
         buf
@@ -91,21 +66,19 @@ impl FlashblocksProtoMessage {
         let id = buf[0];
         buf.advance(1);
         let message_type = match id {
-            0x00 => FlashblocksProtoMessageId::Ping,
-            0x01 => FlashblocksProtoMessageId::Pong,
-            0x02 => FlashblocksProtoMessageId::PingMessage,
-            0x03 => FlashblocksProtoMessageId::PongMessage,
+            0x00 => FlashblocksProtoMessageId::FlashblocksPayloadV1,
             _ => return None,
         };
+
         let message = match message_type {
-            FlashblocksProtoMessageId::Ping => FlashblocksProtoMessageKind::Ping,
-            FlashblocksProtoMessageId::Pong => FlashblocksProtoMessageKind::Pong,
-            FlashblocksProtoMessageId::PingMessage => FlashblocksProtoMessageKind::PingMessage(
-                String::from_utf8_lossy(&buf[..]).into_owned(),
-            ),
-            FlashblocksProtoMessageId::PongMessage => FlashblocksProtoMessageKind::PongMessage(
-                String::from_utf8_lossy(&buf[..]).into_owned(),
-            ),
+            FlashblocksProtoMessageId::FlashblocksPayloadV1 => {
+                // Deserialize the JSON payload
+                let json_str = String::from_utf8_lossy(&buf[..]);
+                match serde_json::from_str::<Authorized<FlashblocksPayloadV1>>(&json_str) {
+                    Ok(payload) => FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload),
+                    Err(_) => return None,
+                }
+            }
         };
 
         Some(Self {

@@ -1,3 +1,5 @@
+use crate::protocol::auth::Authorized;
+
 use super::protocol::proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind};
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
@@ -7,26 +9,22 @@ use std::{
     pin::Pin,
     task::{Context, Poll, ready},
 };
-use tokio::sync::oneshot;
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 pub(crate) mod handler;
 
 /// We define some custom commands that the subprotocol supports.
 pub(crate) enum FlashblocksCommand {
-    /// Sends a message to the peer
-    NewFlashBlock {
-        msg: String,
-        /// The response will be sent to this channel.
-        response: oneshot::Sender<String>,
+    /// Sends a flashblocks payload to the peer
+    FlashblocksPayloadV1 {
+        payload: Authorized<FlashblocksPayloadV1>,
     },
 }
 
 pub(crate) struct FlashblocksConnection {
     conn: ProtocolConnection,
-    initial_ping: Option<FlashblocksProtoMessage>,
     commands: UnboundedReceiverStream<FlashblocksCommand>,
-    pending_pong: Option<oneshot::Sender<String>>,
 }
 
 impl Stream for FlashblocksConnection {
@@ -34,17 +32,13 @@ impl Stream for FlashblocksConnection {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        if let Some(initial_ping) = this.initial_ping.take() {
-            return Poll::Ready(Some(initial_ping.encoded()));
-        }
 
         loop {
             if let Poll::Ready(Some(cmd)) = this.commands.poll_next_unpin(cx) {
                 return match cmd {
-                    FlashblocksCommand::NewFlashBlock { msg, response } => {
-                        this.pending_pong = Some(response);
-                        Poll::Ready(Some(FlashblocksProtoMessage::ping_message(msg).encoded()))
-                    }
+                    FlashblocksCommand::FlashblocksPayloadV1 { payload } => Poll::Ready(Some(
+                        FlashblocksProtoMessage::flashblocks_payload(payload).encoded(),
+                    )),
                 };
             }
 
@@ -57,17 +51,9 @@ impl Stream for FlashblocksConnection {
             };
 
             match msg.message {
-                FlashblocksProtoMessageKind::Ping => {
-                    return Poll::Ready(Some(FlashblocksProtoMessage::pong().encoded()));
-                }
-                FlashblocksProtoMessageKind::Pong => {}
-                FlashblocksProtoMessageKind::PingMessage(msg) => {
-                    return Poll::Ready(Some(FlashblocksProtoMessage::pong_message(msg).encoded()));
-                }
-                FlashblocksProtoMessageKind::PongMessage(msg) => {
-                    if let Some(sender) = this.pending_pong.take() {
-                        sender.send(msg).ok();
-                    }
+                FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload) => {
+                    // Process the received payload (could emit an event here)
+                    // For now, we just continue to the next message
                     continue;
                 }
             }
