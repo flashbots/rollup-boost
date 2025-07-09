@@ -447,6 +447,17 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), FlashblocksError::MissingBasePayload);
 
+        // Ok: First payload is correct if it has base and index 0
+        let result = builder.extend(FlashblocksPayloadV1 {
+            payload_id: PayloadId::default(),
+            index: 0,
+            base: Some(ExecutionPayloadBaseV1 {
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        assert!(result.is_ok());
+
         // Error: First payload must have index 0
         let result = builder.extend(FlashblocksPayloadV1 {
             payload_id: PayloadId::default(),
@@ -458,17 +469,6 @@ mod tests {
         });
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), FlashblocksError::UnexpectedBasePayload);
-
-        // Ok: First payload is correct if it has base and index 0
-        let result = builder.extend(FlashblocksPayloadV1 {
-            payload_id: PayloadId::default(),
-            index: 0,
-            base: Some(ExecutionPayloadBaseV1 {
-                ..Default::default()
-            }),
-            ..Default::default()
-        });
-        assert!(result.is_ok());
 
         // Error: Second payload must have a follow-up index
         let result = builder.extend(FlashblocksPayloadV1 {
