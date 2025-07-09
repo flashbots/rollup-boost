@@ -18,8 +18,8 @@ use tokio_util::bytes::Bytes;
 use url::Url;
 
 pub struct FlashblocksPubSubManager {
-    pub subscriber: FlashblocksSubscriber,
-    pub publisher: FlashblocksPublisher,
+    subscriber: FlashblocksSubscriber,
+    publisher: FlashblocksPublisher,
 }
 
 impl FlashblocksPubSubManager {
@@ -42,7 +42,7 @@ impl FlashblocksPubSubManager {
 }
 
 pub struct FlashblocksSubscriber {
-    pub handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
+    handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
 }
 
 impl FlashblocksSubscriber {
@@ -193,7 +193,7 @@ fn spawn_ping(
 }
 
 pub struct FlashblocksPublisher {
-    pub handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
+    handle: JoinHandle<Result<(), FlashblocksPubSubError>>,
 }
 
 impl FlashblocksPublisher {
@@ -277,13 +277,13 @@ mod tests {
         pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber},
     };
     use alloy_primitives::B256;
-    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
+    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadId};
     use futures::{SinkExt, StreamExt, stream::SplitSink};
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;
     use reth_rpc_layer::JwtSecret;
-    use std::sync::Arc;
+    use std::{default, sync::Arc};
     use tokio::{
         net::{TcpListener, TcpStream},
         sync::{Mutex, broadcast},
