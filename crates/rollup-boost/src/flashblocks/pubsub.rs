@@ -273,13 +273,13 @@ mod tests {
         pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber},
     };
     use alloy_primitives::B256;
-    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
+    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadId};
     use futures::{SinkExt, StreamExt, stream::SplitSink};
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;
     use reth_rpc_layer::JwtSecret;
-    use std::sync::Arc;
+    use std::{default, sync::Arc};
     use tokio::{
         net::{TcpListener, TcpStream},
         sync::{Mutex, broadcast},
@@ -593,17 +593,5 @@ mod tests {
         }
 
         Ok(())
-    }
-
-    #[test]
-    // NOTE: connection should be closed and re-established
-    fn test_publisher_stream_closed() {
-        todo!()
-    }
-
-    #[test]
-    // NOTE: connection should stay open
-    fn test_publisher_stream_lagged() {
-        todo!()
     }
 }
