@@ -270,7 +270,7 @@ mod tests {
     use crate::{
         EngineApiExt, ExecutionPayloadBaseV1, FlashblocksPayloadV1, PayloadSource, RpcClient,
         provider::FlashblocksProvider,
-        pubsub::{FlashblocksPubSubError, FlashblocksSubscriber},
+        pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber},
     };
     use alloy_primitives::B256;
     use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
@@ -532,6 +532,63 @@ mod tests {
         mock.send_message(msg).await?;
 
         assert_eq!(provider.payload_builder.lock().flashblocks.len(), 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_publish_flashblock() -> eyre::Result<()> {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let publisher_addr = listener.local_addr().unwrap();
+
+        let (tx, rx) = broadcast::channel(10);
+        let _publisher = FlashblocksPublisher::new(publisher_addr, rx);
+
+        let client_stream = tokio::net::TcpStream::connect(publisher_addr).await?;
+        let (ws_stream, _) =
+            tokio_tungstenite::client_async("ws://localhost", client_stream).await?;
+        let (mut _sink, mut stream) = ws_stream.split();
+
+        let fcu_state = ForkchoiceState {
+            head_block_hash: B256::random(),
+            ..Default::default()
+        };
+
+        let payload_attributes = OpPayloadAttributes {
+            payload_attributes: PayloadAttributes {
+                timestamp: random(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let payload_id = payload_id_optimism(&fcu_state.head_block_hash, &payload_attributes, 3);
+        let flashblock_payload = FlashblocksPayloadV1 {
+            index: 0,
+            payload_id,
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&flashblock_payload)?;
+        let message_bytes = json.into();
+
+        tx.send(message_bytes)?;
+
+        let received_msg =
+            tokio::time::timeout(std::time::Duration::from_secs(1), stream.next()).await?;
+
+        match received_msg {
+            Some(Ok(Message::Text(payload))) => {
+                let received_flashblock: FlashblocksPayloadV1 = serde_json::from_str(&payload)?;
+                assert_eq!(received_flashblock.index, flashblock_payload.index);
+                assert_eq!(
+                    received_flashblock.payload_id,
+                    flashblock_payload.payload_id
+                );
+            }
+            _ => panic!("Expected text message with flashblock payload"),
+        }
 
         Ok(())
     }
