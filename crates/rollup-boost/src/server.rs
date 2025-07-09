@@ -98,7 +98,7 @@ impl RollupBoostServer {
     }
 
     pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
-        let server = DebugServer::new(self.execution_mode.clone());
+        let server = DebugServer::new(self.execution_mode.clone(), self.probes.clone());
         server.run(debug_addr).await?;
         Ok(())
     }

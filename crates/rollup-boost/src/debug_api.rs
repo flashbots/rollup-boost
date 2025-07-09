@@ -6,6 +6,8 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::probe::{Health, Probes};
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
@@ -46,6 +48,16 @@ pub struct GetExecutionModeResponse {
     pub execution_mode: ExecutionMode,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetHealthOverrideRequest {
+    pub health: Health,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SetHealthOverrideResponse {
+    pub health: Health,
+}
+
 #[rpc(server, client, namespace = "debug")]
 trait DebugApi {
     #[method(name = "setExecutionMode")]
@@ -56,15 +68,25 @@ trait DebugApi {
 
     #[method(name = "getExecutionMode")]
     async fn get_execution_mode(&self) -> RpcResult<GetExecutionModeResponse>;
+
+    #[method(name = "setHealthOverride")]
+    async fn set_health_override(
+        &self,
+        request: SetHealthOverrideRequest,
+    ) -> RpcResult<SetHealthOverrideResponse>;
 }
 
 pub struct DebugServer {
     execution_mode: Arc<Mutex<ExecutionMode>>,
+    probes: Arc<Probes>,
 }
 
 impl DebugServer {
-    pub fn new(execution_mode: Arc<Mutex<ExecutionMode>>) -> Self {
-        Self { execution_mode }
+    pub fn new(execution_mode: Arc<Mutex<ExecutionMode>>, probes: Arc<Probes>) -> Self {
+        Self {
+            execution_mode,
+            probes,
+        }
     }
 
     pub async fn run(self, debug_addr: &str) -> eyre::Result<()> {
@@ -110,6 +132,18 @@ impl DebugApiServer for DebugServer {
             execution_mode: self.execution_mode(),
         })
     }
+
+    async fn set_health_override(
+        &self,
+        request: SetHealthOverrideRequest,
+    ) -> RpcResult<SetHealthOverrideResponse> {
+        self.probes.set_health(request.health);
+        tracing::info!("Set health override to {:?}", request.health);
+
+        Ok(SetHealthOverrideResponse {
+            health: request.health,
+        })
+    }
 }
 
 pub struct DebugClient {
@@ -136,6 +170,15 @@ impl DebugClient {
         let result = DebugApiClient::get_execution_mode(&self.client).await?;
         Ok(result)
     }
+
+    pub async fn set_health_override(
+        &self,
+        health: Health,
+    ) -> eyre::Result<SetHealthOverrideResponse> {
+        let request = SetHealthOverrideRequest { health };
+        let result = DebugApiClient::set_health_override(&self.client, request).await?;
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -148,8 +191,9 @@ mod tests {
     async fn test_debug_client() {
         // spawn the server and try to modify it with the client
         let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
+        let probes = Arc::new(Probes::default());
 
-        let server = DebugServer::new(execution_mode.clone());
+        let server = DebugServer::new(execution_mode.clone(), probes.clone());
         server.run(DEFAULT_ADDR).await.unwrap();
 
         let client = DebugClient::new(format!("http://{}", DEFAULT_ADDR).as_str()).unwrap();
@@ -175,5 +219,15 @@ mod tests {
         // Verify again with get_execution_mode
         let status = client.get_execution_mode().await.unwrap();
         assert_eq!(status.execution_mode, ExecutionMode::Enabled);
+
+        // Test health override functionality
+        let result = client
+            .set_health_override(Health::PartialContent)
+            .await
+            .unwrap();
+        assert_eq!(matches!(result.health, Health::PartialContent), true);
+
+        // Verify health was set via probes
+        assert_eq!(matches!(probes.health(), Health::PartialContent), true);
     }
 }

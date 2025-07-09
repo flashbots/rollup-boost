@@ -16,7 +16,8 @@ use tracing::warn;
 
 use crate::{Request, Response};
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Health {
     /// Indicates that the builder is building blocks
     #[default]
