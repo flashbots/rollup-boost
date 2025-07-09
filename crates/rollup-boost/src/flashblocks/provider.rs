@@ -252,32 +252,215 @@ pub enum FlashblocksError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{PayloadSource, RpcClient};
+    use alloy_primitives::B256;
+    use alloy_rpc_types_engine::ForkchoiceState;
+    use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum};
+    use jsonrpsee::RpcModule;
+    use jsonrpsee::server::ServerBuilder;
+    use op_alloy_rpc_types_engine::OpPayloadAttributes;
+    use reth_optimism_payload_builder::payload_id_optimism;
+    use reth_rpc_layer::JwtSecret;
 
     #[test]
     fn test_take_payload() {
-        todo!()
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )
+        .unwrap();
+
+        let provider = FlashblocksProvider::new(rpc_client);
+
+        let test_payload_id = PayloadId::new([1u8; 8]);
+        *provider.payload_id.lock() = test_payload_id;
+
+        {
+            let mut builder = provider.payload_builder.lock();
+            builder.base = Some(ExecutionPayloadBaseV1::default());
+            builder.flashblocks = vec![ExecutionPayloadFlashblockDeltaV1::default()];
+        }
+
+        let result = provider.take_payload(PayloadVersion::V3, test_payload_id);
+        assert!(result.is_ok());
+
+        // Verify the builder was reset
+        let builder = provider.payload_builder.lock();
+        assert!(builder.base.is_none());
+        assert!(builder.flashblocks.is_empty());
     }
 
     #[test]
-    fn test_fork_choice_updated() {
-        todo!()
+    fn test_missing_payload() {
+        let rpc_client = RpcClient::new(
+            "http://localhost:8545".parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )
+        .unwrap();
+
+        let provider = FlashblocksProvider::new(rpc_client);
+
+        let test_payload_id = PayloadId::new([1u8; 8]);
+        *provider.payload_id.lock() = test_payload_id;
+
+        {
+            let mut builder = provider.payload_builder.lock();
+            builder.base = Some(ExecutionPayloadBaseV1::default());
+            builder.flashblocks = vec![ExecutionPayloadFlashblockDeltaV1::default()];
+        }
+
+        // Test with mismatched payload ID
+        let wrong_payload_id = PayloadId::new([2u8; 8]);
+        let result = provider.take_payload(PayloadVersion::V3, wrong_payload_id);
+        matches!(result, Err(FlashblocksError::MissingPayload));
+    }
+
+    #[tokio::test]
+    async fn test_fork_choice_updated() -> eyre::Result<()> {
+        // Create a mock server
+        let server = ServerBuilder::default().build("127.0.0.1:0").await?;
+        let server_addr = server.local_addr()?;
+
+        let mut module = RpcModule::new(());
+        module.register_async_method(
+            "engine_forkchoiceUpdatedV3",
+            |_params, _context, _state| async move {
+                let response = ForkchoiceUpdated {
+                    payload_status: PayloadStatus::from_status(PayloadStatusEnum::Valid),
+                    payload_id: Some(PayloadId::new([1u8; 8])),
+                };
+                ClientResult::Ok(response)
+            },
+        )?;
+
+        let _handle = server.start(module);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let rpc_client = RpcClient::new(
+            format!("http://{}", server_addr).parse().unwrap(),
+            JwtSecret::random(),
+            1000,
+            PayloadSource::Builder,
+        )?;
+
+        let provider = FlashblocksProvider::new(rpc_client);
+
+        let fork_choice_state = ForkchoiceState {
+            head_block_hash: B256::random(),
+            safe_block_hash: B256::random(),
+            finalized_block_hash: B256::random(),
+        };
+        let payload_attributes = OpPayloadAttributes::default();
+
+        let expected_payload_id =
+            payload_id_optimism(&fork_choice_state.head_block_hash, &payload_attributes, 3);
+
+        let result = provider
+            .fork_choice_updated_v3(fork_choice_state, Some(payload_attributes))
+            .await?;
+
+        assert_eq!(result.payload_status.status, PayloadStatusEnum::Valid,);
+
+        let payload_id = *provider.payload_id.lock();
+        assert_eq!(payload_id, expected_payload_id);
+
+        Ok(())
     }
 
     #[test]
-    fn test_get_payload() {
-        todo!()
+    fn test_extend() {
+        let mut builder = FlashblockBuilder::new();
+        let payload_0 = FlashblocksPayloadV1 {
+            payload_id: PayloadId::new([1u8; 8]),
+            index: 0,
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let result = builder.extend(payload_0);
+        assert!(result.is_ok());
+        assert!(builder.base.is_some());
+        assert_eq!(builder.flashblocks.len(), 1);
+
+        let payload_1 = FlashblocksPayloadV1 {
+            payload_id: PayloadId::new([1u8; 8]),
+            index: 1,
+            ..Default::default()
+        };
+
+        let result = builder.extend(payload_1);
+        assert!(result.is_ok());
+        assert_eq!(builder.flashblocks.len(), 2);
     }
 
     #[test]
-    // TODO: separate into separate tests for failure cases
-    fn test_extend() {}
+    fn test_extend_missing_base_payload() {
+        let mut builder = FlashblockBuilder::new();
+
+        let payload_0 = FlashblocksPayloadV1 {
+            payload_id: PayloadId::new([1u8; 8]),
+            index: 0,
+            base: None,
+            ..Default::default()
+        };
+
+        let result = builder.extend(payload_0);
+        matches!(result, Err(FlashblocksError::MissingBasePayload));
+    }
 
     #[test]
-    fn test_extend_missing_base_payload() {}
+    fn test_extend_unexpected_base_payload() {
+        let mut builder = FlashblockBuilder::new();
+
+        let payload_0 = FlashblocksPayloadV1 {
+            payload_id: PayloadId::new([1u8; 8]),
+            index: 0,
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let result = builder.extend(payload_0);
+        assert!(result.is_ok());
+
+        let payload_1 = FlashblocksPayloadV1 {
+            payload_id: PayloadId::new([1u8; 8]),
+            index: 1,
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let result = builder.extend(payload_1);
+        matches!(result, Err(FlashblocksError::UnexpectedBasePayload));
+    }
 
     #[test]
-    fn test_extend_unexpected_base_payload() {}
+    fn test_into_envelope() {
+        let mut builder = FlashblockBuilder::new();
+        builder.base = Some(ExecutionPayloadBaseV1::default());
+        builder.flashblocks = vec![ExecutionPayloadFlashblockDeltaV1::default()];
 
-    #[test]
-    fn test_into_envelope() {}
+        // Test V3 envelope creation
+        let result = builder.build_envelope(PayloadVersion::V3);
+        matches!(result.unwrap(), OpExecutionPayloadEnvelope::V3(_));
+
+        // Test V4 envelope creation
+        let result = builder.build_envelope(PayloadVersion::V4);
+        matches!(result.unwrap(), OpExecutionPayloadEnvelope::V4(_));
+
+        // Test missing payload
+        let empty_builder = FlashblockBuilder::new();
+        let result = empty_builder.build_envelope(PayloadVersion::V3);
+        matches!(result, Err(FlashblocksError::MissingPayload));
+
+        // Test missing delta
+        let mut builder_no_delta = FlashblockBuilder::new();
+        builder_no_delta.base = Some(ExecutionPayloadBaseV1::default());
+        let result = builder_no_delta.build_envelope(PayloadVersion::V3);
+        matches!(result, Err(FlashblocksError::MissingDelta));
+    }
 }
