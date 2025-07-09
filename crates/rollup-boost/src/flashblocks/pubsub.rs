@@ -575,20 +575,17 @@ mod tests {
 
         tx.send(message_bytes)?;
 
-        let received_msg =
-            tokio::time::timeout(std::time::Duration::from_secs(1), stream.next()).await?;
+        let Message::Text(msg) = stream.next().await.unwrap()? else {
+            panic!("Unexpected message");
+        };
 
-        match received_msg {
-            Some(Ok(Message::Text(payload))) => {
-                let received_flashblock: FlashblocksPayloadV1 = serde_json::from_str(&payload)?;
-                assert_eq!(received_flashblock.index, flashblock_payload.index);
-                assert_eq!(
-                    received_flashblock.payload_id,
-                    flashblock_payload.payload_id
-                );
-            }
-            _ => panic!("Expected text message with flashblock payload"),
-        }
+        let received_flashblock: FlashblocksPayloadV1 = serde_json::from_str(&msg)?;
+
+        assert_eq!(received_flashblock.index, flashblock_payload.index);
+        assert_eq!(
+            received_flashblock.payload_id,
+            flashblock_payload.payload_id
+        );
 
         Ok(())
     }
