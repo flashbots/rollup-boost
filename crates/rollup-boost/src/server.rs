@@ -323,13 +323,23 @@ impl Authorization {
 }
 
 #[rpc(server, client)]
+pub trait FlashblocksEngineApi {
+    #[method(name = "engine_forkchoiceUpdatedFlashblocksV1")]
+    async fn fork_choice_updated_flashblocks_v1(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+        flashblocks_authorization: Option<Authorization>,
+    ) -> RpcResult<ForkchoiceUpdated>;
+}
+
+#[rpc(server, client)]
 pub trait EngineApi {
     #[method(name = "engine_forkchoiceUpdatedV3")]
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
-        flashblocks_authorization: Option<Authorization>,
     ) -> RpcResult<ForkchoiceUpdated>;
 
     #[method(name = "engine_getPayloadV3")]
@@ -384,7 +394,6 @@ where
         &self,
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
-        _flashblocks_authorization: Option<Authorization>,
     ) -> RpcResult<ForkchoiceUpdated> {
         // Send the FCU to the default l2 client
         let l2_fut = self
@@ -800,7 +809,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, None, None)
+            .fork_choice_updated_v3(fcu, None)
             .await;
         assert!(fcu_response.is_ok());
         let fcu_requests = test_harness.l2_mock.fcu_requests.clone();
@@ -981,7 +990,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, None, None)
+            .fork_choice_updated_v3(fcu, None)
             .await;
         assert!(fcu_response.is_ok());
 
@@ -1054,9 +1063,9 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes.clone()), None)
+            .fork_choice_updated_v3(fcu, Some(payload_attributes.clone()))
             .await;
-        assert!(fcu_response.is_ok());
+        fcu_response.unwrap();
 
         // no tx pool is false so should return the builder payload
         let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
@@ -1066,7 +1075,7 @@ pub mod tests {
         payload_attributes.no_tx_pool = Some(true);
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes), None)
+            .fork_choice_updated_v3(fcu, Some(payload_attributes))
             .await;
         assert!(fcu_response.is_ok());
 
@@ -1098,7 +1107,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, None, None)
+            .fork_choice_updated_v3(fcu, None)
             .await;
         assert!(fcu_response.is_err());
 
@@ -1108,7 +1117,7 @@ pub mod tests {
         };
         let fcu_response = test_harness
             .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes), None)
+            .fork_choice_updated_v3(fcu, Some(payload_attributes))
             .await;
         assert!(fcu_response.is_err());
     }

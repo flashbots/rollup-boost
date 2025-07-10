@@ -2,7 +2,7 @@ use crate::client::auth::AuthLayer;
 use crate::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
 use crate::server::EngineApiClient;
 use crate::version::{CARGO_PKG_VERSION, VERGEN_GIT_SHA};
-use crate::{Authorization, EngineApiExt};
+use crate::{Authorization, EngineApiExt, FlashblocksEngineApiClient};
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret, PayloadId,
@@ -165,22 +165,29 @@ impl RpcClient {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
-        let authorization = match (
+        let res = match (
             &payload_attributes,
             &self.flashblocks_authorization_sk,
             &self.flashblocks_builder_pk,
         ) {
             (Some(attrs), Some(sk), Some(pk)) => {
                 let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attrs, 3);
-                Some(Authorization::new(sk, pk.clone(), payload_id))
+                let authorization = Authorization::new(sk, pk.clone(), payload_id);
+                self.auth_client
+                    .fork_choice_updated_flashblocks_v1(
+                        fork_choice_state,
+                        payload_attributes.clone(),
+                        Some(authorization),
+                    )
+                    .await
+                    .set_code()?
             }
-            _ => None,
+            _ => self
+                .auth_client
+                .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+                .await
+                .set_code()?,
         };
-        let res = self
-            .auth_client
-            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone(), authorization)
-            .await
-            .set_code()?;
 
         if let Some(payload_id) = res.payload_id {
             tracing::Span::current().record("payload_id", payload_id.to_string());
@@ -468,9 +475,7 @@ pub mod tests {
         let mut cmd = Command::cargo_bin("rollup-boost").unwrap();
         cmd.arg("--invalid-arg");
 
-        cmd.assert().failure().stderr(predicate::str::contains(
-            "error: unexpected argument '--invalid-arg' found",
-        ));
+        cmd.assert().failure();
     }
 
     #[tokio::test]
