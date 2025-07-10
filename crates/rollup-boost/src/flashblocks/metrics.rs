@@ -24,3 +24,10 @@ pub struct FlashblocksSubscriberMetrics {
     #[metric(describe = "Number of messages processed by the service")]
     pub messages_processed: Counter,
 }
+
+#[derive(Metrics, Clone)]
+#[metrics(scope = "flashblocks.provider")]
+pub struct FlashblocksProviderMetrics {
+    #[metric(describe = "Number of flashblocks used to build a block")]
+    pub flashblocks_used: Histogram,
+}

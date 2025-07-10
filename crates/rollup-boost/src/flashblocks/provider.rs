@@ -1,3 +1,4 @@
+use super::metrics::FlashblocksProviderMetrics;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
@@ -25,6 +26,7 @@ pub struct FlashblocksProvider {
     pub payload_id: Arc<Mutex<PayloadId>>,
     pub payload_builder: Arc<Mutex<FlashblockBuilder>>,
     builder_client: RpcClient,
+    metrics: FlashblocksProviderMetrics,
 }
 
 impl FlashblocksProvider {
@@ -36,6 +38,7 @@ impl FlashblocksProvider {
             builder_client,
             payload_id,
             payload_builder,
+            metrics: FlashblocksProviderMetrics::default(),
         }
     }
 
@@ -55,6 +58,9 @@ impl FlashblocksProvider {
         // consume the best payload and reset the builder
         let payload = {
             let mut builder = self.payload_builder.lock();
+            self.metrics
+                .flashblocks_used
+                .record(builder.flashblocks.len() as f64);
             // Take payload and place new one in its place in one go to avoid double locking
             std::mem::replace(&mut *builder, FlashblockBuilder::new()).into_envelope(version)?
         };

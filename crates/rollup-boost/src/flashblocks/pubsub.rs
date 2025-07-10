@@ -56,11 +56,13 @@ impl FlashblocksSubscriber {
         let handle = tokio::spawn(async move {
             loop {
                 let Ok((ws_stream, _)) = connect_async(builder_ws_endpoint.as_str()).await else {
-                    // TODO: log error
+                    metrics.reconnect_attempts.increment(1);
+                    metrics.connection_status.set(0);
                     // TODO: make this configurable
                     tokio::time::sleep(Duration::from_millis(500)).await;
                     continue;
                 };
+                metrics.connection_status.set(1);
 
                 let (sink, stream) = ws_stream.split();
                 let (pong_tx, mut pong_rx) = watch::channel(Message::Pong(Bytes::default()));
@@ -104,6 +106,7 @@ impl FlashblocksSubscriber {
                     tracing::error!("Ws connection error: {e}");
                     e
                 })?;
+                metrics.messages_received.increment(1);
 
                 match msg {
                     Message::Text(bytes) => {
