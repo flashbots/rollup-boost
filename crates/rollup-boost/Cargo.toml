@@ -65,6 +65,10 @@ paste = "1.0.15"
 parking_lot = "0.12.3"
 tokio-util = { version = "0.7.13" }
 
+ed25519-dalek = { version = "2", features = ["serde"] }
+blake3 = "1"                                            # fast hashing for payload IDs
+hex = "0.4"
+
 [dev-dependencies]
 rand = "0.9.0"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }

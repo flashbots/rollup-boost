@@ -1,5 +1,5 @@
 use crate::debug_api::ExecutionMode;
-use crate::{BlockSelectionPolicy, EngineApiExt};
+use crate::{BlockSelectionPolicy, EngineApiExt, FlashblocksP2PError};
 use crate::{
     client::rpc::RpcClient,
     debug_api::DebugServer,
@@ -16,6 +16,7 @@ use alloy_rpc_types_engine::{
     PayloadStatus,
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use http_body_util::{BodyExt, Full};
 use jsonrpsee::RpcModule;
 use jsonrpsee::core::BoxError;
@@ -33,6 +34,7 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -283,6 +285,52 @@ where
 
         Ok(module)
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Authorization {
+    pub payload_id: PayloadId,
+    pub builder_pub: VerifyingKey,
+    pub authorizer_sig: Signature,
+}
+
+impl Authorization {
+    pub fn new(
+        authorizer_sk: &SigningKey,
+        builder_pub: VerifyingKey,
+        payload_id: PayloadId,
+    ) -> Self {
+        let mut msg = payload_id.0.to_vec();
+        msg.extend_from_slice(builder_pub.as_bytes());
+        let hash = blake3::hash(&msg);
+        let sig = authorizer_sk.sign(hash.as_bytes());
+
+        Self {
+            payload_id,
+            builder_pub,
+            authorizer_sig: sig,
+        }
+    }
+
+    pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
+        let mut msg = self.payload_id.0.to_vec();
+        msg.extend_from_slice(self.builder_pub.as_bytes());
+        let hash = blake3::hash(&msg);
+        authorizer_pub
+            .verify(hash.as_bytes(), &self.authorizer_sig)
+            .map_err(|_| FlashblocksP2PError::InvalidAuthorizerSig)
+    }
+}
+
+#[rpc(server, client)]
+pub trait FlashblocksEngineApi {
+    #[method(name = "engine_forkchoiceUpdatedFlashblocksV1")]
+    async fn fork_choice_updated_flashblocks_v1(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+        flashblocks_authorization: Option<Authorization>,
+    ) -> RpcResult<ForkchoiceUpdated>;
 }
 
 #[rpc(server, client)]
@@ -652,8 +700,15 @@ pub mod tests {
             let (builder_server, builder_server_addr) = spawn_server(builder_mock.clone()).await;
 
             let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-            let l2_client =
-                RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
+            let l2_client = RpcClient::new(
+                l2_auth_rpc.clone(),
+                jwt_secret,
+                2000,
+                PayloadSource::L2,
+                None,
+                None,
+            )
+            .unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
             let builder_client = Arc::new(
@@ -662,6 +717,8 @@ pub mod tests {
                     jwt_secret,
                     2000,
                     PayloadSource::Builder,
+                    None,
+                    None,
                 )
                 .unwrap(),
             );
@@ -1008,7 +1065,7 @@ pub mod tests {
             .rpc_client
             .fork_choice_updated_v3(fcu, Some(payload_attributes.clone()))
             .await;
-        assert!(fcu_response.is_ok());
+        fcu_response.unwrap();
 
         // no tx pool is false so should return the builder payload
         let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
