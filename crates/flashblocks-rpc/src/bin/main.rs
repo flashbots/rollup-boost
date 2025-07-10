@@ -1,9 +1,12 @@
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
 
 use clap::Parser;
+use flashblocks_p2p::protocol::handler::{FlashblocksP2PState, FlashblocksProtoHandler};
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay};
+use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
+use tokio::sync::mpsc;
 use tracing::info;
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
@@ -43,6 +46,17 @@ fn main() {
                 })
                 .launch_with_debug_capabilities()
                 .await?;
+
+            let (tx, mut rx) = mpsc::unbounded_channel();
+
+            let custom_rlpx_handler = FlashblocksProtoHandler {
+                state: FlashblocksP2PState { events: tx },
+            };
+
+            handle
+                .node
+                .network
+                .add_rlpx_sub_protocol(custom_rlpx_handler.into_rlpx_sub_protocol());
             handle.node_exit_future.await
         })
     {

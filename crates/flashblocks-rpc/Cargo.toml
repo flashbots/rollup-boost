@@ -6,6 +6,7 @@ license = "MIT"
 
 [dependencies]
 rollup-boost.workspace = true
+flashblocks-p2p.workspace = true
 
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
@@ -28,6 +29,10 @@ reth-node-core = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-tracing = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+
+reth-ethereum = { workspace = true, features = ["node", "network", "cli"] }
+reth-eth-wire = { workspace = true }
+reth-network = { workspace = true }
 
 alloy-eips.workspace = true
 alloy-primitives.workspace = true

@@ -14,14 +14,14 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 pub(crate) mod handler;
 
 /// We define some custom commands that the subprotocol supports.
-pub(crate) enum FlashblocksCommand {
+pub enum FlashblocksCommand {
     /// Sends a flashblocks payload to the peer
     FlashblocksPayloadV1 {
         payload: Authorized<FlashblocksPayloadV1>,
     },
 }
 
-pub(crate) struct FlashblocksConnection {
+pub struct FlashblocksConnection {
     conn: ProtocolConnection,
     commands: UnboundedReceiverStream<FlashblocksCommand>,
     state: FlashblocksP2PState,

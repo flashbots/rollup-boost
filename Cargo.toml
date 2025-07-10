@@ -12,6 +12,7 @@ members = [
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
+flashblocks-p2p = { path = "crates/flashblocks-p2p" }
 
 tracing = "0.1.4"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter", "json"] }

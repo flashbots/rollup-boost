@@ -24,6 +24,7 @@ reth-network = { workspace = true }
 # op-alloy-consensus.workspace = true
 # alloy-rpc-types-eth.workspace = true
 
+
 ed25519-dalek = { version = "2", features = ["serde"] }
 rand_core = "0.6"                                       # for secure RNG
 blake3 = "1"                                            # fast hashing for payload IDs

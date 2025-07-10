@@ -11,8 +11,8 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 /// The connection handler for the flashblocks RLPx protocol.
-pub(crate) struct FlashblocksConnectionHandler {
-    pub(crate) state: FlashblocksP2PState,
+pub struct FlashblocksConnectionHandler {
+    pub state: FlashblocksP2PState,
 }
 
 impl ConnectionHandler for FlashblocksConnectionHandler {

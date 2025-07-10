@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 /// The events that can be emitted by our custom protocol.
 #[derive(Debug)]
-pub(crate) enum FlashblocksP2PEvent {
+pub enum FlashblocksP2PEvent {
     Established {
         #[expect(dead_code)]
         direction: Direction,

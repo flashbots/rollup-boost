@@ -6,13 +6,13 @@ use tokio::sync::mpsc;
 
 /// Protocol state is an helper struct to store the protocol events.
 #[derive(Clone, Debug)]
-pub(crate) struct FlashblocksP2PState {
-    pub(crate) events: mpsc::UnboundedSender<FlashblocksP2PEvent>,
+pub struct FlashblocksP2PState {
+    pub events: mpsc::UnboundedSender<FlashblocksP2PEvent>,
 }
 
 /// The protocol handler takes care of incoming and outgoing connections.
 #[derive(Debug)]
-pub(crate) struct FlashblocksProtoHandler {
+pub struct FlashblocksProtoHandler {
     pub state: FlashblocksP2PState,
 }
 
