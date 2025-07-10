@@ -1,5 +1,5 @@
 [package]
-name = "flashblocks-rpc"
+name = "flashblocks-node"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 rollup-boost.workspace = true
 flashblocks-p2p.workspace = true
+flashblocks-rpc.workspace = true
 
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }

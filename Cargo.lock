@@ -3450,6 +3450,92 @@ dependencies = [
 ]
 
 [[package]]
+name = "flashblocks-api"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "bincode 2.0.1",
+ "blake3",
+ "clap",
+ "ed25519-dalek",
+ "eyre",
+ "futures",
+ "reth",
+ "reth-eth-wire",
+ "reth-ethereum",
+ "reth-network",
+ "reth-node-api",
+ "reth-node-builder",
+ "reth-provider",
+ "reth-transaction-pool",
+ "rollup-boost",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "flashblocks-node"
+version = "0.1.0"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-json-rpc",
+ "alloy-primitives",
+ "alloy-provider",
+ "alloy-rpc-client",
+ "alloy-rpc-types",
+ "alloy-rpc-types-engine",
+ "alloy-rpc-types-eth",
+ "brotli",
+ "clap",
+ "ed25519-dalek",
+ "eyre",
+ "flashblocks-p2p",
+ "flashblocks-rpc",
+ "futures-util",
+ "jsonrpsee 0.25.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metrics",
+ "metrics-derive",
+ "op-alloy-consensus 0.18.9",
+ "op-alloy-network",
+ "op-alloy-rpc-types",
+ "reth-db",
+ "reth-e2e-test-utils",
+ "reth-eth-wire",
+ "reth-ethereum",
+ "reth-network",
+ "reth-node-api",
+ "reth-node-builder",
+ "reth-node-core",
+ "reth-optimism-chainspec",
+ "reth-optimism-cli",
+ "reth-optimism-evm",
+ "reth-optimism-forks",
+ "reth-optimism-node",
+ "reth-optimism-primitives",
+ "reth-optimism-rpc",
+ "reth-primitives",
+ "reth-primitives-traits",
+ "reth-provider",
+ "reth-rpc-eth-api",
+ "reth-rpc-server-types",
+ "reth-tasks",
+ "reth-tracing",
+ "rollup-boost",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "flashblocks-p2p"
 version = "0.1.0"
 dependencies = [

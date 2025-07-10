@@ -8,11 +8,14 @@ members = [
     "crates/websocket-proxy",
     "crates/flashblocks-rpc",
     "crates/flashblocks-p2p",
+    "crates/flashblocks-api",
+    "crates/flashblocks-node",
 ]
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
 flashblocks-p2p = { path = "crates/flashblocks-p2p" }
+flashblocks-rpc = { path = "crates/flashblocks-rpc" }
 
 tracing = "0.1.4"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter", "json"] }
