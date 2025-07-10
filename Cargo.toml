@@ -35,6 +35,10 @@ reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.13"

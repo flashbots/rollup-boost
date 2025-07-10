@@ -11,12 +11,13 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 /// The connection handler for the flashblocks RLPx protocol.
-pub struct FlashblocksConnectionHandler {
+pub struct FlashblocksConnectionHandler<N> {
     pub state: FlashblocksP2PState,
+    pub network_handle: N,
 }
 
-impl ConnectionHandler for FlashblocksConnectionHandler {
-    type Connection = FlashblocksConnection;
+impl<N: Unpin + Send + Sync + 'static> ConnectionHandler for FlashblocksConnectionHandler<N> {
+    type Connection = FlashblocksConnection<N>;
 
     fn protocol(&self) -> Protocol {
         FlashblocksProtoMessage::protocol()
@@ -48,8 +49,10 @@ impl ConnectionHandler for FlashblocksConnectionHandler {
             .ok();
         FlashblocksConnection {
             conn,
+            peer_id,
             commands: UnboundedReceiverStream::new(rx),
             state: self.state,
+            network_handle: self.network_handle,
         }
     }
 }

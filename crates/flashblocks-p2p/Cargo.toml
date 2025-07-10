@@ -9,6 +9,10 @@ reth.workspace = true
 reth-ethereum = { workspace = true, features = ["node", "network", "cli"] }
 reth-eth-wire = { workspace = true }
 reth-network = { workspace = true }
+reth-node-api = { workspace = true }
+reth-node-builder = { workspace = true }
+reth-provider = { workspace = true }
+reth-transaction-pool = { workspace = true }
 # reth-node-builder.workspace = true
 # reth-optimism-chainspec.workspace = true
 # reth-optimism-node.workspace = true
@@ -26,7 +30,6 @@ reth-network = { workspace = true }
 
 
 ed25519-dalek = { version = "2", features = ["serde"] }
-rand_core = "0.6"                                       # for secure RNG
 blake3 = "1"                                            # fast hashing for payload IDs
 serde = { version = "1", features = ["derive"] }
 bincode = "2"                                           # stable, deterministic encoding

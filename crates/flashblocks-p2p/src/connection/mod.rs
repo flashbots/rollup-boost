@@ -3,7 +3,7 @@ use crate::protocol::{auth::Authorized, event::FlashblocksP2PEvent, handler::Fla
 use super::protocol::proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind};
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
-use reth_ethereum::network::eth_wire::multiplex::ProtocolConnection;
+use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
 use rollup_boost::FlashblocksPayloadV1;
 use std::{
     pin::Pin,
@@ -21,13 +21,15 @@ pub enum FlashblocksCommand {
     },
 }
 
-pub struct FlashblocksConnection {
+pub struct FlashblocksConnection<N> {
     conn: ProtocolConnection,
+    peer_id: PeerId,
     commands: UnboundedReceiverStream<FlashblocksCommand>,
     state: FlashblocksP2PState,
+    network_handle: N,
 }
 
-impl Stream for FlashblocksConnection {
+impl<N: Unpin> Stream for FlashblocksConnection<N> {
     type Item = BytesMut;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -56,7 +58,6 @@ impl Stream for FlashblocksConnection {
                         .events
                         .send(FlashblocksP2PEvent::FlashblocksPayloadV1(payload))
                         .ok();
-                    continue;
                 }
             }
         }
