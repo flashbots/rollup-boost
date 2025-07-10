@@ -282,12 +282,8 @@ mod tests {
         pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber},
     };
     use alloy_primitives::B256;
-    use alloy_rpc_types_engine::PayloadId;
     use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
-    use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum};
     use futures::{SinkExt, StreamExt, stream::SplitSink};
-    use jsonrpsee::RpcModule;
-    use jsonrpsee::server::ServerBuilder;
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;

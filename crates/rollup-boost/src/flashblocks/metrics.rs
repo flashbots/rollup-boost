@@ -20,9 +20,6 @@ pub struct FlashblocksSubscriberMetrics {
 
     #[metric(describe = "Number of times the current payload ID has been set")]
     pub current_payload_id_mismatch: Counter,
-
-    #[metric(describe = "Number of messages processed by the service")]
-    pub messages_processed: Counter,
 }
 
 #[derive(Metrics, Clone)]
