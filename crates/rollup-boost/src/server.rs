@@ -290,23 +290,27 @@ where
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Authorization {
     pub payload_id: PayloadId,
+    pub timestamp: u64,
     pub builder_pub: VerifyingKey,
     pub authorizer_sig: Signature,
 }
 
 impl Authorization {
     pub fn new(
+        payload_id: PayloadId,
+        timestamp: u64,
         authorizer_sk: &SigningKey,
         builder_pub: VerifyingKey,
-        payload_id: PayloadId,
     ) -> Self {
         let mut msg = payload_id.0.to_vec();
+        msg.extend_from_slice(&timestamp.to_le_bytes());
         msg.extend_from_slice(builder_pub.as_bytes());
         let hash = blake3::hash(&msg);
         let sig = authorizer_sk.sign(hash.as_bytes());
 
         Self {
             payload_id,
+            timestamp,
             builder_pub,
             authorizer_sig: sig,
         }
@@ -314,6 +318,7 @@ impl Authorization {
 
     pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
         let mut msg = self.payload_id.0.to_vec();
+        msg.extend_from_slice(&self.timestamp.to_le_bytes());
         msg.extend_from_slice(self.builder_pub.as_bytes());
         let hash = blake3::hash(&msg);
         authorizer_pub

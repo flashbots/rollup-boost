@@ -1,7 +1,10 @@
 use super::event::FlashblocksP2PEvent;
+use crate::connection::FlashblocksCommand;
 use crate::connection::handler::FlashblocksConnectionHandler;
+use crate::protocol::auth::Authorized;
 use reth_ethereum::network::{api::PeerId, protocol::ProtocolHandler};
 use reth_network::Peers;
+use rollup_boost::FlashblocksPayloadV1;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 

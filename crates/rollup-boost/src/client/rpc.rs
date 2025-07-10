@@ -172,7 +172,12 @@ impl RpcClient {
         ) {
             (Some(attrs), Some(sk), Some(pk)) => {
                 let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attrs, 3);
-                let authorization = Authorization::new(sk, pk.clone(), payload_id);
+                let authorization = Authorization::new(
+                    payload_id,
+                    attrs.payload_attributes.timestamp,
+                    sk,
+                    pk.clone(),
+                );
                 self.auth_client
                     .fork_choice_updated_flashblocks_v1(
                         fork_choice_state,
