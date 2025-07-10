@@ -27,6 +27,7 @@ impl FlashblocksPubSubManager {
         builder_ws_endpoint: Url,
         listen_addr: SocketAddr,
         flashblocks_provider: Arc<FlashblocksProvider>,
+        reconnect_backoff: Duration,
     ) -> Result<Self, FlashblocksPubSubError> {
         let (payload_tx, payload_rx) = broadcast::channel(100);
 
@@ -35,6 +36,7 @@ impl FlashblocksPubSubManager {
                 builder_ws_endpoint,
                 payload_tx,
                 flashblocks_provider,
+                reconnect_backoff,
             ),
             publisher: FlashblocksPublisher::new(listen_addr, payload_rx),
         })
@@ -50,6 +52,7 @@ impl FlashblocksSubscriber {
         builder_ws_endpoint: Url,
         payload_tx: broadcast::Sender<Utf8Bytes>,
         flashblocks_provider: Arc<FlashblocksProvider>,
+        reconnect_backoff: Duration,
     ) -> Self {
         let payload_tx = Arc::new(payload_tx);
         let metrics = FlashblocksSubscriberMetrics::default();
@@ -58,8 +61,7 @@ impl FlashblocksSubscriber {
                 let Ok((ws_stream, _)) = connect_async(builder_ws_endpoint.as_str()).await else {
                     metrics.reconnect_attempts.increment(1);
                     metrics.connection_status.set(0);
-                    // TODO: make this configurable
-                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    tokio::time::sleep(reconnect_backoff).await;
                     continue;
                 };
                 metrics.connection_status.set(1);
@@ -86,7 +88,7 @@ impl FlashblocksSubscriber {
                     }
                 }
 
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(reconnect_backoff).await;
             }
         });
 
@@ -290,7 +292,7 @@ mod tests {
     use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;
     use reth_rpc_layer::JwtSecret;
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Duration};
     use tokio::{
         net::{TcpListener, TcpStream},
         sync::{Mutex, broadcast},
@@ -363,7 +365,8 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider);
+        let subscriber =
+            FlashblocksSubscriber::new(ws_endpoint, tx, provider, Duration::from_millis(100));
         let _mock = MockBuilder::spawn(true, listener).await?;
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -387,7 +390,9 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider);
+
+        let subscriber =
+            FlashblocksSubscriber::new(ws_endpoint, tx, provider, Duration::from_millis(100));
         let _mock = MockBuilder::spawn(false, listener).await?;
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -413,7 +418,13 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let _subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider.clone());
+
+        let _subscriber = FlashblocksSubscriber::new(
+            ws_endpoint,
+            tx,
+            provider.clone(),
+            Duration::from_millis(100),
+        );
         let mock = MockBuilder::spawn(false, listener).await?;
 
         let fcu_state = ForkchoiceState {
@@ -466,7 +477,12 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let _subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider.clone());
+        let _subscriber = FlashblocksSubscriber::new(
+            ws_endpoint,
+            tx,
+            provider.clone(),
+            Duration::from_millis(100),
+        );
         let mock = MockBuilder::spawn(false, listener).await?;
 
         let fcu_state = ForkchoiceState {
@@ -513,7 +529,13 @@ mod tests {
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
-        let _subscriber = FlashblocksSubscriber::new(ws_endpoint, tx, provider.clone());
+
+        let _subscriber = FlashblocksSubscriber::new(
+            ws_endpoint,
+            tx,
+            provider.clone(),
+            Duration::from_millis(100),
+        );
         let mock = MockBuilder::spawn(false, listener).await?;
 
         let fcu_state = ForkchoiceState {

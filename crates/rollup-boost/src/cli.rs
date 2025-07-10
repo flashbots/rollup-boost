@@ -18,6 +18,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
@@ -152,6 +153,7 @@ impl RollupBoostArgs {
                 builder_ws_url,
                 listener_addr,
                 flashblocks_provider.clone(),
+                Duration::from_millis(self.flashblocks.flashblock_builder_ws_reconnect_ms),
             )?;
 
             let rollup_boost = RollupBoostServer::new(
