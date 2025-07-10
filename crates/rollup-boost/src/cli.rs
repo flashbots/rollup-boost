@@ -149,7 +149,7 @@ impl RollupBoostArgs {
             );
 
             let flashblocks_provider = Arc::new(FlashblocksProvider::new(builder_client));
-            let pubsub_manager = FlashblocksPubSubManager::spawn(
+            FlashblocksPubSubManager::spawn(
                 builder_ws_url,
                 listener_addr,
                 flashblocks_provider.clone(),
