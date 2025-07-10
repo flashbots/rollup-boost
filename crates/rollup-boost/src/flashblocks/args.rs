@@ -58,13 +58,13 @@ pub struct FlashblocksArgs {
     pub flashblocks_builder_vk: VerifyingKey,
 }
 
-fn parse_sk(s: &str) -> eyre::Result<SigningKey> {
+pub fn parse_sk(s: &str) -> eyre::Result<SigningKey> {
     let bytes =
         <[u8; 32]>::from_hex(s.trim()).context("failed parsing flashblocks_authorization_sk")?;
     Ok(SigningKey::from_bytes(&bytes))
 }
 
-fn parse_vk(s: &str) -> eyre::Result<VerifyingKey> {
+pub fn parse_vk(s: &str) -> eyre::Result<VerifyingKey> {
     let bytes = <[u8; 32]>::from_hex(s.trim()).context("failed parsing flashblocks_builder_vk")?;
     Ok(VerifyingKey::from_bytes(&bytes)?)
 }

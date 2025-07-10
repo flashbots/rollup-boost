@@ -3490,6 +3490,7 @@ dependencies = [
  "alloy-rpc-types-eth",
  "brotli",
  "clap",
+ "ed25519-dalek",
  "eyre",
  "flashblocks-p2p",
  "futures-util",

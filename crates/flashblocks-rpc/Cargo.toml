@@ -33,6 +33,7 @@ reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1
 reth-ethereum = { workspace = true, features = ["node", "network", "cli"] }
 reth-eth-wire = { workspace = true }
 reth-network = { workspace = true }
+ed25519-dalek = { version = "2", features = ["serde"] }
 
 alloy-eips.workspace = true
 alloy-primitives.workspace = true

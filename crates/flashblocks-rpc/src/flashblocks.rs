@@ -1,6 +1,7 @@
 use crate::{FlashblocksApi, cache::FlashblocksCache};
 use alloy_primitives::{Address, TxHash, U256};
-use futures_util::StreamExt;
+use ed25519_dalek::VerifyingKey;
+use flashblocks_p2p::protocol::event::FlashblocksP2PEvent;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
 use reth_optimism_chainspec::OpChainSpec;
@@ -8,97 +9,58 @@ use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::FlashblocksPayloadV1;
 use std::{io::Read, sync::Arc};
 use tokio::sync::mpsc;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info};
-use url::Url;
 
-#[derive(Clone)]
-pub struct FlashblocksOverlay {
-    url: Url,
+pub struct FlashblocksOverlayBuilder {
+    events: mpsc::UnboundedReceiver<FlashblocksP2PEvent>,
+    flashblocks_authorizor: VerifyingKey,
     cache: FlashblocksCache,
 }
 
-impl FlashblocksOverlay {
-    pub fn new(url: Url, chain_spec: Arc<OpChainSpec>) -> Self {
+#[derive(Clone)]
+pub struct FlashblocksOverlay {
+    cache: FlashblocksCache,
+}
+
+impl FlashblocksOverlayBuilder {
+    pub fn new(
+        chain_spec: Arc<OpChainSpec>,
+        flashblocks_authorizor: VerifyingKey,
+        events: mpsc::UnboundedReceiver<FlashblocksP2PEvent>,
+    ) -> Self {
         Self {
-            url,
+            events,
+            flashblocks_authorizor,
             cache: FlashblocksCache::new(chain_spec),
         }
     }
 
-    pub fn start(&mut self) -> eyre::Result<()> {
-        let url = self.url.clone();
-        let (sender, mut receiver) = mpsc::channel(100);
-
+    pub fn start(mut self) -> eyre::Result<FlashblocksOverlay> {
+        let cache_cloned = self.cache.clone();
+        let overlay = FlashblocksOverlay {
+            cache: self.cache.clone(),
+        };
         tokio::spawn(async move {
-            let mut backoff = std::time::Duration::from_secs(1);
-            const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(10);
-
-            loop {
-                match connect_async(url.as_str()).await {
-                    Ok((ws_stream, _)) => {
-                        info!("WebSocket connection established");
-                        let (_write, mut read) = ws_stream.split();
-
-                        while let Some(msg) = read.next().await {
-                            debug!("Received message: {:?}", msg);
-
-                            match msg {
-                                Ok(Message::Binary(bytes)) => match try_decode_message(&bytes) {
-                                    Ok(payload) => {
-                                        info!("Received payload: {:?}", payload);
-
-                                        let _ = sender
-                                            .send(InternalMessage::NewPayload(payload))
-                                            .await
-                                            .map_err(|e| {
-                                                error!("failed to send payload to channel: {}", e);
-                                            });
-                                    }
-                                    Err(e) => {
-                                        error!("failed to parse fb message: {}", e);
-                                    }
-                                },
-                                Ok(Message::Close(e)) => {
-                                    error!("WebSocket connection closed: {:?}", e);
-                                    break;
+            while let Some(message) = self.events.recv().await {
+                match message {
+                    FlashblocksP2PEvent::Established { .. } => todo!(),
+                    FlashblocksP2PEvent::FlashblocksPayloadV1(authorized) => {
+                        match authorized.verify(self.flashblocks_authorizor) {
+                            Ok(_) => {
+                                if let Err(e) = cache_cloned.process_payload(authorized.payload) {
+                                    error!("failed to process payload: {}", e);
                                 }
-                                Err(e) => {
-                                    error!("WebSocket connection error: {}", e);
-                                    break;
-                                }
-                                _ => {}
+                            }
+                            Err(e) => {
+                                error!("{e:?}");
                             }
                         }
                     }
-                    Err(e) => {
-                        error!(
-                            "WebSocket connection error, retrying in {:?}: {}",
-                            backoff, e
-                        );
-                        tokio::time::sleep(backoff).await;
-                        // Double the backoff time, but cap at MAX_BACKOFF
-                        backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
-                        continue;
-                    }
                 }
             }
         });
 
-        let cache_cloned = self.cache.clone();
-        tokio::spawn(async move {
-            while let Some(message) = receiver.recv().await {
-                match message {
-                    InternalMessage::NewPayload(payload) => {
-                        if let Err(e) = cache_cloned.process_payload(payload) {
-                            error!("failed to process payload: {}", e);
-                        }
-                    }
-                }
-            }
-        });
-
-        Ok(())
+        Ok(overlay)
     }
 
     pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
