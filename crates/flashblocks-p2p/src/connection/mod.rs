@@ -1,16 +1,15 @@
-use crate::protocol::{auth::Authorized, event::FlashblocksP2PEvent, handler::FlashblocksP2PState};
+use crate::protocol::{auth::Authorized, handler::FlashblocksP2PState};
 
 use super::protocol::proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind};
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
 use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
-use rollup_boost::FlashblocksPayloadV1;
 use std::{
     pin::Pin,
     task::{Context, Poll, ready},
 };
-use tokio::sync::{broadcast, mpsc};
-use tokio_stream::wrappers::{BroadcastStream, UnboundedReceiverStream};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::BroadcastStream;
 
 pub(crate) mod handler;
 

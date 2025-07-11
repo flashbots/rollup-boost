@@ -1,9 +1,5 @@
 use super::FlashblocksConnection;
-use crate::protocol::{
-    event::FlashblocksP2PEvent,
-    handler::FlashblocksP2PState,
-    proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind},
-};
+use crate::protocol::proto::FlashblocksProtoMessage;
 use reth_ethereum::network::{
     api::{Direction, PeerId},
     eth_wire::{capability::SharedCapabilities, multiplex::ProtocolConnection, protocol::Protocol},
@@ -11,16 +7,15 @@ use reth_ethereum::network::{
 };
 use tokio::sync::{
     broadcast,
-    mpsc::{self, UnboundedSender},
+    mpsc::{self},
 };
-use tokio_stream::wrappers::{BroadcastStream, UnboundedReceiverStream};
+use tokio_stream::wrappers::BroadcastStream;
 
 /// The connection handler for the flashblocks RLPx protocol.
 pub struct FlashblocksConnectionHandler<N> {
-    // pub state: FlashblocksP2PState,
+    pub network_handle: N,
     pub inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
     pub outbound_rx: broadcast::Receiver<FlashblocksProtoMessage>,
-    pub network_handle: N,
 }
 
 impl<N: Unpin + Send + Sync + 'static> ConnectionHandler for FlashblocksConnectionHandler<N> {
@@ -45,20 +40,11 @@ impl<N: Unpin + Send + Sync + 'static> ConnectionHandler for FlashblocksConnecti
         peer_id: PeerId,
         conn: ProtocolConnection,
     ) -> Self::Connection {
-        let (tx, rx) = mpsc::unbounded_channel();
-        // self.state
-        //     .flashblock_stream
-        //     .send(FlashblocksP2PEvent::Established {
-        //         direction,
-        //         peer_id,
-        //         to_connection: tx,
-        //     })
-        //     .ok();
         FlashblocksConnection {
             conn,
             peer_id,
             inbound_tx: self.inbound_tx.clone(),
-            outbound_rx: BroadcastStream::new(self.outbound_rx.clone()),
+            outbound_rx: BroadcastStream::new(self.outbound_rx.resubscribe()),
             network_handle: self.network_handle,
         }
     }

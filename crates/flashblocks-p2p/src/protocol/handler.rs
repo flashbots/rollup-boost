@@ -110,21 +110,20 @@ impl<N: Peers + std::fmt::Debug> FlashblocksP2PState<N> {
 
 /// The protocol handler takes care of incoming and outgoing connections.
 #[derive(Debug)]
-pub struct FlashblocksProtoHandler {
-    // /// Sender of verified and strictly ordered flashbloacks payloads.
-    // /// For consumption by the rpc overlay.
-    // pub flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
-    /// Sender for newly received and validated flashblocks payloads
-    /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub outbound_rx: broadcast::Receiver<FlashblocksProtoMessage>,
+pub struct FlashblocksProtoHandler<N> {
+    /// Network handle, used to update peer state.
+    pub network_handle: N,
     /// Verified flashblock payloads received by peers.
     /// May not be strictly ordered.
     pub inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
+    /// Sender for newly received and validated flashblocks payloads
+    /// which will be broadcasted to all peers. May not be strictly ordered.
+    pub outbound_rx: broadcast::Receiver<FlashblocksProtoMessage>,
 }
 
-impl FlashblocksProtoHandler {
+impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
     /// Creates a new protocol handler with the given state.
-    pub fn new<N: Peers + std::fmt::Debug>(
+    pub fn new(
         network_handle: N,
         authorizer_vk: VerifyingKey,
         flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
@@ -132,7 +131,7 @@ impl FlashblocksProtoHandler {
         let (outbound_tx, outbound_rx) = broadcast::channel(100);
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
         let state = FlashblocksP2PState {
-            network_handle,
+            network_handle: network_handle.clone(),
             authorizer_vk,
             flashblock_stream,
             inbound_rx,
@@ -145,7 +144,7 @@ impl FlashblocksProtoHandler {
         state.run();
 
         Self {
-            // flashblock_stream,
+            network_handle,
             outbound_rx,
             inbound_tx,
         }
@@ -158,6 +157,8 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
     fn on_incoming(&self, _socket_addr: SocketAddr) -> Option<Self::ConnectionHandler> {
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
+            inbound_tx: self.inbound_tx.clone(),
+            outbound_rx: self.outbound_rx.resubscribe(),
         })
     }
 
@@ -168,6 +169,8 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
     ) -> Option<Self::ConnectionHandler> {
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
+            inbound_tx: self.inbound_tx.clone(),
+            outbound_rx: self.outbound_rx.resubscribe(),
         })
     }
 }

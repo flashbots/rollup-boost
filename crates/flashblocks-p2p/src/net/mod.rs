@@ -1,3 +1,4 @@
+use ed25519_dalek::VerifyingKey;
 use reth::chainspec::Hardforks;
 use reth_eth_wire::NetPrimitivesFor;
 use reth_ethereum::network::api::FullNetwork;
@@ -9,22 +10,21 @@ use reth_node_builder::{
     node::{FullNodeTypes, NodeTypes},
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
-use tokio::sync::mpsc;
+use rollup_boost::FlashblocksPayloadV1;
+use tokio::sync::{broadcast, mpsc};
 
-use crate::protocol::{
-    event::FlashblocksP2PEvent,
-    handler::{FlashblocksP2PNetworHandle, FlashblocksProtoHandler},
-};
+use crate::protocol::handler::{FlashblocksP2PNetworHandle, FlashblocksProtoHandler};
 
 #[derive(Clone, Debug)]
 pub struct FlashblocksNetworkBuilder<T> {
     inner: T,
-    events: mpsc::UnboundedSender<FlashblocksP2PEvent>,
+    authorizer_vk: VerifyingKey,
+    events: broadcast::Sender<FlashblocksPayloadV1>,
 }
 
 impl<T> FlashblocksNetworkBuilder<T> {
     /// Creates a new `FlashblocksNetworkBuilder` with the given inner builder and events channel.
-    pub fn new(inner: T, events: mpsc::UnboundedSender<FlashblocksP2PEvent>) -> Self {
+    pub fn new(inner: T, events: broadcast::Sender<FlashblocksPayloadV1>) -> Self {
         Self { inner, events }
     }
 }
@@ -48,7 +48,11 @@ where
         pool: Pool,
     ) -> eyre::Result<Self::Network> {
         let handle = self.inner.build_network(ctx, pool).await?;
-        let handler = FlashblocksProtoHandler::<Network>::new(handle.clone(), self.events);
+        let handler = FlashblocksProtoHandler::<Network>::new(
+            handle.clone(),
+            self.authorizer_vk,
+            self.events,
+        );
         handle.add_rlpx_sub_protocol(handler.into_rlpx_sub_protocol());
 
         Ok(handle)
