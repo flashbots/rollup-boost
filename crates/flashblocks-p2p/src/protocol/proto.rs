@@ -10,17 +10,17 @@ use crate::protocol::auth::Authorized;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FlashblocksProtoMessageId {
+pub enum FlashblocksProtoMessageId {
     FlashblocksPayloadV1 = 0x00,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FlashblocksProtoMessageKind {
+pub enum FlashblocksProtoMessageKind {
     FlashblocksPayloadV1(Authorized<FlashblocksPayloadV1>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FlashblocksProtoMessage {
+pub struct FlashblocksProtoMessage {
     pub message_type: FlashblocksProtoMessageId,
     pub message: FlashblocksProtoMessageKind,
 }

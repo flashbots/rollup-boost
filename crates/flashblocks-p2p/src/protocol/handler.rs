@@ -10,10 +10,7 @@ use std::net::SocketAddr;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
-pub(crate) trait FlashblocksP2PNetworHandle:
-    Clone + Unpin + Peers + std::fmt::Debug + 'static
-{
-}
+pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
 impl<N: Clone + Unpin + Peers + std::fmt::Debug + 'static> FlashblocksP2PNetworHandle for N {}
 
@@ -24,16 +21,16 @@ pub struct FlashblocksP2PState<N: Peers + std::fmt::Debug> {
     pub network_handle: N,
     /// Authorizer verifying, used to verify flashblocks payloads.
     pub authorizer_vk: VerifyingKey,
-    /// Sender of verified and strictly ordered flashbloacks payloads.
-    /// For consumption by the rpc overlay.
-    pub flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
     /// Verified flashblock payloads received by peers.
     /// May not be strictly ordered.
     pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksProtoMessage>,
     /// Sender for newly received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
     pub outbound_tx: broadcast::Sender<FlashblocksProtoMessage>,
-    /// The index of the next flashblock to emit.
+    /// Sender of verified and strictly ordered flashbloacks payloads.
+    /// For consumption by the rpc overlay.
+    pub flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
+    /// The index of the next flashblock to emit over the flashblocks_stream.
     pub flashblock_index: usize,
     /// Timestamp of the most recent flashblocks payload.
     pub payload_timestamp: u64,
