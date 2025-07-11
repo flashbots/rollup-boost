@@ -9,23 +9,22 @@ use std::{
     pin::Pin,
     task::{Context, Poll, ready},
 };
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio::sync::{broadcast, mpsc};
+use tokio_stream::wrappers::{BroadcastStream, UnboundedReceiverStream};
 
 pub(crate) mod handler;
 
 /// We define some custom commands that the subprotocol supports.
-pub enum FlashblocksCommand {
-    /// Sends a flashblocks payload to the peer
-    FlashblocksPayloadV1 {
-        payload: Authorized<FlashblocksPayloadV1>,
-    },
+pub struct IncomingPeerMessage {
+    peer_id: PeerId,
+    msg: FlashblocksProtoMessageKind,
 }
 
 pub struct FlashblocksConnection<N> {
     conn: ProtocolConnection,
     peer_id: PeerId,
-    commands: UnboundedReceiverStream<FlashblocksCommand>,
-    state: FlashblocksP2PState,
+    inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
+    outbound_rx: BroadcastStream<FlashblocksProtoMessage>,
     network_handle: N,
 }
 
@@ -36,9 +35,9 @@ impl<N: Unpin> Stream for FlashblocksConnection<N> {
         let this = self.get_mut();
 
         loop {
-            if let Poll::Ready(Some(cmd)) = this.commands.poll_next_unpin(cx) {
+            if let Poll::Ready(Some(cmd)) = this.outbound_rx.poll_next_unpin(cx) {
                 return match cmd {
-                    FlashblocksCommand::FlashblocksPayloadV1 { payload } => Poll::Ready(Some(
+                    FlashblocksIncoming::FlashblocksPayloadV1 { payload } => Poll::Ready(Some(
                         FlashblocksProtoMessage::flashblocks_payload(payload).encoded(),
                     )),
                 };
@@ -55,7 +54,7 @@ impl<N: Unpin> Stream for FlashblocksConnection<N> {
             match msg.message {
                 FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload) => {
                     this.state
-                        .events
+                        .flashblock_stream
                         .send(FlashblocksP2PEvent::FlashblocksPayloadV1(payload))
                         .ok();
                 }

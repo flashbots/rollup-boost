@@ -1,7 +1,6 @@
-use super::event::FlashblocksP2PEvent;
-use crate::connection::FlashblocksCommand;
 use crate::connection::handler::FlashblocksConnectionHandler;
-use crate::protocol::auth::Authorized;
+use crate::protocol::proto::FlashblocksProtoMessage;
+use crate::protocol::proto::FlashblocksProtoMessageKind;
 use ed25519_dalek::VerifyingKey;
 use reth::payload::PayloadId;
 use reth_ethereum::network::{api::PeerId, protocol::ProtocolHandler};
@@ -27,13 +26,13 @@ pub struct FlashblocksP2PState<N: Peers + std::fmt::Debug> {
     pub authorizer_vk: VerifyingKey,
     /// Sender of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
-    pub flashblock_stream: broadcast::Sender<FlashblocksP2PEvent>,
-    /// Sender for newly received and validated flashblocks payloads
-    /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub broadcast_tx: broadcast::Sender<FlashblocksCommand>,
+    pub flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
     /// Verified flashblock payloads received by peers.
     /// May not be strictly ordered.
-    pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksCommand>,
+    pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksProtoMessage>,
+    /// Sender for newly received and validated flashblocks payloads
+    /// which will be broadcasted to all peers. May not be strictly ordered.
+    pub outbound_tx: broadcast::Sender<FlashblocksProtoMessage>,
     /// The index of the next flashblock to emit.
     pub flashblock_index: usize,
     /// Timestamp of the most recent flashblocks payload.
@@ -41,15 +40,15 @@ pub struct FlashblocksP2PState<N: Peers + std::fmt::Debug> {
     /// Most recent payload id.
     pub payload_id: PayloadId,
     /// Buffer of flashblocks for the current payload.
-    pub flashblocks: Vec<Option<FlashblocksP2PEvent>>,
+    pub flashblocks: Vec<Option<FlashblocksPayloadV1>>,
 }
 
 impl<N: Peers + std::fmt::Debug> FlashblocksP2PState<N> {
     pub fn run(mut self) {
         tokio::spawn(async move {
-            while let Some(event) = self.inbound_rx.recv().await {
-                match event {
-                    FlashblocksCommand::FlashblocksPayloadV1 { payload } => {
+            while let Some(msg) = self.inbound_rx.recv().await {
+                match &msg.message {
+                    FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload) => {
                         // TODO: might make sense to perform verification in a separate task
                         if let Err(e) = payload.verify(self.authorizer_vk) {
                             tracing::warn!(
@@ -84,32 +83,20 @@ impl<N: Peers + std::fmt::Debug> FlashblocksP2PState<N> {
                         if flashblock.is_none() {
                             // We haven't seen this index yet
                             // Add the flashblock to our cache
-                            *flashblock =
-                                Some(FlashblocksP2PEvent::FlashblocksPayloadV1(payload.clone()));
+                            *flashblock = Some(payload.clone().payload);
                             tracing::debug!(
                                 "Received flashblocks payload with id: {}, index: {}",
                                 payload.payload.payload_id,
                                 payload.payload.index
                             );
                             // Broadcast the flashblock to all peers, possible our of order
-                            self.broadcast_tx.send(payload).ok();
+                            self.outbound_tx.send(msg).unwrap();
                             // Broadcast any flashblocks in the cache that are in order
-                            // for i in self.flashblock_index..self.flashblocks.len() {
-                            //     if let Some(flashblock_event) = &self.flashblocks[i] {
-                            //         // Send the flashblock to the stream
-                            //         self.flashblock_stream.send(flashblock_event.clone()).ok();
-                            //         // Update the index
-                            //         self.flashblock_index = i + 1;
-                            //     } else {
-                            //         // No more flashblocks in order, break
-                            //         break;
-                            //     }
-                            // }
                             while let Some(Some(flashblock_event)) =
                                 self.flashblocks.get(self.flashblock_index)
                             {
                                 // Send the flashblock to the stream
-                                self.flashblock_stream.send(flashblock_event).ok();
+                                self.flashblock_stream.send(flashblock_event.clone()).ok();
                                 // Update the index
                                 self.flashblock_index += 1;
                             }
@@ -126,13 +113,13 @@ impl<N: Peers + std::fmt::Debug> FlashblocksP2PState<N> {
 pub struct FlashblocksProtoHandler {
     /// Sender of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
-    pub flashblock_stream: mpsc::UnboundedSender<FlashblocksP2PEvent>,
+    pub flashblock_stream: mpsc::UnboundedSender<FlashblocksPayloadV1>,
     /// Sender for newly received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub broadcast_tx: broadcast::Sender<FlashblocksCommand>,
+    pub broadcast_tx: broadcast::Sender<FlashblocksProtoMessage>,
     /// Verified flashblock payloads received by peers.
     /// May not be strictly ordered.
-    pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksCommand>,
+    pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksProtoMessage>,
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler {
@@ -145,7 +132,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler {
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
         let state = FlashblocksP2PState {
             flashblock_stream,
-            broadcast_tx,
+            outbound_tx: broadcast_tx,
             inbound_rx,
             payload_timestamp: 0,
             payload_id: PayloadId::default(),
