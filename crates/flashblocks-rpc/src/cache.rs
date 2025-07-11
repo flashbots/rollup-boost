@@ -17,9 +17,8 @@ use reth_primitives::Recovered;
 use reth_primitives_traits::block::body::BlockBody;
 
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
-use rollup_boost::{
-    FlashblockBuilder, FlashblocksPayloadV1, OpExecutionPayloadEnvelope, PayloadVersion,
-};
+use rollup_boost::provider::FlashblockBuilder;
+use rollup_boost::{FlashblocksPayloadV1, OpExecutionPayloadEnvelope, PayloadVersion};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
