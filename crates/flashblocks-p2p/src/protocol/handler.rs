@@ -111,35 +111,44 @@ impl<N: Peers + std::fmt::Debug> FlashblocksP2PState<N> {
 /// The protocol handler takes care of incoming and outgoing connections.
 #[derive(Debug)]
 pub struct FlashblocksProtoHandler {
-    /// Sender of verified and strictly ordered flashbloacks payloads.
-    /// For consumption by the rpc overlay.
-    pub flashblock_stream: mpsc::UnboundedSender<FlashblocksPayloadV1>,
+    // /// Sender of verified and strictly ordered flashbloacks payloads.
+    // /// For consumption by the rpc overlay.
+    // pub flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
     /// Sender for newly received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub broadcast_tx: broadcast::Sender<FlashblocksProtoMessage>,
+    pub outbound_rx: broadcast::Receiver<FlashblocksProtoMessage>,
     /// Verified flashblock payloads received by peers.
     /// May not be strictly ordered.
-    pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksProtoMessage>,
+    pub inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
 }
 
-impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler {
+impl FlashblocksProtoHandler {
     /// Creates a new protocol handler with the given state.
-    pub fn new(
+    pub fn new<N: Peers + std::fmt::Debug>(
         network_handle: N,
-        flashblock_stream: broadcast::Sender<FlashblocksP2PEvent>,
+        authorizer_vk: VerifyingKey,
+        flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
     ) -> Self {
-        let (broadcast_tx, broadcast_rx) = broadcast::channel(100);
+        let (outbound_tx, outbound_rx) = broadcast::channel(100);
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
         let state = FlashblocksP2PState {
+            network_handle,
+            authorizer_vk,
             flashblock_stream,
-            outbound_tx: broadcast_tx,
             inbound_rx,
+            outbound_tx,
+            flashblock_index: 0,
             payload_timestamp: 0,
             payload_id: PayloadId::default(),
             flashblocks: vec![],
         };
         state.run();
-        Self { network_handle }
+
+        Self {
+            // flashblock_stream,
+            outbound_rx,
+            inbound_tx,
+        }
     }
 }
 
