@@ -11,7 +11,7 @@ use reth_node_builder::{
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use rollup_boost::FlashblocksPayloadV1;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 
 use crate::protocol::handler::{FlashblocksP2PNetworHandle, FlashblocksProtoHandler};
 
@@ -24,8 +24,16 @@ pub struct FlashblocksNetworkBuilder<T> {
 
 impl<T> FlashblocksNetworkBuilder<T> {
     /// Creates a new `FlashblocksNetworkBuilder` with the given inner builder and events channel.
-    pub fn new(inner: T, events: broadcast::Sender<FlashblocksPayloadV1>) -> Self {
-        Self { inner, events }
+    pub fn new(
+        inner: T,
+        authorizer_vk: VerifyingKey,
+        events: broadcast::Sender<FlashblocksPayloadV1>,
+    ) -> Self {
+        Self {
+            inner,
+            authorizer_vk,
+            events,
+        }
     }
 }
 

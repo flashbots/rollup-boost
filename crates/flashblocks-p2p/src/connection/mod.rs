@@ -1,5 +1,3 @@
-use crate::protocol::{auth::Authorized, handler::FlashblocksP2PState};
-
 use super::protocol::proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind};
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
@@ -34,30 +32,37 @@ impl<N: Unpin> Stream for FlashblocksConnection<N> {
         let this = self.get_mut();
 
         loop {
-            if let Poll::Ready(Some(cmd)) = this.outbound_rx.poll_next_unpin(cx) {
-                return match cmd {
-                    FlashblocksIncoming::FlashblocksPayloadV1 { payload } => Poll::Ready(Some(
-                        FlashblocksProtoMessage::flashblocks_payload(payload).encoded(),
-                    )),
-                };
+            // Check if there are any flashblocks ready to broadcast to our peers.
+            if let Poll::Ready(Some(res)) = this.outbound_rx.poll_next_unpin(cx) {
+                match res {
+                    Ok(outbound) => {
+                        return Poll::Ready(Some(outbound.encoded()));
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to receive flashblocks message from broadcast stream: {}",
+                            e
+                        );
+                    }
+                }
             }
 
+            // Check if there are any messages from the peer.
             let Some(msg) = ready!(this.conn.poll_next_unpin(cx)) else {
                 return Poll::Ready(None);
             };
-
             let Some(msg) = FlashblocksProtoMessage::decode_message(&mut &msg[..]) else {
                 return Poll::Ready(None);
             };
-
-            match msg.message {
-                FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload) => {
-                    this.state
-                        .flashblock_stream
-                        .send(FlashblocksP2PEvent::FlashblocksPayloadV1(payload))
-                        .ok();
-                }
-            }
+            this.inbound_tx
+                .send(msg.clone())
+                .map_err(|e| {
+                    tracing::error!(
+                        "Failed to send flashblocks message to inbound channel: {}",
+                        e
+                    )
+                })
+                .ok();
         }
     }
 }
