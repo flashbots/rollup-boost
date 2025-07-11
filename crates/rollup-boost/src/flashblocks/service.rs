@@ -195,7 +195,7 @@ pub struct FlashblocksService {
     /// flashblocks payload being constructed
     best_payload: Arc<RwLock<FlashblockBuilder>>,
 
-    /// websocket publisher for sending valid preconfirmations to clients
+    /// Websocket publisher for sending valid pre-confirmations to clients.
     ws_pub: Arc<WebSocketPublisher>,
 
     metrics: FlashblocksServiceMetrics,
