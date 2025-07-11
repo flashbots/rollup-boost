@@ -531,6 +531,8 @@ mod tests {
             PayloadSource::Builder,
         )?;
 
+        dbg!("here");
+
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
 
@@ -541,17 +543,6 @@ mod tests {
             Duration::from_millis(100),
         );
         let mock = MockBuilder::spawn(false, listener).await?;
-
-        let fcu_state = ForkchoiceState {
-            head_block_hash: B256::random(),
-            ..Default::default()
-        };
-
-        let payload_attributes = OpPayloadAttributes::default();
-
-        provider
-            .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
-            .await?;
 
         let msg = Message::Text("0xbad".into());
         mock.send_message(msg).await?;
