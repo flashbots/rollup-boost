@@ -489,19 +489,8 @@ mod tests {
         );
         let mock = MockBuilder::spawn(false, listener).await?;
 
-        let fcu_state = ForkchoiceState {
-            head_block_hash: B256::random(),
-            ..Default::default()
-        };
-
-        let payload_attributes = OpPayloadAttributes::default();
-
-        provider
-            .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
-            .await?;
-
         // Send flashblock with mismatched payload id
-        let payload_id = payload_id_optimism(&B256::random(), &payload_attributes, 3);
+        let payload_id = payload_id_optimism(&B256::random(), &OpPayloadAttributes::default(), 3);
         let flashblock_payload = FlashblocksPayloadV1 {
             index: 0,
             payload_id,
