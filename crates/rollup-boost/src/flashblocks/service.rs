@@ -192,7 +192,7 @@ pub struct FlashblocksService {
     /// None means rollup-boost has not served FCU with attributes yet.
     current_payload_id: Arc<RwLock<Option<PayloadId>>>,
 
-    /// flashblocks payload being constructed
+    /// The current Flashblock's payload being constructed.
     best_payload: Arc<RwLock<FlashblockBuilder>>,
 
     /// Websocket publisher for sending valid pre-confirmations to clients.
