@@ -24,12 +24,12 @@ pub struct FlashblocksP2PState<N: Peers + std::fmt::Debug> {
     /// Verified flashblock payloads received by peers.
     /// May not be strictly ordered.
     pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksProtoMessage>,
-    /// Sender for newly received and validated flashblocks payloads
+    /// Sender for newly created or received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub outbound_tx: broadcast::Sender<FlashblocksProtoMessage>,
-    /// Sender of verified and strictly ordered flashbloacks payloads.
+    pub flashblock_sender_tx: broadcast::Sender<FlashblocksProtoMessage>,
+    /// Receiver of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
-    pub flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
+    pub flashblock_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
     /// The index of the next flashblock to emit over the flashblocks_stream.
     pub flashblock_index: usize,
     /// Timestamp of the most recent flashblocks payload.
@@ -87,13 +87,15 @@ impl<N: Peers + std::fmt::Debug> FlashblocksP2PState<N> {
                                 payload.payload.index
                             );
                             // Broadcast the flashblock to all peers, possible our of order
-                            self.outbound_tx.send(msg).unwrap();
+                            self.flashblock_sender_tx.send(msg).unwrap();
                             // Broadcast any flashblocks in the cache that are in order
                             while let Some(Some(flashblock_event)) =
                                 self.flashblocks.get(self.flashblock_index)
                             {
                                 // Send the flashblock to the stream
-                                self.flashblock_stream.send(flashblock_event.clone()).ok();
+                                self.flashblock_receiver_tx
+                                    .send(flashblock_event.clone())
+                                    .ok();
                                 // Update the index
                                 self.flashblock_index += 1;
                             }
@@ -113,9 +115,9 @@ pub struct FlashblocksProtoHandler<N> {
     /// Verified flashblock payloads received by peers.
     /// May not be strictly ordered.
     pub inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
-    /// Sender for newly received and validated flashblocks payloads
+    /// Sender for newly received and validated or created flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub outbound_rx: broadcast::Receiver<FlashblocksProtoMessage>,
+    pub flashblocks_sender_rx: broadcast::Receiver<FlashblocksProtoMessage>,
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
@@ -123,16 +125,17 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
     pub fn new(
         network_handle: N,
         authorizer_vk: VerifyingKey,
-        flashblock_stream: broadcast::Sender<FlashblocksPayloadV1>,
+        flashblock_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
+        flashblock_sender_tx: broadcast::Sender<FlashblocksProtoMessage>,
     ) -> Self {
-        let (outbound_tx, outbound_rx) = broadcast::channel(100);
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
+        let flashblock_sender_rx = flashblock_sender_tx.subscribe();
         let state = FlashblocksP2PState {
             network_handle: network_handle.clone(),
             authorizer_vk,
-            flashblock_stream,
+            flashblock_receiver_tx,
             inbound_rx,
-            outbound_tx,
+            flashblock_sender_tx,
             flashblock_index: 0,
             payload_timestamp: 0,
             payload_id: PayloadId::default(),
@@ -142,8 +145,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
 
         Self {
             network_handle,
-            outbound_rx,
             inbound_tx,
+            flashblocks_sender_rx: flashblock_sender_rx,
         }
     }
 }
@@ -155,7 +158,7 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
             inbound_tx: self.inbound_tx.clone(),
-            outbound_rx: self.outbound_rx.resubscribe(),
+            flashblocks_sender_rx: self.flashblocks_sender_rx.resubscribe(),
         })
     }
 
@@ -167,7 +170,7 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
             inbound_tx: self.inbound_tx.clone(),
-            outbound_rx: self.outbound_rx.resubscribe(),
+            flashblocks_sender_rx: self.flashblocks_sender_rx.resubscribe(),
         })
     }
 }

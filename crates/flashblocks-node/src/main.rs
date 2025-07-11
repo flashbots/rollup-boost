@@ -35,10 +35,10 @@ pub fn main() {
         Cli::<OpChainSpecParser, FlashblocksRollupArgs>::parse().run(async move |builder, args| {
             let rollup_args = args.rollup_args;
             let chain_spec = builder.config().chain.clone();
-            let (tx, events) = broadcast::channel(100);
+            let (inbound_tx, inbound_rx) = broadcast::channel(100);
 
             let flashblocks_overlay_builder =
-                FlashblocksOverlayBuilder::new(chain_spec, args.flashblocks_builder_vk, events);
+                FlashblocksOverlayBuilder::new(chain_spec, args.flashblocks_builder_vk, inbound_rx);
             let flashblocks_overlay = flashblocks_overlay_builder.start()?;
 
             info!(target: "reth::cli", "Launching Flashblocks RPC overlay node");
@@ -61,7 +61,7 @@ pub fn main() {
             let custom_rlpx_handler = FlashblocksProtoHandler::new(
                 handle.node.network.clone(),
                 VerifyingKey::default(),
-                tx
+                inbound_tx
              );
 
             handle

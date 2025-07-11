@@ -15,7 +15,7 @@ use tokio_stream::wrappers::BroadcastStream;
 pub struct FlashblocksConnectionHandler<N> {
     pub network_handle: N,
     pub inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
-    pub outbound_rx: broadcast::Receiver<FlashblocksProtoMessage>,
+    pub flashblocks_sender_rx: broadcast::Receiver<FlashblocksProtoMessage>,
 }
 
 impl<N: Unpin + Send + Sync + 'static> ConnectionHandler for FlashblocksConnectionHandler<N> {
@@ -44,7 +44,7 @@ impl<N: Unpin + Send + Sync + 'static> ConnectionHandler for FlashblocksConnecti
             conn,
             peer_id,
             inbound_tx: self.inbound_tx.clone(),
-            outbound_rx: BroadcastStream::new(self.outbound_rx.resubscribe()),
+            outbound_rx: BroadcastStream::new(self.flashblocks_sender_rx.resubscribe()),
             network_handle: self.network_handle,
         }
     }

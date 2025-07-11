@@ -3546,6 +3546,7 @@ dependencies = [
  "ed25519-dalek",
  "eyre",
  "futures",
+ "parking_lot",
  "reth",
  "reth-eth-wire",
  "reth-ethereum",
