@@ -1,18 +1,17 @@
 use crate::{FlashblocksApi, cache::FlashblocksCache};
 use alloy_primitives::{Address, TxHash, U256};
 use ed25519_dalek::VerifyingKey;
-use flashblocks_p2p::protocol::event::FlashblocksP2PEvent;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::FlashblocksPayloadV1;
 use std::{io::Read, sync::Arc};
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info};
 
 pub struct FlashblocksOverlayBuilder {
-    events: mpsc::UnboundedReceiver<FlashblocksP2PEvent>,
+    events: broadcast::Receiver<FlashblocksPayloadV1>,
     flashblocks_authorizor: VerifyingKey,
     cache: FlashblocksCache,
 }
@@ -26,7 +25,7 @@ impl FlashblocksOverlayBuilder {
     pub fn new(
         chain_spec: Arc<OpChainSpec>,
         flashblocks_authorizor: VerifyingKey,
-        events: mpsc::UnboundedReceiver<FlashblocksP2PEvent>,
+        events: broadcast::Receiver<FlashblocksPayloadV1>,
     ) -> Self {
         Self {
             events,
@@ -41,21 +40,11 @@ impl FlashblocksOverlayBuilder {
             cache: self.cache.clone(),
         };
         tokio::spawn(async move {
-            while let Some(message) = self.events.recv().await {
-                match message {
-                    FlashblocksP2PEvent::Established { .. } => todo!(),
-                    FlashblocksP2PEvent::FlashblocksPayloadV1(authorized) => {
-                        match authorized.verify(self.flashblocks_authorizor) {
-                            Ok(_) => {
-                                if let Err(e) = cache_cloned.process_payload(authorized.payload) {
-                                    error!("failed to process payload: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                error!("{e:?}");
-                            }
-                        }
-                    }
+            loop {
+                // TODO: handle this error
+                let payload = self.events.recv().await.unwrap();
+                if let Err(e) = cache_cloned.process_payload(payload) {
+                    error!("failed to process payload: {}", e);
                 }
             }
         });

@@ -2,13 +2,13 @@
 
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
-use flashblocks_p2p::protocol::handler::{FlashblocksP2PState, FlashblocksProtoHandler};
+use flashblocks_p2p::protocol::handler::{ FlashblocksProtoHandler};
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt,  FlashblocksOverlayBuilder};
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
 use rollup_boost::parse_vk;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast };
 use tracing::info;
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
@@ -35,7 +35,7 @@ pub fn main() {
         Cli::<OpChainSpecParser, FlashblocksRollupArgs>::parse().run(async move |builder, args| {
             let rollup_args = args.rollup_args;
             let chain_spec = builder.config().chain.clone();
-            let (tx, events) = mpsc::unbounded_channel();
+            let (tx, events) = broadcast::channel(100);
 
             let flashblocks_overlay_builder =
                 FlashblocksOverlayBuilder::new(chain_spec, args.flashblocks_builder_vk, events);
@@ -58,10 +58,11 @@ pub fn main() {
                 .await?;
 
 
-            let custom_rlpx_handler = FlashblocksProtoHandler {
-                network_handle: handle.node.network.clone(),
-                state: FlashblocksP2PState { events: tx },
-            };
+            let custom_rlpx_handler = FlashblocksProtoHandler::new(
+                handle.node.network.clone(),
+                VerifyingKey::default(),
+                tx
+             );
 
             handle
                 .node
