@@ -56,13 +56,18 @@ impl FlashblocksSubscriber {
     ) -> Self {
         let payload_tx = Arc::new(payload_tx);
         let metrics = FlashblocksSubscriberMetrics::default();
+
         let handle = tokio::spawn(async move {
             loop {
-                let Ok((ws_stream, _)) = connect_async(builder_ws_endpoint.as_str()).await else {
-                    metrics.reconnect_attempts.increment(1);
-                    metrics.connection_status.set(0);
-                    tokio::time::sleep(reconnect_backoff).await;
-                    continue;
+                let (ws_stream, _) = match connect_async(builder_ws_endpoint.as_str()).await {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        tracing::error!("Could not connect to builder ws endpoint: {e}");
+                        metrics.reconnect_attempts.increment(1);
+                        metrics.connection_status.set(0);
+                        tokio::time::sleep(reconnect_backoff).await;
+                        continue;
+                    }
                 };
                 metrics.connection_status.set(1);
 
@@ -291,6 +296,7 @@ mod tests {
     };
     use alloy_primitives::B256;
     use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
+    use bytes::Bytes;
     use futures::{SinkExt, StreamExt, stream::SplitSink};
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use rand::random;
@@ -306,44 +312,50 @@ mod tests {
 
     pub struct MockBuilder {
         handle: tokio::task::JoinHandle<eyre::Result<()>>,
-        sink: Arc<Mutex<SplitSink<WebSocketStream<TcpStream>, Message>>>,
+        msg_tx: tokio::sync::mpsc::UnboundedSender<Message>,
     }
 
     impl MockBuilder {
         pub async fn spawn(pong: bool, listener: TcpListener) -> eyre::Result<Self> {
-            let (tcp, _) = listener.accept().await?;
-            let ws = tokio_tungstenite::accept_async(tcp).await?;
-            let (sink, mut stream) = ws.split();
-
-            let sink = Arc::new(Mutex::new(sink));
-            let pong_sink = sink.clone();
+            let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel();
 
             let handle = tokio::spawn(async move {
-                loop {
-                    while let Some(msg) = stream.next().await {
-                        let msg = match msg {
-                            Ok(m) => m,
-                            Err(_) => break,
-                        };
+                let (tcp, _) = listener.accept().await?;
+                let ws = tokio_tungstenite::accept_async(tcp).await?;
+                let (mut sink, mut stream) = ws.split();
 
-                        match msg {
-                            Message::Ping(payload) => {
-                                if pong {
-                                    pong_sink.lock().await.send(Message::Pong(payload)).await?;
+                loop {
+                    tokio::select! {
+                        msg = stream.next() => {
+                            match msg.unwrap() {
+                                Ok(message)=>{
+                                    match message {
+                                        Message::Ping(_)=>{
+                                            if pong {
+                                                sink.send(Message::Pong(Bytes::default())).await?;
+                                            }
+                                        }
+
+                                    _ => {}
                                 }
                             }
-                            Message::Close(_) => break,
-                            _ => {}
+                                Err(e)=>{
+                                    panic!("Error when handling mock builder stream: {e}");
+                                }
+                            }
+                        }
+                        msg = msg_rx.recv() => {
+                            sink.send(msg.unwrap()).await?;
                         }
                     }
                 }
             });
 
-            Ok(Self { handle, sink })
+            Ok(Self { handle, msg_tx })
         }
 
         async fn send_message(&self, msg: Message) -> eyre::Result<()> {
-            self.sink.lock().await.send(msg).await?;
+            self.msg_tx.send(msg)?;
             Ok(())
         }
     }
@@ -412,6 +424,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let ws_endpoint =
             Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
+        let mock = MockBuilder::spawn(true, listener).await?;
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -429,26 +442,10 @@ mod tests {
             provider.clone(),
             Duration::from_millis(100),
         );
-        let mock = MockBuilder::spawn(false, listener).await?;
 
-        let fcu_state = ForkchoiceState {
-            head_block_hash: B256::random(),
-            ..Default::default()
-        };
+        let fcu_state = ForkchoiceState::default();
+        let payload_attributes = OpPayloadAttributes::default();
 
-        let payload_attributes = OpPayloadAttributes {
-            payload_attributes: PayloadAttributes {
-                timestamp: random(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        provider
-            .fork_choice_updated_v3(fcu_state, Some(payload_attributes.clone()))
-            .await?;
-
-        // Send flashblock with mismatched payload id
         let payload_id = payload_id_optimism(&fcu_state.head_block_hash, &payload_attributes, 3);
         let flashblock_payload = FlashblocksPayloadV1 {
             index: 0,
@@ -519,8 +516,6 @@ mod tests {
             1000,
             PayloadSource::Builder,
         )?;
-
-        dbg!("here");
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
         let (tx, _rx) = broadcast::channel(10);
