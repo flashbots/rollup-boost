@@ -11,7 +11,7 @@ use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, watch};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle};
 use tokio_tungstenite::tungstenite::{self, Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tokio_util::bytes::Bytes;
@@ -28,10 +28,10 @@ impl FlashblocksPubSubManager {
         listen_addr: SocketAddr,
         flashblocks_provider: Arc<FlashblocksProvider>,
         reconnect_backoff: Duration,
-    ) -> Result<Self, FlashblocksPubSubError> {
+    ) -> Self {
         let (payload_tx, payload_rx) = broadcast::channel(100);
 
-        Ok(Self {
+        Self {
             subscriber: FlashblocksSubscriber::new(
                 builder_ws_endpoint,
                 payload_tx,
@@ -39,7 +39,7 @@ impl FlashblocksPubSubManager {
                 reconnect_backoff,
             ),
             publisher: FlashblocksPublisher::new(listen_addr, payload_rx),
-        })
+        }
     }
 }
 
@@ -80,11 +80,17 @@ impl FlashblocksSubscriber {
                 );
 
                 tokio::select! {
-                    _ = ping_handle => {
-                        tracing::warn!("Ping handle resolved early, re-establing connection");
+                    result = ping_handle => {
+                        if let Err(e) = result.unwrap_or_else(|e| Err(e.into())) {
+                            tracing::error!("Ping handle error: {}", e);
+                        }
+                        tracing::warn!("Ping handle resolved early, reestabling connection");
                     }
-                    _ = stream_handle => {
-                        tracing::warn!("Flashblocks stream handle resolved early, re-establing connection");
+                    result = stream_handle => {
+                        if let Err(e) = result.unwrap_or_else(|e| Err(e.into())) {
+                            tracing::error!("Flashblocks stream handle error: {}", e);
+                        }
+                        tracing::warn!("Flashblocks stream handle resolved early, reestabling connection");
                     }
                 }
 
@@ -271,6 +277,8 @@ pub enum FlashblocksPubSubError {
     Utf8BytesSendError(#[from] broadcast::error::SendError<Utf8Bytes>),
     #[error(transparent)]
     RecvError(#[from] watch::error::RecvError),
+    #[error(transparent)]
+    JoinError(#[from] JoinError),
 }
 
 #[cfg(test)]

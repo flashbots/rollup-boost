@@ -154,7 +154,7 @@ impl RollupBoostArgs {
                 listener_addr,
                 flashblocks_provider.clone(),
                 Duration::from_millis(self.flashblocks.flashblock_builder_ws_reconnect_ms),
-            )?;
+            );
 
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
