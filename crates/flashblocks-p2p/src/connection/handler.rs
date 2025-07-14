@@ -1,10 +1,18 @@
+use std::sync::Arc;
+
 use super::FlashblocksConnection;
-use crate::protocol::proto::FlashblocksProtoMessage;
+use crate::protocol::{
+    handler::{FlashblocksP2PNetworHandle, FlashblocksP2PState},
+    proto::FlashblocksProtoMessage,
+};
+use ed25519_dalek::VerifyingKey;
+use parking_lot::{Mutex, RwLock};
 use reth_ethereum::network::{
     api::{Direction, PeerId},
     eth_wire::{capability::SharedCapabilities, multiplex::ProtocolConnection, protocol::Protocol},
     protocol::{ConnectionHandler, OnNotSupported},
 };
+use rollup_boost::FlashblocksPayloadV1;
 use tokio::sync::{
     broadcast,
     mpsc::{self},
@@ -14,11 +22,13 @@ use tokio_stream::wrappers::BroadcastStream;
 /// The connection handler for the flashblocks RLPx protocol.
 pub struct FlashblocksConnectionHandler<N> {
     pub network_handle: N,
-    pub inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
-    pub flashblocks_sender_rx: broadcast::Receiver<FlashblocksProtoMessage>,
+    pub authorizer_vk: VerifyingKey,
+    pub peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
+    pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
+    pub state: Arc<Mutex<FlashblocksP2PState>>,
 }
 
-impl<N: Unpin + Send + Sync + 'static> ConnectionHandler for FlashblocksConnectionHandler<N> {
+impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksConnectionHandler<N> {
     type Connection = FlashblocksConnection<N>;
 
     fn protocol(&self) -> Protocol {
@@ -43,9 +53,14 @@ impl<N: Unpin + Send + Sync + 'static> ConnectionHandler for FlashblocksConnecti
         FlashblocksConnection {
             conn,
             peer_id,
-            inbound_tx: self.inbound_tx.clone(),
-            outbound_rx: BroadcastStream::new(self.flashblocks_sender_rx.resubscribe()),
             network_handle: self.network_handle,
+            authorizer_vk: self.authorizer_vk,
+            peer_tx: self.peer_tx.clone(),
+            peer_rx: BroadcastStream::new(self.peer_tx.subscribe()),
+            flashblock_tx: self.flashblock_tx.clone(),
+            state: self.state.clone(),
+            payload_id: Default::default(),
+            received: Vec::new(),
         }
     }
 }

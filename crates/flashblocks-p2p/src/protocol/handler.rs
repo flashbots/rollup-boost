@@ -1,14 +1,14 @@
 use crate::connection::handler::FlashblocksConnectionHandler;
 use crate::protocol::proto::FlashblocksProtoMessage;
-use crate::protocol::proto::FlashblocksProtoMessageKind;
 use ed25519_dalek::VerifyingKey;
+use parking_lot::Mutex;
 use reth::payload::PayloadId;
 use reth_ethereum::network::{api::PeerId, protocol::ProtocolHandler};
 use reth_network::Peers;
 use rollup_boost::FlashblocksPayloadV1;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::sync::broadcast;
-use tokio::sync::mpsc;
 
 pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
@@ -16,20 +16,7 @@ impl<N: Clone + Unpin + Peers + std::fmt::Debug + 'static> FlashblocksP2PNetworH
 
 /// Protocol state is an helper struct to store the protocol events.
 #[derive(Debug)]
-pub struct FlashblocksP2PState<N: Peers + std::fmt::Debug> {
-    /// Networkd handle, used to update peer state.
-    pub network_handle: N,
-    /// Authorizer verifying, used to verify flashblocks payloads.
-    pub authorizer_vk: VerifyingKey,
-    /// Verified flashblock payloads received by peers.
-    /// May not be strictly ordered.
-    pub inbound_rx: mpsc::UnboundedReceiver<FlashblocksProtoMessage>,
-    /// Sender for newly created or received and validated flashblocks payloads
-    /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub flashblock_sender_tx: broadcast::Sender<FlashblocksProtoMessage>,
-    /// Receiver of verified and strictly ordered flashbloacks payloads.
-    /// For consumption by the rpc overlay.
-    pub flashblock_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
+pub struct FlashblocksP2PState {
     /// The index of the next flashblock to emit over the flashblocks_stream.
     pub flashblock_index: usize,
     /// Timestamp of the most recent flashblocks payload.
@@ -40,84 +27,21 @@ pub struct FlashblocksP2PState<N: Peers + std::fmt::Debug> {
     pub flashblocks: Vec<Option<FlashblocksPayloadV1>>,
 }
 
-impl<N: Peers + std::fmt::Debug> FlashblocksP2PState<N> {
-    pub fn run(mut self) {
-        tokio::spawn(async move {
-            while let Some(msg) = self.inbound_rx.recv().await {
-                match &msg.message {
-                    FlashblocksProtoMessageKind::FlashblocksPayloadV1(payload) => {
-                        // TODO: might make sense to perform verification in a separate task
-                        if let Err(e) = payload.verify(self.authorizer_vk) {
-                            tracing::warn!(
-                                "Failed to verify flashblocks payload: {:?}, error: {}",
-                                payload,
-                                e
-                            );
-                            // TODO: ban peer
-                            continue;
-                        }
-                        if payload.authorization.timestamp < self.payload_timestamp {
-                            tracing::warn!(
-                                "Received flashblocks payload with outdated timestamp: {}",
-                                payload.authorization.timestamp
-                            );
-                            // TODO: handle peer
-                            continue;
-                        }
-                        // Check if this is a new payload
-                        if payload.authorization.timestamp > self.payload_timestamp {
-                            self.flashblock_index = 0;
-                            self.payload_timestamp = payload.authorization.timestamp;
-                            self.payload_id = payload.payload.payload_id;
-                            self.flashblocks.clear();
-                        }
-                        // If we've already seen this index, skip it
-                        // Otherwise, add it to the list
-                        // TODO: perhaps check max index
-                        self.flashblocks
-                            .resize_with(payload.payload.index as usize + 1, || None);
-                        let flashblock = &mut self.flashblocks[payload.payload.index as usize];
-                        if flashblock.is_none() {
-                            // We haven't seen this index yet
-                            // Add the flashblock to our cache
-                            *flashblock = Some(payload.clone().payload);
-                            tracing::debug!(
-                                "Received flashblocks payload with id: {}, index: {}",
-                                payload.payload.payload_id,
-                                payload.payload.index
-                            );
-                            // Broadcast the flashblock to all peers, possible our of order
-                            self.flashblock_sender_tx.send(msg).unwrap();
-                            // Broadcast any flashblocks in the cache that are in order
-                            while let Some(Some(flashblock_event)) =
-                                self.flashblocks.get(self.flashblock_index)
-                            {
-                                // Send the flashblock to the stream
-                                self.flashblock_receiver_tx
-                                    .send(flashblock_event.clone())
-                                    .ok();
-                                // Update the index
-                                self.flashblock_index += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-}
-
 /// The protocol handler takes care of incoming and outgoing connections.
 #[derive(Debug)]
 pub struct FlashblocksProtoHandler<N> {
     /// Network handle, used to update peer state.
     pub network_handle: N,
-    /// Verified flashblock payloads received by peers.
-    /// May not be strictly ordered.
-    pub inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
-    /// Sender for newly received and validated or created flashblocks payloads
+    /// Authorizer verifying, used to verify flashblocks payloads.
+    pub authorizer_vk: VerifyingKey,
+    /// Sender for newly created or received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub flashblocks_sender_rx: broadcast::Receiver<FlashblocksProtoMessage>,
+    pub peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
+    /// Receiver of verified and strictly ordered flashbloacks payloads.
+    /// For consumption by the rpc overlay.
+    pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
+    /// Mutable state of the flashblocks protocol.
+    pub state: Arc<Mutex<FlashblocksP2PState>>,
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
@@ -125,28 +49,23 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
     pub fn new(
         network_handle: N,
         authorizer_vk: VerifyingKey,
-        flashblock_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
-        flashblock_sender_tx: broadcast::Sender<FlashblocksProtoMessage>,
+        flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
+        peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
     ) -> Self {
-        let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
-        let flashblock_sender_rx = flashblock_sender_tx.subscribe();
-        let state = FlashblocksP2PState {
-            network_handle: network_handle.clone(),
-            authorizer_vk,
-            flashblock_receiver_tx,
-            inbound_rx,
-            flashblock_sender_tx,
+        // let flashblock_sender_rx = flashblock_sender_tx.subscribe();
+        let state = Arc::new(Mutex::new(FlashblocksP2PState {
             flashblock_index: 0,
             payload_timestamp: 0,
             payload_id: PayloadId::default(),
             flashblocks: vec![],
-        };
-        state.run();
+        }));
 
         Self {
             network_handle,
-            inbound_tx,
-            flashblocks_sender_rx: flashblock_sender_rx,
+            authorizer_vk,
+            peer_tx,
+            flashblock_tx,
+            state,
         }
     }
 }
@@ -157,8 +76,10 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
     fn on_incoming(&self, _socket_addr: SocketAddr) -> Option<Self::ConnectionHandler> {
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
-            inbound_tx: self.inbound_tx.clone(),
-            flashblocks_sender_rx: self.flashblocks_sender_rx.resubscribe(),
+            authorizer_vk: self.authorizer_vk,
+            peer_tx: self.peer_tx.clone(),
+            flashblock_tx: self.flashblock_tx.clone(),
+            state: self.state.clone(),
         })
     }
 
@@ -169,8 +90,10 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
     ) -> Option<Self::ConnectionHandler> {
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
-            inbound_tx: self.inbound_tx.clone(),
-            flashblocks_sender_rx: self.flashblocks_sender_rx.resubscribe(),
+            authorizer_vk: self.authorizer_vk,
+            peer_tx: self.peer_tx.clone(),
+            flashblock_tx: self.flashblock_tx.clone(),
+            state: self.state.clone(),
         })
     }
 }
