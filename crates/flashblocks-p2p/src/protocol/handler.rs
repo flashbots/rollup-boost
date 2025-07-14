@@ -9,6 +9,7 @@ use rollup_boost::FlashblocksPayloadV1;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tracing::info;
 
 pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
@@ -54,7 +55,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
         flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
         peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
     ) -> Self {
-        // let flashblock_sender_rx = flashblock_sender_tx.subscribe();
+        println!("Protocol created: {authorizer_vk:?}");
         let state = Arc::new(Mutex::new(FlashblocksP2PState {
             flashblock_index: 0,
             payload_timestamp: 0,
@@ -76,6 +77,7 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
     type ConnectionHandler = FlashblocksConnectionHandler<N>;
 
     fn on_incoming(&self, _socket_addr: SocketAddr) -> Option<Self::ConnectionHandler> {
+        info!("here4");
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
             authorizer_vk: self.authorizer_vk,
@@ -90,6 +92,7 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
         _socket_addr: SocketAddr,
         _peer_id: PeerId,
     ) -> Option<Self::ConnectionHandler> {
+        info!("here3");
         Some(FlashblocksConnectionHandler::<N> {
             network_handle: self.network_handle.clone(),
             authorizer_vk: self.authorizer_vk,

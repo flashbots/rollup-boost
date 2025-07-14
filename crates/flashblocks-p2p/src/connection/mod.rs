@@ -9,7 +9,7 @@ use alloy_primitives::bytes::BytesMut;
 use ed25519_dalek::VerifyingKey;
 use futures::{Stream, StreamExt};
 use parking_lot::{Mutex, RwLock};
-use reth::payload::PayloadId;
+use reth::{payload::PayloadId, rpc::api::eth::helpers::trace};
 use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
 use reth_network::types::ReputationChangeKind;
 use rollup_boost::FlashblocksPayloadV1;
@@ -20,6 +20,7 @@ use std::{
 };
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
+use tracing::trace;
 
 pub(crate) mod handler;
 
@@ -59,6 +60,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                 match res {
                     Ok(outbound) => {
                         // TODO: handle the case where this peer is the one that sent the original
+                        trace!(peer_id = %this.peer_id, target = "flashblocks", "Broadcasting flashblocks message");
                         return Poll::Ready(Some(outbound.encoded()));
                     }
                     Err(e) => {
@@ -78,6 +80,9 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                 return Poll::Ready(None);
             };
 
+            trace!(peer_id = %this.peer_id, target = "flashblocks",
+                "Received flashblocks message from peer",
+            );
             match msg.message {
                 FlashblocksProtoMessageKind::FlashblocksPayloadV1(authorized) => {
                     this.handle_flashblocks_payload_v1(authorized, msg.message_type);

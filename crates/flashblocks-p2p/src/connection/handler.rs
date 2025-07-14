@@ -15,6 +15,7 @@ use reth_ethereum::network::{
 use rollup_boost::FlashblocksPayloadV1;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
+use tracing::debug;
 
 /// The connection handler for the flashblocks RLPx protocol.
 pub struct FlashblocksConnectionHandler<N> {
@@ -47,6 +48,7 @@ impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksConnectionH
         peer_id: PeerId,
         conn: ProtocolConnection,
     ) -> Self::Connection {
+        debug!(%peer_id, %direction, "New connection established with flashblocks peer");
         FlashblocksConnection {
             conn,
             peer_id,
