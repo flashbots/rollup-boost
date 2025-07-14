@@ -20,7 +20,7 @@ use std::{
 };
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::trace;
+use tracing::{debug, trace};
 
 pub(crate) mod handler;
 
@@ -178,6 +178,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             // Broadcast any flashblocks in the cache that are in order
             while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
                 // Send the flashblock to the stream
+                debug!(%flashblock_event.payload_id, %state.flashblock_index, "Publishing new flashblock");
                 self.flashblock_tx.send(flashblock_event.clone()).ok();
                 // Update the index
                 state.flashblock_index += 1;

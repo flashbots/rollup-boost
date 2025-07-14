@@ -4,7 +4,7 @@ use alloy_primitives::{Address, B256, Bytes, TxHash, U256, address, b256};
 use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::PayloadId;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use flashblocks_p2p::protocol::{
     auth::Authorized,
     handler::FlashblocksProtoHandler,
@@ -41,28 +41,12 @@ pub struct NodeContext {
 }
 
 impl NodeContext {
-    // pub async fn send_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
-    //     self.sender.send(payload).await?;
-    //     rx.await?;
-    //     Ok(())
-    // }
-
     pub async fn provider(&self) -> eyre::Result<RootProvider> {
         let url = format!("http://{}", self.http_api_addr);
         let client = RpcClient::builder().http(url.parse()?);
 
         Ok(RootProvider::new(client))
     }
-
-    // pub async fn send_test_payloads(&self) -> eyre::Result<()> {
-    //     let base_payload = create_first_payload();
-    //     self.send_payload(base_payload).await?;
-    //
-    //     let second_payload = create_second_payload();
-    //     self.send_payload(second_payload).await?;
-    //
-    //     Ok(())
-    // }
 }
 
 async fn setup_node(
@@ -158,7 +142,7 @@ async fn setup_node(
     })
 }
 
-fn create_first_payload() -> FlashblocksPayloadV1 {
+fn payload_0() -> FlashblocksPayloadV1 {
     FlashblocksPayloadV1 {
         payload_id: PayloadId::new([0; 8]),
         index: 0,
@@ -191,7 +175,7 @@ const TX1_HASH: TxHash =
 const TX2_HASH: TxHash =
     b256!("0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8");
 
-fn create_second_payload() -> FlashblocksPayloadV1 {
+fn payload_2() -> FlashblocksPayloadV1 {
     // Create second payload (index 1) with transactions
     // tx1 hash: 0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548 (deposit transaction)
     // tx2 hash: 0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8
@@ -328,17 +312,17 @@ async fn test_peering() -> eyre::Result<()> {
     let pending_block = provider_1
         .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
         .await?;
-    assert_eq!(pending_block.is_none(), true);
+    assert!(pending_block.is_none());
 
-    let base_payload = create_first_payload();
+    let payload_0 = payload_0();
     info!("Sending base payload");
     let authorization = Authorization::new(
-        base_payload.payload_id,
+        payload_0.payload_id,
         0,
         &authorizer,
         builder.verifying_key(),
     );
-    let authorized = Authorized::new(&builder, authorization, base_payload.clone());
+    let authorized = Authorized::new(&builder, authorization, payload_0.clone());
     let proto_message = FlashblocksProtoMessage {
         message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(authorized),
         message_type: FlashblocksProtoMessageId::FlashblocksPayloadV1,
@@ -355,9 +339,22 @@ async fn test_peering() -> eyre::Result<()> {
     assert_eq!(pending_block.number(), 1);
     assert_eq!(pending_block.transactions.hashes().len(), 0);
 
-    let second_payload = create_second_payload();
-    node_1.inbound_tx.send(second_payload.clone())?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    let payload_1 = payload_2();
+    info!("Sending base payload");
+    let authorization = Authorization::new(
+        payload_1.payload_id,
+        0,
+        &authorizer,
+        builder.verifying_key(),
+    );
+    let authorized = Authorized::new(&builder, authorization, payload_1.clone());
+    let proto_message = FlashblocksProtoMessage {
+        message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(authorized),
+        message_type: FlashblocksProtoMessageId::FlashblocksPayloadV1,
+    };
+
+    node_1.outbound_tx.send(proto_message)?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     // Query pending block after sending the second payload with two transactions
     let block = provider_0

@@ -1,5 +1,5 @@
 use crate::connection::handler::FlashblocksConnectionHandler;
-use crate::protocol::proto::FlashblocksProtoMessage;
+use crate::protocol::proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind};
 use ed25519_dalek::VerifyingKey;
 use parking_lot::Mutex;
 use reth::payload::PayloadId;
@@ -9,7 +9,7 @@ use rollup_boost::FlashblocksPayloadV1;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{debug, info};
 
 pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
@@ -35,10 +35,8 @@ pub struct FlashblocksProtoHandler<N> {
     pub network_handle: N,
     /// Authorizer verifying, used to verify flashblocks payloads.
     pub authorizer_vk: VerifyingKey,
-    /// Sender for newly created or received and validated flashblocks payloads
-    /// which will be broadcasted to all peers. May not be strictly ordered.
-    /// TODO: we still need an internal listener for this channel to
-    /// handle locally created flashblocks.
+    /// Sender for flashblocks payloads which will be broadcasted to all peers.
+    /// May not be strictly ordered.
     pub peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
     /// Receiver of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
@@ -53,15 +51,62 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
         network_handle: N,
         authorizer_vk: VerifyingKey,
         flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
-        peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
+        publish_tx: broadcast::Sender<FlashblocksProtoMessage>,
     ) -> Self {
-        println!("Protocol created: {authorizer_vk:?}");
         let state = Arc::new(Mutex::new(FlashblocksP2PState {
             flashblock_index: 0,
             payload_timestamp: 0,
             payload_id: PayloadId::default(),
             flashblocks: vec![],
         }));
+
+        // TODO: Clean up duplicated code
+        let state_clone = state.clone();
+        let mut publish_rx = publish_tx.subscribe();
+        let peer_tx = broadcast::Sender::new(100);
+        let peer_tx_clone = peer_tx.clone();
+        let flashblock_tx_clone = flashblock_tx.clone();
+        tokio::spawn({
+            async move {
+                while let Ok(msg) = publish_rx.recv().await {
+                    let message = match msg.message {
+                        FlashblocksProtoMessageKind::FlashblocksPayloadV1(message) => message,
+                    };
+                    // Check if we have a payload id and flashblocks to emit.
+                    let mut state = state_clone.lock();
+                    let len = state.flashblocks.len();
+                    state
+                        .flashblocks
+                        .resize_with(len.max(message.payload.index as usize + 1), || None);
+                    let flashblock = &mut state.flashblocks[message.payload.index as usize];
+                    if flashblock.is_none() {
+                        // We haven't seen this index yet
+                        // Add the flashblock to our cache
+                        *flashblock = Some(message.clone().payload);
+                        tracing::debug!(
+                            "Received flashblocks payload with id: {}, index: {}",
+                            message.payload.payload_id,
+                            message.payload.index
+                        );
+                        let message = FlashblocksProtoMessage {
+                            message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(message),
+                            message_type: msg.message_type,
+                        };
+                        peer_tx_clone.send(message).ok();
+                        // Broadcast any flashblocks in the cache that are in order
+                        while let Some(Some(flashblock_event)) =
+                            state.flashblocks.get(state.flashblock_index)
+                        {
+                            // Send the flashblock to the stream
+                            debug!(payload_id = %flashblock_event.payload_id, flashblock_index = %state.flashblock_index, "Publishing new flashblock");
+                            flashblock_tx_clone.send(flashblock_event.clone()).ok();
+                            // Update the index
+                            state.flashblock_index += 1;
+                        }
+                    }
+                }
+            }
+        });
 
         Self {
             network_handle,
