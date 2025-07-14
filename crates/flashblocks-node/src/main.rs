@@ -3,7 +3,7 @@
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
 use flashblocks_p2p::protocol::handler::{ FlashblocksProtoHandler};
-use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt,  FlashblocksOverlayBuilder};
+use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay };
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
@@ -38,9 +38,9 @@ pub fn main() {
             let (inbound_tx, inbound_rx) = broadcast::channel(100);
             let (outbound_tx, _outbound_rx) = broadcast::channel(100);
 
-            let flashblocks_overlay_builder =
-                FlashblocksOverlayBuilder::new(chain_spec, args.flashblocks_builder_vk, inbound_rx);
-            let flashblocks_overlay = flashblocks_overlay_builder.start()?;
+            let flashblocks_overlay =
+                FlashblocksOverlay::new(chain_spec, inbound_rx);
+            flashblocks_overlay.clone().start()?;
 
             info!(target: "reth::cli", "Launching Flashblocks RPC overlay node");
             let handle = builder

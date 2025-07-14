@@ -36,6 +36,8 @@ pub struct FlashblocksProtoHandler<N> {
     pub authorizer_vk: VerifyingKey,
     /// Sender for newly created or received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
+    /// TODO: we still need an internal listener for this channel to
+    /// handle locally created flashblocks.
     pub peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
     /// Receiver of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.

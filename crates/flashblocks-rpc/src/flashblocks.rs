@@ -1,44 +1,44 @@
 use crate::{FlashblocksApi, cache::FlashblocksCache};
 use alloy_primitives::{Address, TxHash, U256};
-use ed25519_dalek::VerifyingKey;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::FlashblocksPayloadV1;
 use std::{io::Read, sync::Arc};
-use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, error, info};
+use tokio::sync::broadcast;
+use tracing::error;
 
-pub struct FlashblocksOverlayBuilder {
-    events: broadcast::Receiver<FlashblocksPayloadV1>,
-    flashblocks_authorizor: VerifyingKey,
-    cache: FlashblocksCache,
-}
-
-#[derive(Clone)]
 pub struct FlashblocksOverlay {
+    events: broadcast::Receiver<FlashblocksPayloadV1>,
     cache: FlashblocksCache,
 }
 
-impl FlashblocksOverlayBuilder {
+impl Clone for FlashblocksOverlay {
+    fn clone(&self) -> Self {
+        Self {
+            events: self.events.resubscribe(),
+            cache: self.cache.clone(),
+        }
+    }
+}
+
+impl FlashblocksOverlay {
     pub fn new(
         chain_spec: Arc<OpChainSpec>,
-        flashblocks_authorizor: VerifyingKey,
         events: broadcast::Receiver<FlashblocksPayloadV1>,
     ) -> Self {
         Self {
             events,
-            flashblocks_authorizor,
             cache: FlashblocksCache::new(chain_spec),
         }
     }
 
-    pub fn start(mut self) -> eyre::Result<FlashblocksOverlay> {
+    pub fn start(mut self) -> eyre::Result<()> {
         let cache_cloned = self.cache.clone();
-        let overlay = FlashblocksOverlay {
-            cache: self.cache.clone(),
-        };
+        // let overlay = FlashblocksOverlay {
+        //     cache: self.cache.clone(),
+        // };
         tokio::spawn(async move {
             loop {
                 // TODO: handle this error
@@ -49,7 +49,7 @@ impl FlashblocksOverlayBuilder {
             }
         });
 
-        Ok(overlay)
+        Ok(())
     }
 
     pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
