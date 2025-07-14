@@ -26,7 +26,6 @@ pub(crate) mod handler;
 pub struct FlashblocksConnection<N> {
     pub conn: ProtocolConnection,
     pub peer_id: PeerId,
-    // inbound_tx: mpsc::UnboundedSender<FlashblocksProtoMessage>,
     pub network_handle: N,
     /// Authorizer verifying, used to verify flashblocks payloads.
     pub authorizer_vk: VerifyingKey,
@@ -59,6 +58,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
             if let Poll::Ready(Some(res)) = this.peer_rx.poll_next_unpin(cx) {
                 match res {
                     Ok(outbound) => {
+                        // TODO: handle the case where this peer is the one that sent the original
                         return Poll::Ready(Some(outbound.encoded()));
                     }
                     Err(e) => {
@@ -92,7 +92,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         &mut self,
         message: Authorized<FlashblocksPayloadV1>,
         message_type: FlashblocksProtoMessageId,
-    ) -> () {
+    ) {
         let mut state = self.state.lock();
 
         if let Err(e) = message.verify(self.authorizer_vk) {
@@ -133,7 +133,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         self.received
             .resize_with(len.max(message.payload.index as usize + 1), || false);
         if self.received[message.payload.index as usize] {
-            // We've already seen this index, skip it
+            // We've already seen this index from this peer.
+            // They could be trying to DOS us.
             tracing::warn!(
                 "Received duplicate flashblocks payload with id: {}, index: {}, from peer: {}",
                 message.payload.payload_id,

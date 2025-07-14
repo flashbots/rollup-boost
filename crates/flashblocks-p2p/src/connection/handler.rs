@@ -6,17 +6,14 @@ use crate::protocol::{
     proto::FlashblocksProtoMessage,
 };
 use ed25519_dalek::VerifyingKey;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use reth_ethereum::network::{
     api::{Direction, PeerId},
     eth_wire::{capability::SharedCapabilities, multiplex::ProtocolConnection, protocol::Protocol},
     protocol::{ConnectionHandler, OnNotSupported},
 };
 use rollup_boost::FlashblocksPayloadV1;
-use tokio::sync::{
-    broadcast,
-    mpsc::{self},
-};
+use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 
 /// The connection handler for the flashblocks RLPx protocol.
