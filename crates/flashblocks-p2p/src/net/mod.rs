@@ -14,7 +14,7 @@ use rollup_boost::FlashblocksPayloadV1;
 use tokio::sync::broadcast;
 
 use crate::protocol::{
-    handler::{FlashblocksP2PNetworHandle, FlashblocksProtoHandler},
+    handler::{FlashblocksHandler, FlashblocksP2PNetworHandle},
     proto::FlashblocksProtoMessage,
 };
 
@@ -62,7 +62,7 @@ where
         pool: Pool,
     ) -> eyre::Result<Self::Network> {
         let handle = self.inner.build_network(ctx, pool).await?;
-        let handler = FlashblocksProtoHandler::<Network>::new(
+        let handler = FlashblocksHandler::<Network>::new(
             handle.clone(),
             self.authorizer_vk,
             self.flashblocks_receiver_tx,

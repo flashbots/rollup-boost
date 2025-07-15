@@ -5,9 +5,9 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::SigningKey;
+use flashblocks_p2p::protocol::handler::FlashblocksHandler;
 use flashblocks_p2p::protocol::{
     auth::Authorized,
-    handler::FlashblocksProtoHandler,
     proto::{FlashblocksProtoMessage, FlashblocksProtoMessageId, FlashblocksProtoMessageKind},
 };
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, Metadata};
@@ -105,7 +105,7 @@ async fn setup_node(
         .launch()
         .await?;
 
-    let custom_rlpx_handler = FlashblocksProtoHandler::new(
+    let custom_rlpx_handler = FlashblocksHandler::new(
         node.network.clone(),
         authorizer.verifying_key(),
         inbound_tx.clone(),

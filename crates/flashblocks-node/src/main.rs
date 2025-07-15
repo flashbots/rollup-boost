@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
-use flashblocks_p2p::protocol::handler::{ FlashblocksProtoHandler};
+use flashblocks_p2p::protocol::handler::FlashblocksHandler;
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay };
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
@@ -59,7 +59,7 @@ pub fn main() {
                 .await?;
 
 
-            let custom_rlpx_handler = FlashblocksProtoHandler::new(
+            let custom_rlpx_handler = FlashblocksHandler::new(
                 handle.node.network.clone(),
                 VerifyingKey::default(),
                 inbound_tx,

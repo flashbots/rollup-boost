@@ -1,5 +1,7 @@
-use crate::connection::handler::FlashblocksConnectionHandler;
-use crate::protocol::proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind};
+use crate::protocol::{
+    connection::FlashblocksConnection,
+    proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind},
+};
 use ed25519_dalek::VerifyingKey;
 use parking_lot::Mutex;
 use reth::payload::PayloadId;
@@ -9,7 +11,14 @@ use rollup_boost::FlashblocksPayloadV1;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{debug, info};
+use tracing::debug;
+
+use reth_ethereum::network::{
+    api::Direction,
+    eth_wire::{capability::SharedCapabilities, multiplex::ProtocolConnection, protocol::Protocol},
+    protocol::{ConnectionHandler, OnNotSupported},
+};
+use tokio_stream::wrappers::BroadcastStream;
 
 pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
@@ -29,8 +38,8 @@ pub struct FlashblocksP2PState {
 }
 
 /// The protocol handler takes care of incoming and outgoing connections.
-#[derive(Debug)]
-pub struct FlashblocksProtoHandler<N> {
+#[derive(Clone, Debug)]
+pub struct FlashblocksP2PCtx<N> {
     /// Network handle, used to update peer state.
     pub network_handle: N,
     /// Authorizer verifying, used to verify flashblocks payloads.
@@ -41,11 +50,18 @@ pub struct FlashblocksProtoHandler<N> {
     /// Receiver of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
     pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
+}
+
+/// The protocol handler takes care of incoming and outgoing connections.
+#[derive(Clone, Debug)]
+pub struct FlashblocksHandler<N> {
+    /// Network handle, used to update peer state.
+    pub ctx: FlashblocksP2PCtx<N>,
     /// Mutable state of the flashblocks protocol.
     pub state: Arc<Mutex<FlashblocksP2PState>>,
 }
 
-impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
+impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
     /// Creates a new protocol handler with the given state.
     pub fn new(
         network_handle: N,
@@ -53,83 +69,79 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksProtoHandler<N> {
         flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
         publish_tx: broadcast::Sender<FlashblocksProtoMessage>,
     ) -> Self {
+        let peer_tx = broadcast::Sender::new(100);
         let state = Arc::new(Mutex::new(FlashblocksP2PState {
             flashblock_index: 0,
             payload_timestamp: 0,
             payload_id: PayloadId::default(),
             flashblocks: vec![],
         }));
+        let ctx = FlashblocksP2PCtx {
+            network_handle: network_handle.clone(),
+            authorizer_vk,
+            peer_tx,
+            flashblock_tx,
+        };
 
-        // TODO: Clean up duplicated code
         let state_clone = state.clone();
-        let mut publish_rx = publish_tx.subscribe();
-        let peer_tx = broadcast::Sender::new(100);
-        let peer_tx_clone = peer_tx.clone();
-        let flashblock_tx_clone = flashblock_tx.clone();
+        let ctx_clone = ctx.clone();
         tokio::spawn({
             async move {
-                while let Ok(msg) = publish_rx.recv().await {
-                    let message = match msg.message {
-                        FlashblocksProtoMessageKind::FlashblocksPayloadV1(message) => message,
-                    };
-                    // Check if we have a payload id and flashblocks to emit.
+                while let Ok(msg) = publish_tx.subscribe().recv().await {
                     let mut state = state_clone.lock();
-                    let len = state.flashblocks.len();
-                    state
-                        .flashblocks
-                        .resize_with(len.max(message.payload.index as usize + 1), || None);
-                    let flashblock = &mut state.flashblocks[message.payload.index as usize];
-                    if flashblock.is_none() {
-                        // We haven't seen this index yet
-                        // Add the flashblock to our cache
-                        *flashblock = Some(message.clone().payload);
-                        tracing::debug!(
-                            "Received flashblocks payload with id: {}, index: {}",
-                            message.payload.payload_id,
-                            message.payload.index
-                        );
-                        let message = FlashblocksProtoMessage {
-                            message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(message),
-                            message_type: msg.message_type,
-                        };
-                        peer_tx_clone.send(message).ok();
-                        // Broadcast any flashblocks in the cache that are in order
-                        while let Some(Some(flashblock_event)) =
-                            state.flashblocks.get(state.flashblock_index)
-                        {
-                            // Send the flashblock to the stream
-                            debug!(payload_id = %flashblock_event.payload_id, flashblock_index = %state.flashblock_index, "Publishing new flashblock");
-                            flashblock_tx_clone.send(flashblock_event.clone()).ok();
-                            // Update the index
-                            state.flashblock_index += 1;
-                        }
-                    }
+                    ctx_clone.publish(&mut state, msg);
                 }
             }
         });
 
-        Self {
-            network_handle,
-            authorizer_vk,
-            peer_tx,
-            flashblock_tx,
-            state,
+        Self { ctx, state }
+    }
+}
+
+impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
+    /// Commit new and already verified flashblocks payloads to the state
+    /// broadcast them to peers, and publish them to the stream.
+    pub fn publish(&self, state: &mut FlashblocksP2PState, msg: FlashblocksProtoMessage) {
+        // If we've already seen this index, skip it
+        // Otherwise, add it to the list
+        let FlashblocksProtoMessageKind::FlashblocksPayloadV1(message) = msg.message;
+        // TODO: perhaps check max index
+        let len = state.flashblocks.len();
+        state
+            .flashblocks
+            .resize_with(len.max(message.payload.index as usize + 1), || None);
+        let flashblock = &mut state.flashblocks[message.payload.index as usize];
+        if flashblock.is_none() {
+            // We haven't seen this index yet
+            // Add the flashblock to our cache
+            *flashblock = Some(message.clone().payload);
+            tracing::debug!(
+                "Received flashblocks payload with id: {}, index: {}",
+                message.payload.payload_id,
+                message.payload.index
+            );
+            let message = FlashblocksProtoMessage {
+                message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(message),
+                message_type: msg.message_type,
+            };
+            self.peer_tx.send(message).ok();
+            // Broadcast any flashblocks in the cache that are in order
+            while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
+                // Send the flashblock to the stream
+                debug!(payload_id = %flashblock_event.payload_id, flashblock_index = %state.flashblock_index, "Publishing new flashblock");
+                self.flashblock_tx.send(flashblock_event.clone()).ok();
+                // Update the index
+                state.flashblock_index += 1;
+            }
         }
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<N> {
-    type ConnectionHandler = FlashblocksConnectionHandler<N>;
+impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksHandler<N> {
+    type ConnectionHandler = Self;
 
     fn on_incoming(&self, _socket_addr: SocketAddr) -> Option<Self::ConnectionHandler> {
-        info!("here4");
-        Some(FlashblocksConnectionHandler::<N> {
-            network_handle: self.network_handle.clone(),
-            authorizer_vk: self.authorizer_vk,
-            peer_tx: self.peer_tx.clone(),
-            flashblock_tx: self.flashblock_tx.clone(),
-            state: self.state.clone(),
-        })
+        Some(self.clone())
     }
 
     fn on_outgoing(
@@ -137,13 +149,41 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksProtoHandler<
         _socket_addr: SocketAddr,
         _peer_id: PeerId,
     ) -> Option<Self::ConnectionHandler> {
-        info!("here3");
-        Some(FlashblocksConnectionHandler::<N> {
-            network_handle: self.network_handle.clone(),
-            authorizer_vk: self.authorizer_vk,
-            peer_tx: self.peer_tx.clone(),
-            flashblock_tx: self.flashblock_tx.clone(),
-            state: self.state.clone(),
-        })
+        Some(self.clone())
+    }
+}
+
+impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksHandler<N> {
+    type Connection = FlashblocksConnection<N>;
+
+    fn protocol(&self) -> Protocol {
+        FlashblocksProtoMessage::protocol()
+    }
+
+    fn on_unsupported_by_peer(
+        self,
+        _supported: &SharedCapabilities,
+        _direction: Direction,
+        _peer_id: PeerId,
+    ) -> OnNotSupported {
+        OnNotSupported::KeepAlive
+    }
+
+    fn into_connection(
+        self,
+        direction: Direction,
+        peer_id: PeerId,
+        conn: ProtocolConnection,
+    ) -> Self::Connection {
+        debug!(%peer_id, %direction, "New connection established with flashblocks peer");
+
+        FlashblocksConnection {
+            peer_rx: BroadcastStream::new(self.ctx.peer_tx.subscribe()),
+            handler: self,
+            conn,
+            peer_id,
+            payload_id: Default::default(),
+            received: Vec::new(),
+        }
     }
 }
