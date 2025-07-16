@@ -3,7 +3,7 @@
 use super::FlashblocksPayloadV1;
 use super::metrics::FlashblocksSubscriberMetrics;
 use super::provider::FlashblocksProvider;
-use futures::stream::{SplitSink, SplitStream};
+use futures::stream::SplitStream;
 use futures::{Sink, SinkExt, StreamExt};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -299,33 +299,21 @@ pub enum FlashblocksPubSubError {
 
 #[cfg(test)]
 mod tests {
-
     use crate::{
-        EngineApiExt, ExecutionPayloadBaseV1, FlashblocksPayloadV1, PayloadSource, RpcClient,
+        ExecutionPayloadBaseV1, FlashblocksPayloadV1, PayloadSource, RpcClient,
         provider::FlashblocksProvider,
         pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber, spawn_ping},
     };
     use alloy_primitives::B256;
-    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadId};
+    use alloy_rpc_types_engine::PayloadId;
     use bytes::Bytes;
-    use futures::{SinkExt, StreamExt, sink, stream::SplitSink};
+    use futures::{SinkExt, StreamExt, sink};
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
-    use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;
     use reth_rpc_layer::JwtSecret;
-    use std::{
-        sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
-        time::Duration,
-    };
+    use std::{sync::Arc, time::Duration};
     use tokio::sync::watch;
-    use tokio::{
-        net::{TcpListener, TcpStream},
-        sync::{Mutex, broadcast},
-    };
-    use tokio_tungstenite::WebSocketStream;
+    use tokio::{net::TcpListener, sync::broadcast};
     use tokio_tungstenite::tungstenite::Message;
     use url::Url;
 

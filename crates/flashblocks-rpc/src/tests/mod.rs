@@ -176,7 +176,9 @@ mod tests {
         let tx2 = Bytes::from_str("0xf8cd82016d8316e5708302c01c94f39635f2adf40608255779ff742afe13de31f57780b8646e530e9700000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000001bc16d674ec8000000000000000000000000000000000000000000000000000156ddc81eed2a36d68302948ba0a608703e79b22164f74523d188a11f81c25a65dd59535bab1cd1d8b30d115f3ea07f4cfbbad77a139c9209d3bded89091867ff6b548dd714109c61d1f8e7a84d14").unwrap();
 
         // Send another test flashblock payload
-        let payload = FlashblocksPayloadV1 {
+        
+
+        FlashblocksPayloadV1 {
             payload_id: PayloadId::new([0; 8]),
             index: 1,
             base: None,
@@ -222,9 +224,7 @@ mod tests {
                 },
             })
             .unwrap(),
-        };
-
-        payload
+        }
     }
 
     #[tokio::test]
@@ -243,7 +243,7 @@ mod tests {
         let pending_block = provider
             .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
             .await?;
-        assert_eq!(pending_block.is_none(), true);
+        assert!(pending_block.is_none());
 
         let base_payload = create_first_payload();
         node.send_payload(base_payload).await?;
@@ -296,7 +296,7 @@ mod tests {
         let provider = node.provider().await?;
 
         let receipt = provider.get_transaction_receipt(TX1_HASH).await?;
-        assert_eq!(receipt.is_none(), true);
+        assert!(receipt.is_none());
 
         node.send_test_payloads().await?;
 
