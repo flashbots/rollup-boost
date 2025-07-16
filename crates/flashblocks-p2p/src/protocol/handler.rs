@@ -19,15 +19,20 @@ use reth_ethereum::network::{
 };
 use tokio_stream::wrappers::BroadcastStream;
 
-/// Maximum frame size for flashblocks messages.
+/// Maximum frame size for rlpx messages.
 const MAX_FRAME: usize = 1 << 24; // 16 MiB
+
+/// Maximum index for flashblocks payloads.
+/// Not intended to ever be hit. Since we resize the flashblocks vector dynamically,
+/// this is just a sanity check to prevent excessive memory usage.
+const MAX_FLASHBLOCK_INDEX: usize = 100;
 
 pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
 impl<N: Clone + Unpin + Peers + std::fmt::Debug + 'static> FlashblocksP2PNetworHandle for N {}
 
 /// Protocol state is an helper struct to store the protocol events.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FlashblocksP2PState {
     /// The index of the next flashblock to emit over the flashblocks_stream.
     pub flashblock_index: usize,
@@ -72,12 +77,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         publish_tx: broadcast::Sender<FlashblocksP2PMsg>,
     ) -> Self {
         let peer_tx = broadcast::Sender::new(100);
-        let state = Arc::new(Mutex::new(FlashblocksP2PState {
-            flashblock_index: 0,
-            payload_timestamp: 0,
-            payload_id: PayloadId::default(),
-            flashblocks: vec![],
-        }));
+        let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
         let ctx = FlashblocksP2PCtx {
             network_handle: network_handle.clone(),
             authorizer_vk,
@@ -99,9 +99,9 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         Self { ctx, state }
     }
 
-    /// Returns the capability for the `flashblocks` protocol.
+    /// Returns the capability for the `flashblocks v1` p2p rotocol.
     pub fn capability() -> Capability {
-        Capability::new_static("flashblocks", 1)
+        Capability::new_static("flblk", 1)
     }
 }
 
@@ -109,23 +109,35 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
     /// Commit new and already verified flashblocks payloads to the state
     /// broadcast them to peers, and publish them to the stream.
     pub fn publish(&self, state: &mut FlashblocksP2PState, msg: FlashblocksP2PMsg) {
-        // If we've already seen this index, skip it
-        // Otherwise, add it to the list
         let FlashblocksP2PMsg::FlashblocksPayloadV1(message) = msg;
-        // TODO: perhaps check max index
+
+        // Resize our array if needed
+        if message.payload.index as usize > MAX_FLASHBLOCK_INDEX {
+            tracing::error!(
+                target: "flashblocks",
+                index = message.payload.index,
+                max_index = MAX_FLASHBLOCK_INDEX,
+                "Received flashblocks payload with index exceeding maximum"
+            );
+            return;
+        }
         let len = state.flashblocks.len();
         state
             .flashblocks
             .resize_with(len.max(message.payload.index as usize + 1), || None);
         let flashblock = &mut state.flashblocks[message.payload.index as usize];
+
+        // If we've already seen this index, skip it
+        // Otherwise, add it to the list
         if flashblock.is_none() {
             // We haven't seen this index yet
             // Add the flashblock to our cache
             *flashblock = Some(message.clone().payload);
-            tracing::debug!(
-                "Received flashblocks payload with id: {}, index: {}",
-                message.payload.payload_id,
-                message.payload.index
+            tracing::trace!(
+                target = "flashblocks",
+                payload_id = %message.payload.payload_id,
+                flashblock_index = message.payload.index,
+                "queueing flashblock",
             );
             let message = FlashblocksP2PMsg::FlashblocksPayloadV1(message);
             let bytes = message.encode();
@@ -140,7 +152,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
             }
             if bytes.len() > MAX_FRAME / 2 {
                 tracing::warn!(
-                    target: "flashblocks",
+                    target = "flashblocks",
                     size = bytes.len(),
                     max_size = MAX_FRAME,
                     "FlashblocksP2PMsg almost too large",
@@ -149,8 +161,13 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
             self.peer_tx.send(bytes).ok();
             // Broadcast any flashblocks in the cache that are in order
             while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
-                // Send the flashblock to the stream
-                debug!(payload_id = %flashblock_event.payload_id, flashblock_index = %state.flashblock_index, "Publishing new flashblock");
+                // Publish the flashblock
+                debug!(
+                    target = "flashblocks",
+                    payload_id = %flashblock_event.payload_id,
+                    flashblock_index = %state.flashblock_index,
+                    "publishing flashblock"
+                );
                 self.flashblock_tx.send(flashblock_event.clone()).ok();
                 // Update the index
                 state.flashblock_index += 1;
@@ -197,7 +214,15 @@ impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksHandler<N> 
         peer_id: PeerId,
         conn: ProtocolConnection,
     ) -> Self::Connection {
-        debug!(%peer_id, %direction, "New connection established with flashblocks peer");
+        let capability = Self::capability();
+
+        debug!(
+            %peer_id,
+            %direction,
+            capability = %capability.name,
+            version = %capability.version,
+            "new flashblocks connection"
+        );
 
         FlashblocksConnection {
             peer_rx: BroadcastStream::new(self.ctx.peer_tx.subscribe()),

@@ -55,7 +55,6 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                 return Poll::Ready(None);
             };
 
-            // TODO: handle max buffer size
             let msg = match FlashblocksP2PMsg::decode(&mut &buf[..]) {
                 Ok(msg) => msg,
                 Err(e) => {
