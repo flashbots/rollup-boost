@@ -4,7 +4,7 @@ use super::FlashblocksPayloadV1;
 use super::metrics::FlashblocksSubscriberMetrics;
 use super::provider::FlashblocksProvider;
 use futures::stream::{SplitSink, SplitStream};
-use futures::{SinkExt, StreamExt};
+use futures::{Sink, SinkExt, StreamExt};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -72,8 +72,7 @@ impl FlashblocksSubscriber {
                 metrics.connection_status.set(1);
 
                 let (sink, stream) = ws_stream.split();
-                let (pong_tx, mut pong_rx) = watch::channel(Message::Pong(Bytes::default()));
-                pong_rx.mark_changed();
+                let (pong_tx, pong_rx) = watch::channel(Message::Pong(Bytes::default()));
 
                 let ping_handle = spawn_ping(sink, pong_rx);
                 let stream_handle = FlashblocksSubscriber::handle_flashblocks_stream(
@@ -84,16 +83,22 @@ impl FlashblocksSubscriber {
                     metrics.clone(),
                 );
 
+                let abort_ping = ping_handle.abort_handle();
+                let abort_stream = stream_handle.abort_handle();
+
                 tokio::select! {
                     result = ping_handle => {
                         if let Err(e) = result.unwrap_or_else(|e| Err(e.into())) {
                             tracing::error!("Ping handle error: {}", e);
+                            abort_stream.abort();
                         }
                         tracing::warn!("Ping handle resolved early, reestabling connection");
                     }
                     result = stream_handle => {
                         if let Err(e) = result.unwrap_or_else(|e| Err(e.into())) {
+
                             tracing::error!("Flashblocks stream handle error: {}", e);
+                            abort_ping.abort();
                         }
                         tracing::warn!("Flashblocks stream handle resolved early, reestabling connection");
                     }
@@ -127,6 +132,7 @@ impl FlashblocksSubscriber {
                         if let Ok(flashblock) = serde_json::from_str::<FlashblocksPayloadV1>(&bytes)
                         {
                             let local_payload_id = flashblocks_provider.payload_id.lock();
+
                             if *local_payload_id == flashblock.payload_id {
                                 let mut payload_builder =
                                     flashblocks_provider.payload_builder.lock();
@@ -188,10 +194,14 @@ impl FlashblocksSubscriber {
     }
 }
 
-fn spawn_ping(
-    mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-    pong_rx: tokio::sync::watch::Receiver<Message>,
-) -> JoinHandle<Result<(), FlashblocksPubSubError>> {
+fn spawn_ping<S>(
+    mut sink: S,
+    mut pong_rx: watch::Receiver<Message>,
+) -> JoinHandle<Result<(), FlashblocksPubSubError>>
+where
+    S: Sink<Message> + Send + Unpin + 'static,
+{
+    pong_rx.mark_changed();
     tokio::spawn(async move {
         let mut ping_interval = tokio::time::interval(Duration::from_millis(500));
         loop {
@@ -200,6 +210,7 @@ fn spawn_ping(
                 sink.send(Message::Ping(Bytes::new()))
                     .await
                     .map_err(|_| FlashblocksPubSubError::PingFailed)?;
+                pong_rx.mark_unchanged();
             } else {
                 tracing::error!("Missing pong response from builder stream");
                 return Err(FlashblocksPubSubError::MissingPong);
@@ -292,22 +303,30 @@ mod tests {
     use crate::{
         EngineApiExt, ExecutionPayloadBaseV1, FlashblocksPayloadV1, PayloadSource, RpcClient,
         provider::FlashblocksProvider,
-        pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber},
+        pubsub::{FlashblocksPubSubError, FlashblocksPublisher, FlashblocksSubscriber, spawn_ping},
     };
     use alloy_primitives::B256;
-    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes};
+    use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadId};
     use bytes::Bytes;
-    use futures::{SinkExt, StreamExt, stream::SplitSink};
+    use futures::{SinkExt, StreamExt, sink, stream::SplitSink};
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use rand::random;
     use reth_optimism_payload_builder::payload_id_optimism;
     use reth_rpc_layer::JwtSecret;
-    use std::{sync::Arc, time::Duration};
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::Duration,
+    };
+    use tokio::sync::watch;
     use tokio::{
         net::{TcpListener, TcpStream},
         sync::{Mutex, broadcast},
     };
-    use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
+    use tokio_tungstenite::WebSocketStream;
+    use tokio_tungstenite::tungstenite::Message;
     use url::Url;
 
     pub struct MockBuilder {
@@ -316,38 +335,41 @@ mod tests {
     }
 
     impl MockBuilder {
-        pub async fn spawn(pong: bool, listener: TcpListener) -> eyre::Result<Self> {
-            let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        pub async fn spawn(
+            listener: TcpListener,
+            reconnect_backoff: Duration,
+        ) -> eyre::Result<Self> {
+            let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
 
             let handle = tokio::spawn(async move {
-                let (tcp, _) = listener.accept().await?;
-                let ws = tokio_tungstenite::accept_async(tcp).await?;
-                let (mut sink, mut stream) = ws.split();
-
                 loop {
-                    tokio::select! {
-                        msg = stream.next() => {
-                            match msg.unwrap() {
-                                Ok(message)=>{
-                                    match message {
-                                        Message::Ping(_)=>{
-                                            if pong {
-                                                sink.send(Message::Pong(Bytes::default())).await?;
-                                            }
-                                        }
+                    let (tcp, _) = listener.accept().await?;
+                    let ws = tokio_tungstenite::accept_async(tcp).await?;
+                    let (mut sink, mut stream) = ws.split();
 
-                                    _ => {}
+                    loop {
+                        tokio::select! {
+                            msg = stream.next() => {
+                                if let Message::Close(_) = msg.unwrap()? {
+                                    break;
                                 }
                             }
-                                Err(e)=>{
-                                    panic!("Error when handling mock builder stream: {e}");
-                                }
+                            msg = msg_rx.recv() => {
+                               match msg.unwrap() {
+                                    Message::Close(_) => {
+                                        drop(sink);
+                                        drop(stream);
+                                        break;
+                                    }
+                                    other => {
+                                        sink.send(other).await?;
+                                    }
+                               }
                             }
-                        }
-                        msg = msg_rx.recv() => {
-                            sink.send(msg.unwrap()).await?;
                         }
                     }
+
+                    tokio::time::sleep(reconnect_backoff).await;
                 }
             });
 
@@ -383,7 +405,7 @@ mod tests {
         let (tx, _rx) = broadcast::channel(10);
         let subscriber =
             FlashblocksSubscriber::new(ws_endpoint, tx, provider, Duration::from_millis(100));
-        let _mock = MockBuilder::spawn(true, listener).await?;
+        let _mock = MockBuilder::spawn(listener, Duration::from_secs(1)).await?;
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         assert!(!subscriber.handle.is_finished());
@@ -392,7 +414,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_missing_pong() -> eyre::Result<()> {
+    async fn test_reconnect_stream() -> eyre::Result<()> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let ws_endpoint =
             Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
@@ -405,16 +427,39 @@ mod tests {
         )?;
 
         let provider = Arc::new(FlashblocksProvider::new(rpc_client));
-        let (tx, _rx) = broadcast::channel(10);
+        let (tx, mut rx) = broadcast::channel(10);
 
-        let subscriber =
+        let _subscriber =
             FlashblocksSubscriber::new(ws_endpoint, tx, provider, Duration::from_millis(100));
-        let _mock = MockBuilder::spawn(false, listener).await?;
+        let mock = MockBuilder::spawn(listener, Duration::from_secs(3)).await?;
+        mock.send_message(Message::Close(None)).await?;
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        // Send a flashblock after reconnect
+        let flashblock_payload = FlashblocksPayloadV1 {
+            index: 0,
+            payload_id: PayloadId::default(),
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
 
-        let res = subscriber.handle.await?;
-        matches!(res, Err(FlashblocksPubSubError::MissingPong));
+        let json = serde_json::to_string(&flashblock_payload)?;
+        let msg = Message::Text(json.into());
+        mock.send_message(msg).await?;
+
+        let payload_bytes = rx.recv().await?;
+        assert!(!payload_bytes.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_missing_pong() -> eyre::Result<()> {
+        let sink = sink::drain();
+        let (_pong_tx, pong_rx) = watch::channel(Message::Pong(Bytes::default()));
+        let handle = spawn_ping(sink, pong_rx);
+
+        let result = handle.await.unwrap();
+        assert!(matches!(result, Err(FlashblocksPubSubError::MissingPong)));
 
         Ok(())
     }
@@ -424,7 +469,8 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let ws_endpoint =
             Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).expect("invalid URL");
-        let mock = MockBuilder::spawn(true, listener).await?;
+
+        let mock = MockBuilder::spawn(listener, Duration::from_secs(1)).await?;
 
         let rpc_client = RpcClient::new(
             "http://localhost:8545".parse().unwrap(),
@@ -484,7 +530,8 @@ mod tests {
             provider.clone(),
             Duration::from_millis(100),
         );
-        let mock = MockBuilder::spawn(false, listener).await?;
+
+        let mock = MockBuilder::spawn(listener, Duration::from_secs(1)).await?;
 
         // Send flashblock with mismatched payload id
         let payload_id = payload_id_optimism(&B256::random(), &OpPayloadAttributes::default(), 3);
@@ -526,7 +573,8 @@ mod tests {
             provider.clone(),
             Duration::from_millis(100),
         );
-        let mock = MockBuilder::spawn(false, listener).await?;
+
+        let mock = MockBuilder::spawn(listener, Duration::from_secs(1)).await?;
 
         let msg = Message::Text("0xbad".into());
         mock.send_message(msg).await?;
@@ -549,21 +597,12 @@ mod tests {
             tokio_tungstenite::client_async("ws://localhost", client_stream).await?;
         let (mut _sink, mut stream) = ws_stream.split();
 
-        let fcu_state = ForkchoiceState {
-            head_block_hash: B256::random(),
-            ..Default::default()
-        };
-
-        let payload_attributes = OpPayloadAttributes::default();
-
-        let payload_id = payload_id_optimism(&fcu_state.head_block_hash, &payload_attributes, 3);
-
         let num_flashblocks = 5_usize;
         let mut sent_flashblocks = vec![];
         for i in 0..num_flashblocks {
             let flashblock_payload = FlashblocksPayloadV1 {
                 index: i as u64,
-                payload_id,
+                payload_id: PayloadId::default(),
                 base: Some(ExecutionPayloadBaseV1::default()),
                 ..Default::default()
             };
