@@ -18,7 +18,8 @@ pub struct FlashblocksConnection<N> {
     pub peer_id: PeerId,
     /// Receiver for newly created or received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub peer_rx: BroadcastStream<BytesMut>,
+    /// We send bytes over this stream to avoid repeatedly having to serialize the payloads.
+    pub peer_rx: BroadcastStream<(PayloadId, usize, BytesMut)>,
     /// Most recent payload received from this peer.
     pub payload_id: PayloadId,
     /// A list of flashblocks indices that we have already received from
@@ -36,15 +37,26 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
             // Check if there are any flashblocks ready to broadcast to our peers.
             if let Poll::Ready(Some(res)) = this.peer_rx.poll_next_unpin(cx) {
                 match res {
-                    Ok(bytes) => {
-                        // TODO: handle the case where this peer is the one that sent the original
-                        trace!(peer_id = %this.peer_id, target = "flashblocks", "Broadcasting flashblocks message");
-                        return Poll::Ready(Some(bytes));
+                    Ok((payload_id, flashblock_index, bytes)) => {
+                        // Check if this flashblock actually originated from this peer.
+                        if this.payload_id != payload_id
+                            || this.received.get(flashblock_index) != Some(&true)
+                        {
+                            trace!(
+                                target = "flashblocks",
+                                peer_id = %this.peer_id,
+                                %payload_id,
+                                %flashblock_index,
+                                "Broadcasting flashblock message to peer"
+                            );
+                            return Poll::Ready(Some(bytes));
+                        }
                     }
-                    Err(e) => {
+                    Err(error) => {
                         tracing::error!(
-                            "Failed to receive flashblocks message from broadcast stream: {}",
-                            e
+                            target = "flashblocks",
+                            %error,
+                            "Failed to receive flashblocks message from peer_rx"
                         );
                     }
                 }
@@ -57,11 +69,12 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
 
             let msg = match FlashblocksP2PMsg::decode(&mut &buf[..]) {
                 Ok(msg) => msg,
-                Err(e) => {
+                Err(error) => {
                     tracing::warn!(
-                        "Failed to decode flashblocks message from peer {}: {}",
-                        this.peer_id,
-                        e
+                        target = "flashblocks",
+                        peer_id = %this.peer_id,
+                        %error,
+                        "Failed to decode flashblocks message from peer",
                     );
                     this.handler
                         .ctx
@@ -84,11 +97,12 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
     fn handle_flashblocks_payload_v1(&mut self, message: Authorized<FlashblocksPayloadV1>) {
         let mut state = self.handler.state.lock();
 
-        if let Err(e) = message.verify(self.handler.ctx.authorizer_vk) {
+        if let Err(error) = message.verify(self.handler.ctx.authorizer_vk) {
             tracing::warn!(
-                "Failed to verify flashblocks payload: {:?}, error: {}",
-                message,
-                e
+                target = "flashblocks",
+                peer_id = %self.peer_id,
+                %error,
+                "Failed to verify flashblock",
             );
             self.handler
                 .ctx
@@ -99,8 +113,10 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
 
         if message.authorization.timestamp < state.payload_timestamp {
             tracing::warn!(
-                "Received flashblocks payload with outdated timestamp: {}",
-                message.authorization.timestamp
+                target = "flashblocks",
+                peer_id = %self.peer_id,
+                timestamp = message.authorization.timestamp,
+                "Received flashblock with outdated timestamp",
             );
             self.handler
                 .ctx
@@ -129,10 +145,11 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             // We've already seen this index from this peer.
             // They could be trying to DOS us.
             tracing::warn!(
-                "Received duplicate flashblocks payload with id: {}, index: {}, from peer: {}",
-                message.payload.payload_id,
-                message.payload.index,
-                self.peer_id
+                target = "flashblocks",
+                peer_id = %self.peer_id,
+                payload_id = %message.payload.payload_id,
+                index = message.payload.index,
+                "Received duplicate flashblock from peer",
             );
             self.handler
                 .ctx

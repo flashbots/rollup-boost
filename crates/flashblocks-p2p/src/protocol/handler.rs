@@ -53,7 +53,7 @@ pub struct FlashblocksP2PCtx<N> {
     pub authorizer_vk: VerifyingKey,
     /// Sender for flashblocks payloads which will be broadcasted to all peers.
     /// May not be strictly ordered.
-    pub peer_tx: broadcast::Sender<BytesMut>,
+    pub peer_tx: broadcast::Sender<(PayloadId, usize, BytesMut)>,
     /// Receiver of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
     pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
@@ -109,7 +109,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
     /// Commit new and already verified flashblocks payloads to the state
     /// broadcast them to peers, and publish them to the stream.
     pub fn publish(&self, state: &mut FlashblocksP2PState, msg: FlashblocksP2PMsg) {
-        let FlashblocksP2PMsg::FlashblocksPayloadV1(message) = msg;
+        let FlashblocksP2PMsg::FlashblocksPayloadV1(ref message) = msg;
 
         // Resize our array if needed
         if message.payload.index as usize > MAX_FLASHBLOCK_INDEX {
@@ -139,8 +139,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
                 flashblock_index = message.payload.index,
                 "queueing flashblock",
             );
-            let message = FlashblocksP2PMsg::FlashblocksPayloadV1(message);
-            let bytes = message.encode();
+            let bytes = msg.encode();
             if bytes.len() > MAX_FRAME {
                 tracing::error!(
                     target: "flashblocks",
@@ -158,7 +157,13 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
                     "FlashblocksP2PMsg almost too large",
                 );
             }
-            self.peer_tx.send(bytes).ok();
+            self.peer_tx
+                .send((
+                    message.payload.payload_id,
+                    message.payload.index as usize,
+                    bytes,
+                ))
+                .ok();
             // Broadcast any flashblocks in the cache that are in order
             while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
                 // Publish the flashblock
