@@ -5,7 +5,6 @@ use super::metrics::FlashblocksSubscriberMetrics;
 use super::provider::FlashblocksProvider;
 use futures::stream::SplitStream;
 use futures::{Sink, SinkExt, StreamExt};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
@@ -25,7 +24,7 @@ pub struct FlashblocksPubSubManager {
 impl FlashblocksPubSubManager {
     pub fn spawn(
         builder_ws_endpoint: Url,
-        listen_addr: SocketAddr,
+        listener: TcpListener,
         flashblocks_provider: Arc<FlashblocksProvider>,
         reconnect_backoff: Duration,
     ) -> Self {
@@ -38,7 +37,7 @@ impl FlashblocksPubSubManager {
                 flashblocks_provider,
                 reconnect_backoff,
             ),
-            publisher: FlashblocksPublisher::new(listen_addr, payload_rx),
+            publisher: FlashblocksPublisher::new(listener, payload_rx),
         }
     }
 }
@@ -224,12 +223,8 @@ pub struct FlashblocksPublisher {
 }
 
 impl FlashblocksPublisher {
-    fn new(listen_addr: SocketAddr, publisher_rx: broadcast::Receiver<Utf8Bytes>) -> Self {
+    fn new(listener: TcpListener, publisher_rx: broadcast::Receiver<Utf8Bytes>) -> Self {
         let handle = tokio::spawn(async move {
-            let listener = TcpListener::bind(listen_addr)
-                .await
-                .expect("Could not bind publisher to listener addr");
-
             loop {
                 match listener.accept().await {
                     Ok((tcp_stream, _)) => {
@@ -572,10 +567,9 @@ mod tests {
     #[tokio::test]
     async fn test_publish_flashblock() -> eyre::Result<()> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let publisher_addr = listener.local_addr().unwrap();
-
+        let publisher_addr = listener.local_addr()?;
         let (tx, rx) = broadcast::channel(10);
-        let _publisher = FlashblocksPublisher::new(publisher_addr, rx);
+        let _publisher = FlashblocksPublisher::new(listener, rx);
 
         let client_stream = tokio::net::TcpStream::connect(publisher_addr).await?;
         let (ws_stream, _) =

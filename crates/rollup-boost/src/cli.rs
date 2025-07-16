@@ -20,7 +20,10 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::signal::unix::{SignalKind, signal as unix_signal};
+use tokio::{
+    net::TcpListener,
+    signal::unix::{SignalKind, signal as unix_signal},
+};
 use tracing::{Level, info};
 
 #[derive(Clone, Parser, Debug)]
@@ -148,10 +151,11 @@ impl RollupBoostArgs {
                 self.flashblocks.flashblocks_port,
             );
 
+            let listener = TcpListener::bind(listener_addr).await?;
             let flashblocks_provider = Arc::new(FlashblocksProvider::new(builder_client));
             FlashblocksPubSubManager::spawn(
                 builder_ws_url,
-                listener_addr,
+                listener,
                 flashblocks_provider.clone(),
                 Duration::from_millis(self.flashblocks.flashblock_builder_ws_reconnect_ms),
             );
