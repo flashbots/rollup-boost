@@ -125,7 +125,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             return;
         }
 
-        // Check if this is a new payload
+        // Check if this is a globally new payload
         if message.authorization.timestamp > state.payload_timestamp {
             state.flashblock_index = 0;
             state.payload_timestamp = message.authorization.timestamp;
@@ -133,11 +133,13 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             state.flashblocks.fill(None);
         }
 
-        // Check if this peer is spamming us with the same payload
+        // Check if this is a new payload from this peer
         if self.payload_id != message.payload.payload_id {
             self.payload_id = message.payload.payload_id;
             self.received.fill(false);
         }
+
+        // Check if this peer is spamming us with the same payload index
         let len = self.received.len();
         self.received
             .resize_with(len.max(message.payload.index as usize + 1), || false);
