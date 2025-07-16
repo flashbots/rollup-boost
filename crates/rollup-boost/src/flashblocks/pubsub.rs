@@ -599,11 +599,26 @@ mod tests {
 
         let num_flashblocks = 5_usize;
         let mut sent_flashblocks = vec![];
-        for i in 0..num_flashblocks {
+
+        // Base flashblock payload
+        let flashblock_payload = FlashblocksPayloadV1 {
+            index: 0,
+            payload_id: PayloadId::default(),
+            base: Some(ExecutionPayloadBaseV1::default()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&flashblock_payload)?;
+        let message_bytes = json.into();
+        tx.send(message_bytes)?;
+        sent_flashblocks.push(flashblock_payload);
+
+        // Send additional flashlbocks
+        for i in 1..num_flashblocks {
             let flashblock_payload = FlashblocksPayloadV1 {
                 index: i as u64,
                 payload_id: PayloadId::default(),
-                base: Some(ExecutionPayloadBaseV1::default()),
+                base: None,
                 ..Default::default()
             };
 
