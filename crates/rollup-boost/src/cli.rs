@@ -112,7 +112,6 @@ impl RollupBoostArgs {
         } else {
             bail!("Missing L2 Client JWT secret");
         };
-        if let Some(flashblocks_args) = &self.flashblocks {}
 
         let l2_client = RpcClient::new(
             l2_client_args.l2_url.clone(),
