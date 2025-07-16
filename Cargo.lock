@@ -3541,6 +3541,7 @@ name = "flashblocks-p2p"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",
+ "alloy-rlp",
  "bincode 2.0.1",
  "blake3",
  "clap",
@@ -10668,6 +10669,7 @@ dependencies = [
  "alloy-consensus",
  "alloy-eips",
  "alloy-primitives",
+ "alloy-rlp",
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
  "alloy-serde",

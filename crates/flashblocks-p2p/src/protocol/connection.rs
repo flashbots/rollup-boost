@@ -1,15 +1,12 @@
-use crate::protocol::{
-    auth::Authorized,
-    handler::{FlashblocksHandler, FlashblocksP2PNetworHandle},
-    proto::{FlashblocksProtoMessage, FlashblocksProtoMessageId, FlashblocksProtoMessageKind},
-};
+use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
+use alloy_rlp::{Decodable, Encodable, Header};
 
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
 use reth::payload::PayloadId;
 use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
 use reth_network::types::ReputationChangeKind;
-use rollup_boost::FlashblocksPayloadV1;
+use rollup_boost::{Authorized, FlashblocksP2PMsg, FlashblocksPayloadV1};
 use std::{
     pin::Pin,
     task::{Context, Poll, ready},
@@ -23,7 +20,7 @@ pub struct FlashblocksConnection<N> {
     pub peer_id: PeerId,
     /// Receiver for newly created or received and validated flashblocks payloads
     /// which will be broadcasted to all peers. May not be strictly ordered.
-    pub peer_rx: BroadcastStream<FlashblocksProtoMessage>,
+    pub peer_rx: BroadcastStream<FlashblocksP2PMsg>,
     /// Most recent payload received from this peer.
     pub payload_id: PayloadId,
     /// A list of flashblocks indices that we have already received from
@@ -44,7 +41,13 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                     Ok(outbound) => {
                         // TODO: handle the case where this peer is the one that sent the original
                         trace!(peer_id = %this.peer_id, target = "flashblocks", "Broadcasting flashblocks message");
-                        return Poll::Ready(Some(outbound.encoded()));
+                        let mut buf = BytesMut::with_capacity(outbound.length());
+                        outbound.encode(&mut buf);
+                        trace!(peer_id = %this.peer_id, target = "flashblocks",
+                            "Encoded flashblocks message with length: {}", buf.len());
+                        let new = FlashblocksP2PMsg::decode(&mut &buf[..]).unwrap();
+                        println!("Broadcasting flashblocks message: {:?}", new);
+                        return Poll::Ready(Some(buf));
                     }
                     Err(e) => {
                         tracing::error!(
@@ -56,19 +59,38 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
             }
 
             // Check if there are any messages from the peer.
+            trace!(peer_id = %this.peer_id, target = "flashblocks",
+                "Polling for messages from peer");
             let Some(msg) = ready!(this.conn.poll_next_unpin(cx)) else {
+                trace!(peer_id = %this.peer_id, target = "flashblocks",
+                    "Connection closed, no more messages from peer");
                 return Poll::Ready(None);
             };
-            let Some(msg) = FlashblocksProtoMessage::decode_message(&mut &msg[..]) else {
-                return Poll::Ready(None);
+            trace!(peer_id = %this.peer_id, target = "flashblocks",
+                "Received message from peer: {}", msg.len());
+            // TODO: handle max buffer size
+            let msg = match FlashblocksP2PMsg::decode(&mut &msg[..]) {
+                Ok(msg) => msg,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to decode flashblocks message from peer {}: {}",
+                        this.peer_id,
+                        e
+                    );
+                    this.handler
+                        .ctx
+                        .network_handle
+                        .reputation_change(this.peer_id, ReputationChangeKind::BadMessage);
+                    return Poll::Ready(None);
+                }
             };
 
             trace!(peer_id = %this.peer_id, target = "flashblocks",
                 "Received flashblocks message from peer",
             );
-            match msg.message {
-                FlashblocksProtoMessageKind::FlashblocksPayloadV1(authorized) => {
-                    this.handle_flashblocks_payload_v1(authorized, msg.message_type);
+            match msg {
+                FlashblocksP2PMsg::FlashblocksPayloadV1(authorized) => {
+                    this.handle_flashblocks_payload_v1(authorized);
                 }
             }
         }
@@ -76,11 +98,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
-    fn handle_flashblocks_payload_v1(
-        &mut self,
-        message: Authorized<FlashblocksPayloadV1>,
-        message_type: FlashblocksProtoMessageId,
-    ) {
+    fn handle_flashblocks_payload_v1(&mut self, message: Authorized<FlashblocksPayloadV1>) {
         let mut state = self.handler.state.lock();
 
         if let Err(e) = message.verify(self.handler.ctx.authorizer_vk) {
@@ -141,12 +159,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         }
         self.received[message.payload.index as usize] = true;
 
-        self.handler.ctx.publish(
-            &mut state,
-            FlashblocksProtoMessage {
-                message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(message),
-                message_type,
-            },
-        );
+        self.handler
+            .ctx
+            .publish(&mut state, FlashblocksP2PMsg::FlashblocksPayloadV1(message));
     }
 }

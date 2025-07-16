@@ -6,10 +6,6 @@ use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::SigningKey;
 use flashblocks_p2p::protocol::handler::FlashblocksHandler;
-use flashblocks_p2p::protocol::{
-    auth::Authorized,
-    proto::{FlashblocksProtoMessage, FlashblocksProtoMessageId, FlashblocksProtoMessageKind},
-};
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, Metadata};
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_network::{Peers, PeersInfo, protocol::IntoRlpxSubProtocol as _};
@@ -25,7 +21,8 @@ use reth_optimism_primitives::OpReceipt;
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::{TaskExecutor, TaskManager};
 use rollup_boost::{
-    Authorization, ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
+    Authorization, Authorized, ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1,
+    FlashblocksP2PMsg, FlashblocksPayloadV1,
 };
 use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::broadcast;
@@ -33,7 +30,7 @@ use tracing::info;
 
 pub struct NodeContext {
     inbound_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    outbound_tx: broadcast::Sender<FlashblocksProtoMessage>,
+    outbound_tx: broadcast::Sender<FlashblocksP2PMsg>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
@@ -323,10 +320,7 @@ async fn test_peering() -> eyre::Result<()> {
         builder.verifying_key(),
     );
     let authorized = Authorized::new(&builder, authorization, payload_0.clone());
-    let proto_message = FlashblocksProtoMessage {
-        message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(authorized),
-        message_type: FlashblocksProtoMessageId::FlashblocksPayloadV1,
-    };
+    let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
     node_1.outbound_tx.send(proto_message)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -348,10 +342,7 @@ async fn test_peering() -> eyre::Result<()> {
         builder.verifying_key(),
     );
     let authorized = Authorized::new(&builder, authorization, payload_1.clone());
-    let proto_message = FlashblocksProtoMessage {
-        message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(authorized),
-        message_type: FlashblocksProtoMessageId::FlashblocksPayloadV1,
-    };
+    let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
 
     node_1.outbound_tx.send(proto_message)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;

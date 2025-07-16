@@ -1,13 +1,11 @@
-use crate::protocol::{
-    connection::FlashblocksConnection,
-    proto::{FlashblocksProtoMessage, FlashblocksProtoMessageKind},
-};
+use crate::protocol::connection::FlashblocksConnection;
 use ed25519_dalek::VerifyingKey;
 use parking_lot::Mutex;
 use reth::payload::PayloadId;
+use reth_eth_wire::Capability;
 use reth_ethereum::network::{api::PeerId, protocol::ProtocolHandler};
 use reth_network::Peers;
-use rollup_boost::FlashblocksPayloadV1;
+use rollup_boost::{FlashblocksP2PMsg, FlashblocksPayloadV1};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -46,7 +44,7 @@ pub struct FlashblocksP2PCtx<N> {
     pub authorizer_vk: VerifyingKey,
     /// Sender for flashblocks payloads which will be broadcasted to all peers.
     /// May not be strictly ordered.
-    pub peer_tx: broadcast::Sender<FlashblocksProtoMessage>,
+    pub peer_tx: broadcast::Sender<FlashblocksP2PMsg>,
     /// Receiver of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
     pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
@@ -67,7 +65,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         network_handle: N,
         authorizer_vk: VerifyingKey,
         flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
-        publish_tx: broadcast::Sender<FlashblocksProtoMessage>,
+        publish_tx: broadcast::Sender<FlashblocksP2PMsg>,
     ) -> Self {
         let peer_tx = broadcast::Sender::new(100);
         let state = Arc::new(Mutex::new(FlashblocksP2PState {
@@ -96,15 +94,20 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
 
         Self { ctx, state }
     }
+
+    /// Returns the capability for the `flashblocks` protocol.
+    pub fn capability() -> Capability {
+        Capability::new_static("flashblocks", 1)
+    }
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
     /// Commit new and already verified flashblocks payloads to the state
     /// broadcast them to peers, and publish them to the stream.
-    pub fn publish(&self, state: &mut FlashblocksP2PState, msg: FlashblocksProtoMessage) {
+    pub fn publish(&self, state: &mut FlashblocksP2PState, msg: FlashblocksP2PMsg) {
         // If we've already seen this index, skip it
         // Otherwise, add it to the list
-        let FlashblocksProtoMessageKind::FlashblocksPayloadV1(message) = msg.message;
+        let FlashblocksP2PMsg::FlashblocksPayloadV1(message) = msg;
         // TODO: perhaps check max index
         let len = state.flashblocks.len();
         state
@@ -120,10 +123,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
                 message.payload.payload_id,
                 message.payload.index
             );
-            let message = FlashblocksProtoMessage {
-                message: FlashblocksProtoMessageKind::FlashblocksPayloadV1(message),
-                message_type: msg.message_type,
-            };
+            let message = FlashblocksP2PMsg::FlashblocksPayloadV1(message);
             self.peer_tx.send(message).ok();
             // Broadcast any flashblocks in the cache that are in order
             while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
@@ -157,7 +157,7 @@ impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksHandler<N> 
     type Connection = FlashblocksConnection<N>;
 
     fn protocol(&self) -> Protocol {
-        FlashblocksProtoMessage::protocol()
+        Protocol::new(Self::capability(), 1)
     }
 
     fn on_unsupported_by_peer(

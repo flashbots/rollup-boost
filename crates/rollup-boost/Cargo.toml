@@ -24,6 +24,7 @@ alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
 alloy-primitives.workspace = true
 alloy-serde.workspace = true
+alloy-rlp.workspace = true
 
 tokio-tungstenite.workspace = true
 metrics-derive.workspace = true

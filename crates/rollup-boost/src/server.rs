@@ -1,5 +1,5 @@
 use crate::debug_api::ExecutionMode;
-use crate::{BlockSelectionPolicy, EngineApiExt, FlashblocksP2PError};
+use crate::{Authorization, BlockSelectionPolicy, EngineApiExt, FlashblocksP2PError};
 use crate::{
     client::rpc::RpcClient,
     debug_api::DebugServer,
@@ -11,6 +11,7 @@ use crate::{
     probe::{Health, Probes},
 };
 use alloy_primitives::{B256, Bytes, bytes};
+use alloy_rlp::{RlpDecodable, RlpEncodable};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
@@ -284,46 +285,6 @@ where
         }
 
         Ok(module)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Authorization {
-    pub payload_id: PayloadId,
-    pub timestamp: u64,
-    pub builder_pub: VerifyingKey,
-    pub authorizer_sig: Signature,
-}
-
-impl Authorization {
-    pub fn new(
-        payload_id: PayloadId,
-        timestamp: u64,
-        authorizer_sk: &SigningKey,
-        builder_pub: VerifyingKey,
-    ) -> Self {
-        let mut msg = payload_id.0.to_vec();
-        msg.extend_from_slice(&timestamp.to_le_bytes());
-        msg.extend_from_slice(builder_pub.as_bytes());
-        let hash = blake3::hash(&msg);
-        let sig = authorizer_sk.sign(hash.as_bytes());
-
-        Self {
-            payload_id,
-            timestamp,
-            builder_pub,
-            authorizer_sig: sig,
-        }
-    }
-
-    pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
-        let mut msg = self.payload_id.0.to_vec();
-        msg.extend_from_slice(&self.timestamp.to_le_bytes());
-        msg.extend_from_slice(self.builder_pub.as_bytes());
-        let hash = blake3::hash(&msg);
-        authorizer_pub
-            .verify(hash.as_bytes(), &self.authorizer_sig)
-            .map_err(|_| FlashblocksP2PError::InvalidAuthorizerSig)
     }
 }
 
