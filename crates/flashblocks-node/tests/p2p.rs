@@ -8,7 +8,7 @@ use ed25519_dalek::SigningKey;
 use flashblocks_p2p::protocol::handler::FlashblocksHandler;
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, Metadata};
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
-use reth_network::{Peers, PeersInfo, protocol::IntoRlpxSubProtocol as _};
+use reth_network::{Peers, PeersInfo};
 use reth_network_peers::{NodeRecord, PeerId};
 use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
 use reth_node_core::{
@@ -112,14 +112,10 @@ async fn setup_node(
     node.network
         .add_rlpx_sub_protocol(custom_rlpx_handler.into_rlpx_sub_protocol());
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-
     if let Some((peer_id, addr)) = trusted_peer {
         // If a trusted peer is provided, add it to the network
         node.network.add_trusted_peer(peer_id, addr);
     }
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
     let http_api_addr = node
         .rpc_server_handle()
@@ -297,8 +293,6 @@ async fn test_peering() -> eyre::Result<()> {
     .await?;
     let provider_1 = node_1.provider().await?;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20000)).await;
-
     let latest_block = provider_1
         .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
         .await?
@@ -311,6 +305,8 @@ async fn test_peering() -> eyre::Result<()> {
         .await?;
     assert!(pending_block.is_none());
 
+    tokio::time::sleep(tokio::time::Duration::from_millis(15000)).await;
+
     let payload_0 = payload_0();
     info!("Sending base payload");
     let authorization = Authorization::new(
@@ -322,7 +318,7 @@ async fn test_peering() -> eyre::Result<()> {
     let authorized = Authorized::new(&builder, authorization, payload_0.clone());
     let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
     node_1.outbound_tx.send(proto_message)?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
 
     // Query pending block after sending the base payload with an empty delta
     let pending_block = provider_0

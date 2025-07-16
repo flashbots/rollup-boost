@@ -1,4 +1,5 @@
 use crate::protocol::connection::FlashblocksConnection;
+use alloy_rlp::BytesMut;
 use ed25519_dalek::VerifyingKey;
 use parking_lot::Mutex;
 use reth::payload::PayloadId;
@@ -17,6 +18,9 @@ use reth_ethereum::network::{
     protocol::{ConnectionHandler, OnNotSupported},
 };
 use tokio_stream::wrappers::BroadcastStream;
+
+/// Maximum frame size for flashblocks messages.
+const MAX_FRAME: usize = 1 << 24; // 16 MiB
 
 pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
@@ -44,7 +48,7 @@ pub struct FlashblocksP2PCtx<N> {
     pub authorizer_vk: VerifyingKey,
     /// Sender for flashblocks payloads which will be broadcasted to all peers.
     /// May not be strictly ordered.
-    pub peer_tx: broadcast::Sender<FlashblocksP2PMsg>,
+    pub peer_tx: broadcast::Sender<BytesMut>,
     /// Receiver of verified and strictly ordered flashbloacks payloads.
     /// For consumption by the rpc overlay.
     pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
@@ -124,7 +128,25 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
                 message.payload.index
             );
             let message = FlashblocksP2PMsg::FlashblocksPayloadV1(message);
-            self.peer_tx.send(message).ok();
+            let bytes = message.encode();
+            if bytes.len() > MAX_FRAME {
+                tracing::error!(
+                    target: "flashblocks",
+                    size = bytes.len(),
+                    max_size = MAX_FRAME,
+                    "FlashblocksP2PMsg too large",
+                );
+                return;
+            }
+            if bytes.len() > MAX_FRAME / 2 {
+                tracing::warn!(
+                    target: "flashblocks",
+                    size = bytes.len(),
+                    max_size = MAX_FRAME,
+                    "FlashblocksP2PMsg almost too large",
+                );
+            }
+            self.peer_tx.send(bytes).ok();
             // Broadcast any flashblocks in the cache that are in order
             while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
                 // Send the flashblock to the stream

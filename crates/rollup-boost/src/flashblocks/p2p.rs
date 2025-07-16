@@ -4,7 +4,6 @@ use alloy_rpc_types_engine::PayloadId;
 use bytes::{Buf as _, BufMut as _, BytesMut};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::{FlashblocksP2PError, FlashblocksPayloadV1};
 
@@ -248,7 +247,7 @@ impl FlashblocksP2PMsg {
     }
 
     /// Decodes a `FlashblocksP2PError` from the given message buffer.
-    pub fn decode(buf: &mut BytesMut) -> Result<Self, FlashblocksP2PError> {
+    pub fn decode(buf: &mut &[u8]) -> Result<Self, FlashblocksP2PError> {
         if buf.is_empty() {
             return Err(FlashblocksP2PError::InputTooShort);
         }
@@ -425,9 +424,9 @@ mod tests {
 
         let msg = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized.clone());
 
-        let mut encoded = msg.encode();
+        let encoded = msg.encode();
 
-        let decoded = FlashblocksP2PMsg::decode(&mut encoded).expect("decode ok");
+        let decoded = FlashblocksP2PMsg::decode(&mut &encoded[..]).expect("decode ok");
 
         match decoded {
             FlashblocksP2PMsg::FlashblocksPayloadV1(inner) => {
