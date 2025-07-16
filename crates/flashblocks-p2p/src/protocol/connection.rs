@@ -1,5 +1,5 @@
 use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
-use alloy_rlp::{Decodable, Encodable, Header};
+use alloy_rlp::{Buf as _, BufMut, Decodable, Encodable, Header};
 
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
@@ -12,7 +12,7 @@ use std::{
     task::{Context, Poll, ready},
 };
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::trace;
+use tracing::{info, trace};
 
 pub struct FlashblocksConnection<N> {
     pub handler: FlashblocksHandler<N>,
@@ -41,13 +41,8 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                     Ok(outbound) => {
                         // TODO: handle the case where this peer is the one that sent the original
                         trace!(peer_id = %this.peer_id, target = "flashblocks", "Broadcasting flashblocks message");
-                        let mut buf = BytesMut::with_capacity(outbound.length());
-                        outbound.encode(&mut buf);
-                        trace!(peer_id = %this.peer_id, target = "flashblocks",
-                            "Encoded flashblocks message with length: {}", buf.len());
-                        let new = FlashblocksP2PMsg::decode(&mut &buf[..]).unwrap();
-                        println!("Broadcasting flashblocks message: {:?}", new);
-                        return Poll::Ready(Some(buf));
+
+                        return Poll::Ready(Some(outbound.encode()));
                     }
                     Err(e) => {
                         tracing::error!(
@@ -59,17 +54,14 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
             }
 
             // Check if there are any messages from the peer.
-            trace!(peer_id = %this.peer_id, target = "flashblocks",
-                "Polling for messages from peer");
-            let Some(msg) = ready!(this.conn.poll_next_unpin(cx)) else {
-                trace!(peer_id = %this.peer_id, target = "flashblocks",
-                    "Connection closed, no more messages from peer");
+            let Some(mut msg) = ready!(this.conn.poll_next_unpin(cx)) else {
                 return Poll::Ready(None);
             };
+            // Why aren't we getting here?
             trace!(peer_id = %this.peer_id, target = "flashblocks",
                 "Received message from peer: {}", msg.len());
             // TODO: handle max buffer size
-            let msg = match FlashblocksP2PMsg::decode(&mut &msg[..]) {
+            let msg = match FlashblocksP2PMsg::decode(&mut msg) {
                 Ok(msg) => msg,
                 Err(e) => {
                     tracing::warn!(
@@ -85,9 +77,6 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                 }
             };
 
-            trace!(peer_id = %this.peer_id, target = "flashblocks",
-                "Received flashblocks message from peer",
-            );
             match msg {
                 FlashblocksP2PMsg::FlashblocksPayloadV1(authorized) => {
                     this.handle_flashblocks_payload_v1(authorized);

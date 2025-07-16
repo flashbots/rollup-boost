@@ -1,8 +1,10 @@
 use alloy_primitives::{B64, Bytes};
 use alloy_rlp::{Decodable, Encodable, Header};
 use alloy_rpc_types_engine::PayloadId;
+use bytes::{Buf as _, BufMut as _, BytesMut};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{FlashblocksP2PError, FlashblocksPayloadV1};
 
@@ -232,52 +234,33 @@ where
     }
 }
 
-impl Encodable for FlashblocksP2PMsg {
-    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
+impl FlashblocksP2PMsg {
+    /// Creates a new `FlashblocksP2PError` with the given message ID and payload.
+    pub fn encode(&self) -> BytesMut {
+        let mut buf = BytesMut::new();
         match self {
-            Self::FlashblocksPayloadV1(p) => {
-                let len = 1 + p.length();
-                Header {
-                    list: true,
-                    payload_length: len,
-                }
-                .encode(out);
-                0u8.encode(out);
-                p.encode(out);
+            FlashblocksP2PMsg::FlashblocksPayloadV1(payload) => {
+                buf.put_u8(0x00);
+                payload.encode(&mut buf);
             }
         }
+        buf
     }
 
-    fn length(&self) -> usize {
-        match self {
-            Self::FlashblocksPayloadV1(p) => {
-                let inner_len = 1 + p.length();
-                Header {
-                    list: true,
-                    payload_length: inner_len,
-                }
-                .length()
-                    + inner_len
-            }
+    /// Decodes a `FlashblocksP2PError` from the given message buffer.
+    pub fn decode(buf: &mut BytesMut) -> Result<Self, FlashblocksP2PError> {
+        if buf.is_empty() {
+            return Err(FlashblocksP2PError::InputTooShort);
         }
-    }
-}
-
-impl Decodable for FlashblocksP2PMsg {
-    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
-        let header = Header::decode(buf)?;
-        let mut body = &buf[..header.payload_length as usize];
-
-        let tag = u8::decode(&mut body)?;
-        let variant = match tag {
+        let id = buf[0];
+        buf.advance(1);
+        match id {
             0x00 => {
-                Self::FlashblocksPayloadV1(Authorized::<FlashblocksPayloadV1>::decode(&mut body)?)
+                let payload = Authorized::<FlashblocksPayloadV1>::decode(&mut &buf[..])?;
+                Ok(FlashblocksP2PMsg::FlashblocksPayloadV1(payload))
             }
-            _ => return Err(alloy_rlp::Error::Custom("unknown variant tag")),
-        };
-
-        *buf = &buf[header.payload_length as usize..];
-        Ok(variant)
+            _ => Err(FlashblocksP2PError::UnknownMessageType),
+        }
     }
 }
 
@@ -442,17 +425,15 @@ mod tests {
 
         let msg = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized.clone());
 
-        let encoded = encode(&msg);
-        assert_eq!(encoded.len(), msg.length(), "length() must match bytes");
+        let mut encoded = msg.encode();
 
-        let mut slice = encoded.as_ref();
-        let decoded = FlashblocksP2PMsg::decode(&mut slice).expect("decode ok");
+        let decoded = FlashblocksP2PMsg::decode(&mut encoded).expect("decode ok");
 
         match decoded {
             FlashblocksP2PMsg::FlashblocksPayloadV1(inner) => {
                 assert_eq!(inner, authorized, "inner payload round-trips");
             }
         }
-        assert!(slice.is_empty(), "decoder consumed all input");
+        assert_eq!(encoded.remaining(), 0, "decoder consumed all input");
     }
 }
