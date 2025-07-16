@@ -489,13 +489,9 @@ mod tests {
             Duration::from_millis(100),
         );
 
-        let fcu_state = ForkchoiceState::default();
-        let payload_attributes = OpPayloadAttributes::default();
-
-        let payload_id = payload_id_optimism(&fcu_state.head_block_hash, &payload_attributes, 3);
         let flashblock_payload = FlashblocksPayloadV1 {
             index: 0,
-            payload_id,
+            payload_id: PayloadId::default(),
             base: Some(ExecutionPayloadBaseV1::default()),
             ..Default::default()
         };
@@ -504,6 +500,7 @@ mod tests {
         let msg = Message::Text(json.into());
         mock.send_message(msg).await?;
 
+        tokio::time::sleep(Duration::from_secs(1)).await;
         assert_eq!(provider.payload_builder.lock().flashblocks.len(), 1);
 
         Ok(())
