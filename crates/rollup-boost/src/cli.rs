@@ -1,3 +1,13 @@
+use crate::{
+    BlockSelectionPolicy, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
+    client::rpc::{BuilderArgs, L2ClientArgs},
+    debug_api::ExecutionMode,
+    get_version, init_metrics,
+    payload::PayloadSource,
+    probe::ProbeLayer,
+    provider::FlashblocksProvider,
+    pubsub::FlashblocksPubSubManager,
+};
 use alloy_rpc_types_engine::JwtSecret;
 use clap::Parser;
 use eyre::bail;
@@ -8,18 +18,13 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
-use tokio::signal::unix::{SignalKind, signal as unix_signal};
+use tokio::{
+    net::TcpListener,
+    signal::unix::{SignalKind, signal as unix_signal},
+};
 use tracing::{Level, info};
-
-use crate::{
-    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
-    client::rpc::{BuilderArgs, L2ClientArgs},
-    debug_api::ExecutionMode,
-    get_version, init_metrics,
-    payload::PayloadSource,
-    probe::ProbeLayer,
-};
 
 #[derive(Clone, Parser, Debug)]
 #[clap(author, version = get_version(), about)]
@@ -140,23 +145,24 @@ impl RollupBoostArgs {
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));
 
         let (rpc_module, health_handle): (RpcModule<()>, _) = if self.flashblocks.flashblocks {
-            let flashblocks_args = self.flashblocks;
-            let inbound_url = flashblocks_args.flashblocks_builder_url;
-            let outbound_addr = SocketAddr::new(
-                IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
-                flashblocks_args.flashblocks_port,
+            let builder_ws_url = self.flashblocks.flashblocks_builder_url;
+            let listener_addr = SocketAddr::new(
+                IpAddr::from_str(&self.flashblocks.flashblocks_host)?,
+                self.flashblocks.flashblocks_port,
             );
 
-            let builder_client = Arc::new(Flashblocks::run(
-                builder_client.clone(),
-                inbound_url,
-                outbound_addr,
-                flashblocks_args.flashblock_builder_ws_reconnect_ms,
-            )?);
+            let listener = TcpListener::bind(listener_addr).await?;
+            let flashblocks_provider = Arc::new(FlashblocksProvider::new(builder_client));
+            FlashblocksPubSubManager::spawn(
+                builder_ws_url,
+                listener,
+                flashblocks_provider.clone(),
+                Duration::from_millis(self.flashblocks.flashblock_builder_ws_reconnect_ms),
+            );
 
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
-                builder_client,
+                flashblocks_provider,
                 execution_mode.clone(),
                 self.block_selection_policy,
                 probes.clone(),
