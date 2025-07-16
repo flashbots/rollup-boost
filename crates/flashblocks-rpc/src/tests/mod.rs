@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, cache::Metadata};
+    use crate::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksRpcOverlay, cache::Metadata};
     use alloy_consensus::Receipt;
     use alloy_genesis::Genesis;
     use alloy_primitives::{Address, B256, Bytes, TxHash, U256, address, b256};
@@ -102,7 +102,7 @@ mod tests {
                 // We are not going to use the websocket connection to send payloads so we use
                 // a dummy url.
                 let flashblocks_overlay =
-                    FlashblocksOverlay::new(Url::parse("ws://localhost:8546")?, chain_spec);
+                    FlashblocksRpcOverlay::new(Url::parse("ws://localhost:8546")?, chain_spec);
 
                 let eth_api = ctx.registry.eth_api().clone();
                 let api_ext = FlashblocksApiExt::new(eth_api.clone(), flashblocks_overlay.clone());

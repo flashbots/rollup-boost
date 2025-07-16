@@ -1,7 +1,7 @@
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
 
 use clap::Parser;
-use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay};
+use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksRpcOverlay};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
 use tracing::info;
@@ -31,8 +31,8 @@ fn main() {
                 .extend_rpc_modules(move |ctx| {
                     if args.flashblocks_enabled {
                         let mut flashblocks_overlay =
-                            FlashblocksOverlay::new(args.websocket_url, chain_spec);
-                        flashblocks_overlay.start()?;
+                            FlashblocksRpcOverlay::new(args.websocket_url, chain_spec);
+                        flashblocks_overlay.spawn()?;
 
                         let eth_api = ctx.registry.eth_api().clone();
                         let api_ext = FlashblocksApiExt::new(eth_api.clone(), flashblocks_overlay);

@@ -1,4 +1,4 @@
-use crate::{FlashblocksApi, cache::FlashblocksCache};
+use crate::{FlashblocksApi, cache::FlashblocksCache, rpc};
 use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
 use jsonrpsee::core::async_trait;
@@ -13,12 +13,13 @@ use tracing::{debug, error, info};
 use url::Url;
 
 #[derive(Clone)]
-pub struct FlashblocksOverlay {
+pub struct FlashblocksRpcOverlay {
     url: Url,
     cache: FlashblocksCache,
+    // TODO: stream handle
 }
 
-impl FlashblocksOverlay {
+impl FlashblocksRpcOverlay {
     pub fn new(url: Url, chain_spec: Arc<OpChainSpec>) -> Self {
         Self {
             url,
@@ -26,9 +27,12 @@ impl FlashblocksOverlay {
         }
     }
 
-    pub fn start(&mut self) -> eyre::Result<()> {
+    pub fn spawn(&mut self) -> eyre::Result<()> {
         let url = self.url.clone();
         let (sender, mut receiver) = mpsc::channel(100);
+
+        // NOTE: handle flashblocks stream
+        //
 
         tokio::spawn(async move {
             let mut backoff = std::time::Duration::from_secs(1);
@@ -104,6 +108,103 @@ impl FlashblocksOverlay {
     pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
         self.cache.process_payload(payload)
     }
+
+    fn handle_flashblocks_stream(url: Url) {
+        let (tx, mut rx) = mpsc::channel(100);
+        tokio::spawn(async move {
+            //     let mut backoff = std::time::Duration::from_secs(1);
+            //     const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(10);
+
+            loop {
+                if let Ok((mut stream, _)) = connect_async(url.as_str()).await {
+                    // TODO: logging
+
+                    while let Some(res) = stream.next().await {
+                        match res {
+                            Ok(msg) => match msg {
+                                Message::Text(bytes) => {
+                                    tx.send(bytes).await.expect("TODO: handle error");
+                                }
+
+                                Message::Close(_) => {
+                                    todo!();
+                                }
+
+                                _ => {}
+                            },
+
+                            Err(e) => {
+                                // TODO: error logging
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            while let Some(message) = rx.recv().await {
+                // match message {
+                // InternalMessage::NewPayload(payload) => {
+                //     if let Err(e) = cache_cloned.process_payload(payload) {
+                //         error!("failed to process payload: {}", e);
+                //     }
+                // }
+                //                }
+            }
+        });
+
+        //     loop {
+        //         match connect_async(url.as_str()).await {
+        //             Ok((ws_stream, _)) => {
+        //                 info!("WebSocket connection established");
+        //                 let (_write, mut read) = ws_stream.split();
+        //
+        //                 while let Some(msg) = read.next().await {
+        //                     debug!("Received message: {:?}", msg);
+        //
+        //                     match msg {
+        //                         Ok(Message::Binary(bytes)) => match try_decode_message(&bytes) {
+        //                             Ok(payload) => {
+        //                                 info!("Received payload: {:?}", payload);
+        //
+        //                                 let _ = sender
+        //                                     .send(InternalMessage::NewPayload(payload))
+        //                                     .await
+        //                                     .map_err(|e| {
+        //                                         error!("failed to send payload to channel: {}", e);
+        //                                     });
+        //                             }
+        //                             Err(e) => {
+        //                                 error!("failed to parse fb message: {}", e);
+        //                             }
+        //                         },
+        //                         Ok(Message::Close(e)) => {
+        //                             error!("WebSocket connection closed: {:?}", e);
+        //                             break;
+        //                         }
+        //                         Err(e) => {
+        //                             error!("WebSocket connection error: {}", e);
+        //                             break;
+        //                         }
+        //                         _ => {}
+        //                     }
+        //                 }
+        //             }
+        //             Err(e) => {
+        //                 error!(
+        //                     "WebSocket connection error, retrying in {:?}: {}",
+        //                     backoff, e
+        //                 );
+        //                 tokio::time::sleep(backoff).await;
+        //                 // Double the backoff time, but cap at MAX_BACKOFF
+        //                 backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
+        //                 continue;
+        //             }
+        //         }
+        //     }
+        //
+    }
 }
 
 enum InternalMessage {
@@ -139,7 +240,7 @@ fn try_parse_message(bytes: &[u8]) -> eyre::Result<String> {
 }
 
 #[async_trait]
-impl FlashblocksApi for FlashblocksOverlay {
+impl FlashblocksApi for FlashblocksRpcOverlay {
     async fn block_by_number(&self, full: bool) -> Option<RpcBlock<Optimism>> {
         self.cache.get_block(full)
     }
