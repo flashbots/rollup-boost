@@ -17,7 +17,6 @@ reth-transaction-pool = { workspace = true }
 ed25519-dalek = { version = "2", features = ["serde"] }
 blake3 = "1"                                            # fast hashing for payload IDs
 serde = { version = "1", features = ["derive"] }
-bincode = "2"                                           # stable, deterministic encoding
 
 tokio = { workspace = true }
 tokio-stream = { workspace = true }

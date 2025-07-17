@@ -1,14 +1,11 @@
 [workspace]
 resolver = "3"
-edition = "2024"
-license = "MIT"
 
 members = [
     "crates/rollup-boost",
     "crates/websocket-proxy",
     "crates/flashblocks-rpc",
     "crates/flashblocks-p2p",
-    "crates/flashblocks-api",
     "crates/flashblocks-node",
 ]
 
