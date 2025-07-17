@@ -9,7 +9,7 @@ use reth_network::Peers;
 use rollup_boost::{FlashblocksP2PMsg, FlashblocksPayloadV1};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing::debug;
 
 use reth_ethereum::network::{
@@ -74,7 +74,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         network_handle: N,
         authorizer_vk: VerifyingKey,
         flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
-        publish_tx: broadcast::Sender<FlashblocksP2PMsg>,
+        mut publish_rx: mpsc::UnboundedReceiver<FlashblocksP2PMsg>,
     ) -> Self {
         let peer_tx = broadcast::Sender::new(100);
         let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
@@ -89,7 +89,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         let ctx_clone = ctx.clone();
         tokio::spawn({
             async move {
-                while let Ok(msg) = publish_tx.subscribe().recv().await {
+                while let Some(msg) = publish_rx.recv().await {
                     let mut state = state_clone.lock();
                     ctx_clone.publish(&mut state, msg);
                 }

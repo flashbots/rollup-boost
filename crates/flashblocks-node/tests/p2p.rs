@@ -25,12 +25,12 @@ use rollup_boost::{
     FlashblocksP2PMsg, FlashblocksPayloadV1,
 };
 use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing::info;
 
 pub struct NodeContext {
     inbound_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    outbound_tx: broadcast::Sender<FlashblocksP2PMsg>,
+    publish_tx: mpsc::UnboundedSender<FlashblocksP2PMsg>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
@@ -51,7 +51,7 @@ async fn setup_node(
     authorizer: SigningKey,
     trusted_peer: Option<(PeerId, SocketAddr)>,
 ) -> eyre::Result<NodeContext> {
-    let (outbound_tx, _outbound_rx) = broadcast::channel(100);
+    let (publish_tx, publish_rx) = mpsc::unbounded_channel();
     let (inbound_tx, inbound_rx) = broadcast::channel(100);
 
     let genesis: Genesis = serde_json::from_str(include_str!("assets/genesis.json")).unwrap();
@@ -106,7 +106,7 @@ async fn setup_node(
         node.network.clone(),
         authorizer.verifying_key(),
         inbound_tx.clone(),
-        outbound_tx.clone(),
+        publish_rx,
     );
 
     node.network
@@ -127,7 +127,7 @@ async fn setup_node(
 
     Ok(NodeContext {
         inbound_tx,
-        outbound_tx,
+        publish_tx,
         local_node_record,
         http_api_addr,
         _node_exit_future: node_exit_future,
@@ -317,7 +317,7 @@ async fn test_peering() -> eyre::Result<()> {
     );
     let authorized = Authorized::new(&builder, authorization, payload_0.clone());
     let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
-    node_1.outbound_tx.send(proto_message)?;
+    node_1.publish_tx.send(proto_message)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
 
     // Query pending block after sending the base payload with an empty delta
@@ -340,7 +340,7 @@ async fn test_peering() -> eyre::Result<()> {
     let authorized = Authorized::new(&builder, authorization, payload_1.clone());
     let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
 
-    node_1.outbound_tx.send(proto_message)?;
+    node_1.publish_tx.send(proto_message)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     // Query pending block after sending the second payload with two transactions

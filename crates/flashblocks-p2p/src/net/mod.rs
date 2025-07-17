@@ -11,16 +11,16 @@ use reth_node_builder::{
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use rollup_boost::{FlashblocksP2PMsg, FlashblocksPayloadV1};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FlashblocksNetworkBuilder<T> {
     inner: T,
     authorizer_vk: VerifyingKey,
     flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    flashblock_sender_tx: broadcast::Sender<FlashblocksP2PMsg>,
+    publish_rx: mpsc::UnboundedReceiver<FlashblocksP2PMsg>,
 }
 
 impl<T> FlashblocksNetworkBuilder<T> {
@@ -29,13 +29,13 @@ impl<T> FlashblocksNetworkBuilder<T> {
         inner: T,
         authorizer_vk: VerifyingKey,
         flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
-        flashblock_sender_tx: broadcast::Sender<FlashblocksP2PMsg>,
+        publish_rx: mpsc::UnboundedReceiver<FlashblocksP2PMsg>,
     ) -> Self {
         Self {
             inner,
             authorizer_vk,
             flashblocks_receiver_tx,
-            flashblock_sender_tx,
+            publish_rx,
         }
     }
 }
@@ -63,7 +63,7 @@ where
             handle.clone(),
             self.authorizer_vk,
             self.flashblocks_receiver_tx,
-            self.flashblock_sender_tx,
+            self.publish_rx,
         );
         handle.add_rlpx_sub_protocol(handler.into_rlpx_sub_protocol());
 
