@@ -292,7 +292,7 @@ impl RollupBoostTestHarnessBuilder {
 
     pub async fn build(self) -> eyre::Result<RollupBoostTestHarness> {
         let network = rand::random::<u16>().to_string();
-        let l2_log_consumer = self.log_consumer("l2").await?;
+        let l2_log_consumer = self.log_consumer("sequencer").await?;
         let builder_log_consumer = self.log_consumer("builder").await?;
         let rollup_boost_log_file_path = self.file_path("rollup_boost")?;
 
@@ -559,28 +559,32 @@ impl BlockBuilderCreatorValidator {
     ) -> eyre::Result<Option<ExecutionClient>> {
         let contents = std::fs::read_to_string(&self.file)?;
 
-        let search_query = format!("returning block hash={:#x}", block_hash);
+        let search_query = format!("returning block hash={block_hash:#x}");
 
         // Find the log line containing the block hash
         for line in contents.lines() {
             if line.contains(&search_query) {
                 // Extract the context=X part
-                if let Some(context_start) = line.find("context=") {
-                    let context = line[context_start..]
+                println!("Found line: {line}");
+                if let Some(context_start) = line.find("execution_client=") {
+                    let execution_client = line[context_start..]
                         .split_whitespace()
                         .next()
-                        .ok_or(eyre::eyre!("no context found"))?
+                        .ok_or(eyre::eyre!("execution_client not found"))?
+                        .split("}")
+                        .next()
+                        .ok_or(eyre::eyre!("execution_client not found"))?
                         .split('=')
                         .nth(1)
-                        .ok_or(eyre::eyre!("no context found"))?;
+                        .ok_or(eyre::eyre!("execution_client not found"))?;
 
-                    match context {
+                    match execution_client {
                         "builder" => return Ok(Some(ExecutionClient::Builder)),
-                        "l2" => return Ok(Some(ExecutionClient::Sequencer)),
-                        _ => panic!("Unknown context: {}", context),
+                        "sequencer" => return Ok(Some(ExecutionClient::Sequencer)),
+                        _ => panic!("Unknown execution_client: {execution_client}"),
                     }
                 } else {
-                    panic!("no context found");
+                    panic!("execution_client not found");
                 }
             }
         }

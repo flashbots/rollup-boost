@@ -200,7 +200,7 @@ where
         let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
 
         // Evaluate the builder and l2 response and select the final payload
-        let (payload, context) = {
+        let (payload, execution_client) = {
             let l2_payload =
                 l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
             self.probes.set_health(Health::Healthy);
@@ -246,10 +246,10 @@ where
             }
         };
 
-        tracing::Span::current().record("execution_client", context.to_string());
+        tracing::Span::current().record("execution_client", execution_client.to_string());
         // To maintain backwards compatibility with old metrics, we need to record blocks built
         // This is temporary until we migrate to the new metrics
-        counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
+        counter!("rpc.blocks_created", "source" => execution_client.to_string()).increment(1);
 
         let inner_payload = ExecutionPayload::from(payload.clone());
         let block_hash = inner_payload.block_hash();
@@ -262,7 +262,7 @@ where
             message = "returning block",
             "hash" = %block_hash,
             "number" = %block_number,
-            %context,
+            %execution_client,
             %payload_id,
         );
         Ok(payload)
