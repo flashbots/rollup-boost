@@ -5,7 +5,7 @@ use crate::{
     debug_api::DebugServer,
     health::HealthHandle,
     payload::{
-        NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope, PayloadSource,
+        ExecutionClient, NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope,
         PayloadTraceContext, PayloadVersion,
     },
     probe::{Health, Probes},
@@ -104,7 +104,7 @@ where
         let execution_payload = ExecutionPayload::from(new_payload.clone());
         let block_hash = execution_payload.block_hash();
         let parent_hash = execution_payload.parent_hash();
-        info!(message = "received new_payload", "block_hash" = %block_hash, "version" = new_payload.version().as_str());
+        info!(%block_hash, "version" = new_payload.version().as_str(), "received new_payload");
 
         if let Some(causes) = self
             .payload_trace_context
@@ -142,19 +142,21 @@ where
             return match l2_fut.await {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
-                    let context = PayloadSource::L2;
-                    tracing::Span::current().record("payload_source", context.to_string());
-                    counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
+                    let execution_client = ExecutionClient::Sequencer;
+                    tracing::Span::current()
+                        .record("execution_client", execution_client.to_string());
+                    counter!("rpc.blocks_created", "source" => execution_client.to_string())
+                        .increment(1);
 
                     let execution_payload = ExecutionPayload::from(payload.clone());
                     info!(
-                        message = "returning block",
                         "hash" = %execution_payload.block_hash(),
                         "number" = %execution_payload.block_number(),
-                        %context,
+                        %execution_client,
                         %payload_id,
                         // Add an extra label to know that this is the disabled execution mode path
                         "execution_mode" = "disabled",
+                        "returning block"
                     );
 
                     Ok(payload)
@@ -177,14 +179,14 @@ where
                 .has_builder_payload(&payload_id)
                 .await
             {
-                info!(message = "builder has no payload, skipping get_payload call to builder");
+                info!("builder has no payload, skipping get_payload call to builder");
                 tracing::Span::current().record("builder_has_payload", false);
                 return RpcResult::Ok(None);
             }
 
             // Get payload and validate with the local l2 client
             tracing::Span::current().record("builder_has_payload", true);
-            info!(message = "builder has payload, calling get_payload on builder");
+            info!("builder has payload, calling get_payload on builder");
 
             let payload = self.builder_client.get_payload(payload_id, version).await?;
             let _ = self
@@ -206,9 +208,9 @@ where
             // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
             // If there's an error, log it and return None instead.
             let builder_payload = builder_payload
-                .map_err(|e| {
-                    error!(message = "error getting payload from builder", error = %e);
-                    e
+                .map_err(|error| {
+                    error!(%error, "error getting payload from builder");
+                    error
                 })
                 .unwrap_or(None);
 
@@ -228,11 +230,11 @@ where
                 // If execution mode is set to DryRun, fallback to the l2_payload,
                 // otherwise prefer the builder payload
                 if self.execution_mode().is_dry_run() {
-                    (l2_payload, PayloadSource::L2)
+                    (l2_payload, ExecutionClient::Sequencer)
                 } else if let Some(selection_policy) = &self.block_selection_policy {
                     selection_policy.select_block(builder_payload, l2_payload)
                 } else {
-                    (builder_payload, PayloadSource::Builder)
+                    (builder_payload, ExecutionClient::Builder)
                 }
             } else {
                 // Only update the health status if the builder payload fails
@@ -240,11 +242,11 @@ where
                 if !self.execution_mode().is_dry_run() {
                     self.probes.set_health(Health::PartialContent);
                 }
-                (l2_payload, PayloadSource::L2)
+                (l2_payload, ExecutionClient::Sequencer)
             }
         };
 
-        tracing::Span::current().record("payload_source", context.to_string());
+        tracing::Span::current().record("execution_client", context.to_string());
         // To maintain backwards compatibility with old metrics, we need to record blocks built
         // This is temporary until we migrate to the new metrics
         counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
@@ -333,6 +335,7 @@ where
     T: EngineApiExt,
 {
     #[instrument(
+        level = "info",
         skip_all,
         err,
         fields(
@@ -364,10 +367,10 @@ where
             if attrs.no_tx_pool.unwrap_or_default() {
                 let l2_response = l2_fut.await?;
                 if let Some(payload_id) = l2_response.payload_id {
+                    tracing::Span::current().record("payload_id", payload_id.to_string());
                     info!(
-                        message = "block building started",
-                        "payload_id" = %payload_id,
-                        "builder_building" = false,
+                        "block_builder" = %ExecutionClient::Sequencer,
+                        "block building started",
                     );
 
                     self.payload_trace_context
@@ -393,10 +396,14 @@ where
                 let l2_response = l2_result?;
 
                 if let Some(payload_id) = l2_response.payload_id {
+                    let block_builder = if builder_result.is_ok() {
+                        ExecutionClient::Builder
+                    } else {
+                        ExecutionClient::Sequencer
+                    };
                     info!(
-                        message = "block building started",
-                        "payload_id" = %payload_id,
-                        "builder_building" = builder_result.is_ok(),
+                        %block_builder,
+                        "block building started",
                     );
 
                     self.payload_trace_context
@@ -429,17 +436,10 @@ where
     }
 
     #[instrument(
+        level = "info",
         skip_all,
         err,
-        fields(
-            otel.kind = ?SpanKind::Server,
-            %payload_id,
-            payload_source,
-            gas_delta,
-            tx_count_delta,
-            builder_has_payload,
-            flashblocks_count,
-        )
+        fields(otel.kind = ?SpanKind::Server, %payload_id)
     )]
     async fn get_payload_v3(
         &self,
@@ -458,11 +458,10 @@ where
     }
 
     #[instrument(
+        level = "info",
         skip_all,
         err,
-        fields(
-            otel.kind = ?SpanKind::Server,
-        )
+        fields(otel.kind = ?SpanKind::Server, %parent_beacon_block_root)
     )]
     async fn new_payload_v3(
         &self,
@@ -481,15 +480,10 @@ where
     }
 
     #[instrument(
+        level = "info",
         skip_all,
         err,
-        fields(
-            otel.kind = ?SpanKind::Server,
-            %payload_id,
-            payload_source,
-            gas_delta,
-            tx_count_delta,
-        )
+        fields(otel.kind = ?SpanKind::Server, %payload_id)
     )]
     async fn get_payload_v4(
         &self,
@@ -508,10 +502,12 @@ where
     }
 
     #[instrument(
+        level = "info",
         skip_all,
         err,
         fields(
             otel.kind = ?SpanKind::Server,
+            %parent_beacon_block_root,
         )
     )]
     async fn new_payload_v4(
@@ -652,8 +648,13 @@ pub mod tests {
             let (builder_server, builder_server_addr) = spawn_server(builder_mock.clone()).await;
 
             let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-            let l2_client =
-                RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
+            let l2_client = RpcClient::new(
+                l2_auth_rpc.clone(),
+                jwt_secret,
+                2000,
+                ExecutionClient::Sequencer,
+            )
+            .unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
             let builder_client = Arc::new(
@@ -661,7 +662,7 @@ pub mod tests {
                     builder_auth_rpc.clone(),
                     jwt_secret,
                     2000,
-                    PayloadSource::Builder,
+                    ExecutionClient::Builder,
                 )
                 .unwrap(),
             );

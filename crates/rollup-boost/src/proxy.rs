@@ -1,5 +1,5 @@
 use crate::client::http::HttpClient;
-use crate::payload::PayloadSource;
+use crate::payload::ExecutionClient;
 use crate::{Request, Response, from_buffered_request, into_buffered_request};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
@@ -60,14 +60,14 @@ impl<S> Layer<S> for ProxyLayer {
         let l2_client = HttpClient::new(
             self.l2_auth_rpc.clone(),
             self.l2_auth_secret,
-            PayloadSource::L2,
+            ExecutionClient::Sequencer,
             self.l2_timeout,
         );
 
         let builder_client = HttpClient::new(
             self.builder_auth_rpc.clone(),
             self.builder_auth_secret,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
             self.builder_timeout,
         );
 

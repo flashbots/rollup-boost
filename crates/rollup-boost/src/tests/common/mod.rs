@@ -2,7 +2,7 @@
 use crate::DebugClient;
 use crate::{AuthLayer, AuthService};
 use crate::{EngineApiClient, OpExecutionPayloadEnvelope, PayloadVersion};
-use crate::{NewPayload, PayloadSource};
+use crate::{ExecutionClient, NewPayload};
 use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
 use alloy_rpc_types_engine::{ExecutionPayload, JwtSecret};
@@ -442,7 +442,7 @@ impl SimpleBlockGenerator {
     pub async fn generate_block(
         &mut self,
         empty_blocks: bool,
-    ) -> eyre::Result<(B256, PayloadSource)> {
+    ) -> eyre::Result<(B256, ExecutionClient)> {
         let timestamp = self.timestamp + self.genesis.block_time;
         self.current_block_number += 1;
 
@@ -553,7 +553,10 @@ impl BlockBuilderCreatorValidator {
 }
 
 impl BlockBuilderCreatorValidator {
-    pub async fn get_block_creator(&self, block_hash: B256) -> eyre::Result<Option<PayloadSource>> {
+    pub async fn get_block_creator(
+        &self,
+        block_hash: B256,
+    ) -> eyre::Result<Option<ExecutionClient>> {
         let contents = std::fs::read_to_string(&self.file)?;
 
         let search_query = format!("returning block hash={:#x}", block_hash);
@@ -572,8 +575,8 @@ impl BlockBuilderCreatorValidator {
                         .ok_or(eyre::eyre!("no context found"))?;
 
                     match context {
-                        "builder" => return Ok(Some(PayloadSource::Builder)),
-                        "l2" => return Ok(Some(PayloadSource::L2)),
+                        "builder" => return Ok(Some(ExecutionClient::Builder)),
+                        "l2" => return Ok(Some(ExecutionClient::Sequencer)),
                         _ => panic!("Unknown context: {}", context),
                     }
                 } else {
