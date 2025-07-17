@@ -3,7 +3,10 @@ use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
+use reth_node_api::NodeTypesWithDB;
 use reth_optimism_chainspec::OpChainSpec;
+use reth_provider::{ProviderFactory, providers::ProviderNodeTypes};
+use reth_revm::{database::StateProviderDatabase, db::CacheDB};
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::FlashblocksPayloadV1;
 use std::{io::Read, sync::Arc};
@@ -17,6 +20,7 @@ pub struct FlashblocksRpcOverlay {
     url: Url,
     cache: FlashblocksCache,
     // TODO: stream handle
+    // TODO: track latest payload id
 }
 
 impl FlashblocksRpcOverlay {
@@ -52,6 +56,7 @@ impl FlashblocksRpcOverlay {
                         match res {
                             Ok(msg) => match msg {
                                 Message::Text(bytes) => {
+                                    // TODO: decode
                                     tx.send(bytes).await.expect("TODO: handle error");
                                 }
 
@@ -73,6 +78,7 @@ impl FlashblocksRpcOverlay {
 
         tokio::spawn(async move {
             while let Some(message) = rx.recv().await {
+
                 // match message {
                 // InternalMessage::NewPayload(payload) => {
                 //     if let Err(e) = cache_cloned.process_payload(payload) {
@@ -133,5 +139,20 @@ impl FlashblocksApi for FlashblocksRpcOverlay {
 
     async fn get_transaction_count(&self, address: Address) -> Option<u64> {
         self.cache.get_transaction_count(address)
+    }
+}
+
+pub struct FlashblocksCache0<ExtDB> {
+    // TODO: need some reference to the db
+    cache_db: CacheDB<ExtDB>,
+}
+
+impl<ExtDB> FlashblocksCache0<ExtDB> {
+    pub fn new<N: ProviderNodeTypes>(state_provider: ProviderFactory<N>) -> Self {
+        let state = state_provider.latest().expect("TODO: handle error");
+        let db = StateProviderDatabase::new(state);
+        let cache_db = CacheDB::new(db);
+
+        Self { cache_db }
     }
 }

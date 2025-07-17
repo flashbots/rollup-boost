@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 rollup-boost.workspace = true
 
+# TODO: move these to top level cargo toml
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
@@ -28,6 +29,7 @@ reth-node-core = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-tracing = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 
 alloy-eips.workspace = true
 alloy-primitives.workspace = true

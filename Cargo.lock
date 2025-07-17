@@ -3291,6 +3291,7 @@ dependencies = [
  "reth-primitives",
  "reth-primitives-traits",
  "reth-provider",
+ "reth-revm",
  "reth-rpc-eth-api",
  "reth-rpc-server-types",
  "reth-tasks",
