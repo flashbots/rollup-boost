@@ -107,7 +107,7 @@ impl FlashblocksCacheInner {
             let converted_txs = transactions_with_senders
                 .enumerate()
                 .map(|(idx, (tx, sender))| {
-                    let signed_tx_ec_recovered = Recovered::new_unchecked(tx.clone(), sender);
+                    
                     let tx_info = TransactionInfo {
                         hash: Some(tx.tx_hash()),
                         block_hash: Some(block.header.hash_slow()),
@@ -115,6 +115,7 @@ impl FlashblocksCacheInner {
                         index: Some(idx as u64),
                         base_fee: block.base_fee_per_gas,
                     };
+                    let signed_tx_ec_recovered = Recovered::new_unchecked(tx, sender);
                     transform_tx(signed_tx_ec_recovered, tx_info)
                 })
                 .collect();

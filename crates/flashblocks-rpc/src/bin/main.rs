@@ -35,7 +35,7 @@ fn main() {
                         flashblocks_overlay.start()?;
 
                         let eth_api = ctx.registry.eth_api().clone();
-                        let api_ext = FlashblocksApiExt::new(eth_api.clone(), flashblocks_overlay);
+                        let api_ext = FlashblocksApiExt::new(eth_api, flashblocks_overlay);
 
                         ctx.modules.replace_configured(api_ext.into_rpc())?;
                     }
