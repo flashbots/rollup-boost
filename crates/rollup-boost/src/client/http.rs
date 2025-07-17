@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::client::auth::AuthLayer;
-use crate::payload::PayloadSource;
+use crate::payload::ExecutionClient;
 use alloy_primitives::bytes::Bytes;
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
@@ -30,11 +30,11 @@ pub type HttpClientService =
 pub struct HttpClient {
     client: HttpClientService,
     url: Uri,
-    target: PayloadSource,
+    execution_client: ExecutionClient,
 }
 
 impl HttpClient {
-    pub fn new(url: Uri, secret: JwtSecret, target: PayloadSource, timeout: u64) -> Self {
+    pub fn new(url: Uri, secret: JwtSecret, target: ExecutionClient, timeout: u64) -> Self {
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
             .expect("no native root CA certificates found")
@@ -54,17 +54,19 @@ impl HttpClient {
         Self {
             client,
             url,
-            target,
+            execution_client: target,
         }
     }
 
     /// Forwards an HTTP request to the `authrpc`, attaching the provided JWT authorization.
     #[instrument(
-        skip(self, req),
+        level = "info",
+        skip_all,
         fields(
             otel.kind = ?SpanKind::Client,
+            execution_client = %self.execution_client,
             url = %self.url,
-            method,
+            %method,
             code,
         ),
         err(Debug)
@@ -79,7 +81,7 @@ impl HttpClient {
             + Send
             + 'static,
     {
-        debug!("forwarding {} to {}", method, self.target);
+        debug!("forwarding request");
         tracing::Span::current().record("method", method);
         *req.uri_mut() = self.url.clone();
 

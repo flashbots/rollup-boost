@@ -17,7 +17,7 @@ use crate::{
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
-    payload::PayloadSource,
+    payload::ExecutionClient,
     probe::ProbeLayer,
 };
 
@@ -117,7 +117,7 @@ impl RollupBoostArgs {
             l2_client_args.l2_url.clone(),
             l2_auth_jwt,
             l2_client_args.l2_timeout,
-            PayloadSource::L2,
+            ExecutionClient::Sequencer,
         )?;
 
         let builder_args = self.builder;
@@ -133,7 +133,7 @@ impl RollupBoostArgs {
             builder_args.builder_url.clone(),
             builder_auth_jwt,
             builder_args.builder_timeout,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?;
 
         let (probe_layer, probes) = ProbeLayer::new();

@@ -380,7 +380,7 @@ impl EngineApiExt for FlashblocksService {
 mod tests {
     use super::*;
     use crate::{
-        PayloadSource,
+        ExecutionClient,
         server::tests::{MockEngineServer, spawn_server},
     };
     use http::Uri;
@@ -399,7 +399,7 @@ mod tests {
             builder_auth_rpc.clone(),
             jwt_secret,
             2000,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?;
 
         let service =
@@ -428,7 +428,7 @@ mod tests {
             builder_auth_rpc.clone(),
             jwt_secret,
             2000,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?;
 
         let service =

@@ -1,6 +1,6 @@
 use crate::EngineApiExt;
 use crate::client::auth::AuthLayer;
-use crate::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
+use crate::payload::{ExecutionClient, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion};
 use crate::server::EngineApiClient;
 use crate::version::{CARGO_PKG_VERSION, VERGEN_GIT_SHA};
 use alloy_primitives::{B256, Bytes};
@@ -107,8 +107,8 @@ pub struct RpcClient {
     auth_client: RpcClientService,
     /// Uri of the RPC server for authenticated Engine API calls
     auth_rpc: Uri,
-    /// The source of the payload
-    payload_source: PayloadSource,
+    /// Which execution client this client is pointed to.
+    execution_client: ExecutionClient,
 }
 
 impl RpcClient {
@@ -117,7 +117,7 @@ impl RpcClient {
         auth_rpc: Uri,
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
-        payload_source: PayloadSource,
+        execution_client: ExecutionClient,
     ) -> Result<Self, RpcClientError> {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
         let mut headers = HeaderMap::new();
@@ -133,17 +133,19 @@ impl RpcClient {
         Ok(Self {
             auth_client,
             auth_rpc,
-            payload_source,
+            execution_client,
         })
     }
 
     #[instrument(
+        level = "info",
         skip_all,
-        err,
         fields(
             otel.kind = ?SpanKind::Client,
-            target = self.payload_source.to_string(),
+            ?fork_choice_state,
+            payload_attributes = %(payload_attributes.is_some()),
             head_block_hash = %fork_choice_state.head_block_hash,
+            execution_client = %self.execution_client,
             url = %self.auth_rpc,
             code,
             payload_id
@@ -154,7 +156,7 @@ impl RpcClient {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
-        info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
+        info!("Sending fork_choice_updated_v3");
         let res = self
             .auth_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
@@ -171,30 +173,27 @@ impl RpcClient {
             ))
             .set_code();
         }
-        info!(
-            "Successfully sent fork_choice_updated_v3 to {}",
-            self.payload_source
-        );
 
         Ok(res)
     }
 
     #[instrument(
-        skip(self),
+        level = "info",
+        skip_all,
         err,
         fields(
             otel.kind = ?SpanKind::Client,
-            target = self.payload_source.to_string(),
-            url = %self.auth_rpc,
             %payload_id,
+            execution_client = self.execution_client.to_string(),
+            url = %self.auth_rpc,
+            code,
         )
     )]
     pub async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV3> {
-        tracing::Span::current().record("payload_id", payload_id.to_string());
-        info!("Sending get_payload_v3 to {}", self.payload_source);
+        info!("sending get_payload_v3");
         Ok(self
             .auth_client
             .get_payload_v3(payload_id)
@@ -203,11 +202,12 @@ impl RpcClient {
     }
 
     #[instrument(
+        level = "info",
         skip_all,
         err,
         fields(
             otel.kind = ?SpanKind::Client,
-            target = self.payload_source.to_string(),
+            execution_client = self.execution_client.to_string(),
             url = %self.auth_rpc,
             block_hash = %payload.payload_inner.payload_inner.block_hash,
             code,
@@ -219,8 +219,7 @@ impl RpcClient {
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> ClientResult<PayloadStatus> {
-        info!("Sending new_payload_v3 to {}", self.payload_source);
-
+        info!("Sending new_payload_v3");
         let res = self
             .auth_client
             .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
@@ -235,11 +234,12 @@ impl RpcClient {
     }
 
     #[instrument(
-        skip(self),
+        level = "info",
+        skip_all,
         err,
         fields(
             otel.kind = ?SpanKind::Client,
-            target = self.payload_source.to_string(),
+            execution_client = %self.execution_client,
             url = %self.auth_rpc,
             %payload_id,
         )
@@ -248,7 +248,7 @@ impl RpcClient {
         &self,
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV4> {
-        info!("Sending get_payload_v4 to {}", self.payload_source);
+        info!("Sending get_payload_v4");
         Ok(self
             .auth_client
             .get_payload_v4(payload_id)
@@ -272,11 +272,12 @@ impl RpcClient {
     }
 
     #[instrument(
+        level = "info",
         skip_all,
         err,
         fields(
             otel.kind = ?SpanKind::Client,
-            target = self.payload_source.to_string(),
+            execution_client = %self.execution_client,
             url = %self.auth_rpc,
             block_hash = %payload.payload_inner.payload_inner.payload_inner.block_hash,
             code,
@@ -289,7 +290,7 @@ impl RpcClient {
         parent_beacon_block_root: B256,
         execution_requests: Vec<Bytes>,
     ) -> ClientResult<PayloadStatus> {
-        info!("Sending new_payload_v4 to {}", self.payload_source);
+        info!("Sending new_payload_v4");
 
         let res = self
             .auth_client
@@ -413,7 +414,7 @@ pub mod tests {
     use jsonrpsee::core::client::ClientT;
     use parking_lot::Mutex;
 
-    use crate::payload::PayloadSource;
+    use crate::payload::ExecutionClient;
     use alloy_rpc_types_engine::JwtSecret;
     use jsonrpsee::core::client::Error as ClientError;
     use jsonrpsee::server::{ServerBuilder, ServerHandle};
@@ -457,7 +458,7 @@ pub mod tests {
         let port = get_available_port();
         let secret = JwtSecret::from_hex(SECRET).unwrap();
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, port)).unwrap();
-        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
+        let client = RpcClient::new(auth_rpc, secret, 1000, ExecutionClient::Sequencer).unwrap();
         let response = send_request(client.auth_client, port).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");
