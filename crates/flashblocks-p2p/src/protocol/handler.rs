@@ -134,7 +134,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
             // Add the flashblock to our cache
             *flashblock = Some(message.clone().payload);
             tracing::trace!(
-                target = "flashblocks",
+                target: "flashblocks",
                 payload_id = %message.payload.payload_id,
                 flashblock_index = message.payload.index,
                 "queueing flashblock",
@@ -154,7 +154,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
             }
             if len > MAX_FRAME / 2 {
                 tracing::warn!(
-                    target = "flashblocks",
+                    target: "flashblocks",
                     size = bytes.len(),
                     max_size = MAX_FRAME,
                     "FlashblocksP2PMsg almost too large",
@@ -171,7 +171,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
             while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
                 // Publish the flashblock
                 debug!(
-                    target = "flashblocks",
+                    target: "flashblocks",
                     payload_id = %flashblock_event.payload_id,
                     flashblock_index = %state.flashblock_index,
                     "publishing flashblock"

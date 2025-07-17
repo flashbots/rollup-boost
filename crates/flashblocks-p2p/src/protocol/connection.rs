@@ -43,7 +43,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                             || this.received.get(flashblock_index) != Some(&true)
                         {
                             trace!(
-                                target = "flashblocks",
+                                target: "flashblocks",
                                 peer_id = %this.peer_id,
                                 %payload_id,
                                 %flashblock_index,
@@ -54,7 +54,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                     }
                     Err(error) => {
                         tracing::error!(
-                            target = "flashblocks",
+                            target: "flashblocks",
                             %error,
                             "Failed to receive flashblocks message from peer_rx"
                         );
@@ -71,7 +71,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                 Ok(msg) => msg,
                 Err(error) => {
                     tracing::warn!(
-                        target = "flashblocks",
+                        target: "flashblocks",
                         peer_id = %this.peer_id,
                         %error,
                         "Failed to decode flashblocks message from peer",
@@ -99,7 +99,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
 
         if let Err(error) = message.verify(self.handler.ctx.authorizer_vk) {
             tracing::warn!(
-                target = "flashblocks",
+                target: "flashblocks",
                 peer_id = %self.peer_id,
                 %error,
                 "Failed to verify flashblock",
@@ -113,7 +113,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
 
         if message.authorization.timestamp < state.payload_timestamp {
             tracing::warn!(
-                target = "flashblocks",
+                target: "flashblocks",
                 peer_id = %self.peer_id,
                 timestamp = message.authorization.timestamp,
                 "Received flashblock with outdated timestamp",
@@ -147,7 +147,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             // We've already seen this index from this peer.
             // They could be trying to DOS us.
             tracing::warn!(
-                target = "flashblocks",
+                target: "flashblocks",
                 peer_id = %self.peer_id,
                 payload_id = %message.payload.payload_id,
                 index = message.payload.index,
