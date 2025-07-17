@@ -140,7 +140,10 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
                 "queueing flashblock",
             );
             let bytes = msg.encode();
-            if bytes.len() > MAX_FRAME {
+            let len = bytes.len();
+            metrics::histogram!("flashblock_size").record(len as f64);
+
+            if len > MAX_FRAME {
                 tracing::error!(
                     target: "flashblocks",
                     size = bytes.len(),
@@ -149,7 +152,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
                 );
                 return;
             }
-            if bytes.len() > MAX_FRAME / 2 {
+            if len > MAX_FRAME / 2 {
                 tracing::warn!(
                     target = "flashblocks",
                     size = bytes.len(),

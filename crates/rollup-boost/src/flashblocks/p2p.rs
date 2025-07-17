@@ -22,8 +22,8 @@ pub struct Authorized<T: Serialize> {
     pub builder_sig: Signature,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 #[repr(u8)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub enum FlashblocksP2PMsg {
     FlashblocksPayloadV1(Authorized<FlashblocksPayloadV1>) = 0x00,
 }
