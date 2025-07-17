@@ -1,6 +1,7 @@
 use alloy_consensus::Transaction as _;
 use alloy_consensus::transaction::SignerRecoverable;
 use alloy_consensus::transaction::TransactionMeta;
+use alloy_primitives::B256;
 use alloy_primitives::{Address, Sealable, TxHash, U256};
 use alloy_rpc_types::Withdrawals;
 use alloy_rpc_types::{BlockTransactions, Header, TransactionInfo};
@@ -25,7 +26,7 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Metadata {
-    pub receipts: HashMap<String, OpReceipt>,
+    pub receipts: HashMap<B256, OpReceipt>,
     pub new_account_balances: HashMap<String, String>, // Address -> Balance (hex)
     pub block_number: u64,
 }
@@ -187,7 +188,7 @@ impl FlashblocksCacheInner {
             // update the receipts
             let receipt = metadata
                 .receipts
-                .get(&tx.tx_hash().to_string())
+                .get(&tx.tx_hash())
                 .expect("Receipt should exist");
 
             all_receipts.push(receipt.clone());
