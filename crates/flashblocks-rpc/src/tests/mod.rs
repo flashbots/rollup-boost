@@ -193,9 +193,9 @@ mod tests {
             metadata: serde_json::to_value(Metadata {
                 block_number: 1,
                 receipts: {
-                    let mut receipts = HashMap::default();
+                    let mut receipts: HashMap<B256, OpReceipt, _> = HashMap::default();
                     receipts.insert(
-                        TX1_HASH.to_string(), // transaction hash as string
+                        TX1_HASH, // transaction hash as string
                         OpReceipt::Legacy(Receipt {
                             status: true.into(),
                             cumulative_gas_used: 21000,
@@ -203,7 +203,7 @@ mod tests {
                         }),
                     );
                     receipts.insert(
-                        TX2_HASH.to_string(), // transaction hash as string
+                        TX2_HASH, // transaction hash as string
                         OpReceipt::Legacy(Receipt {
                             status: true.into(),
                             cumulative_gas_used: 45000,
