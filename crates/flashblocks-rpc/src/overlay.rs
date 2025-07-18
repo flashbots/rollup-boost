@@ -1,30 +1,34 @@
 use crate::{FlashblocksApi, rpc};
+use alloy_eips::Decodable2718;
 use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
 use jsonrpsee::core::async_trait;
+use op_alloy_consensus::{OpTxEnvelope, OpTypedTransaction};
 use op_alloy_network::Optimism;
 use reth_node_api::NodeTypesWithDB;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_provider::{ProviderFactory, StateProvider, providers::ProviderNodeTypes};
 use reth_revm::{
-    Context, Journal, MainBuilder, MainContext, MainnetEvm,
-    context::{BlockEnv, CfgEnv, Evm, TxEnv},
+    Context, ExecuteEvm, Journal, MainBuilder, MainContext, MainnetEvm,
+    context::{BlockEnv, CfgEnv, Evm, Transaction, TxEnv},
     database::StateProviderDatabase,
     db::CacheDB,
     handler::instructions::EthInstructions,
     primitives::hardfork::SpecId,
 };
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
-use rollup_boost::{ExecutionPayloadBaseV1, FlashblocksPayloadV1};
+use rollup_boost::{
+    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
+};
 use std::{io::Read, sync::Arc};
-use tokio::sync::mpsc;
+use tokio::sync::{RwLock, mpsc};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info};
 use url::Url;
 
 pub struct FlashblocksRpcOverlay {
     url: Url,
-    cache: FlashblocksCache,
+    cache: Arc<RwLock<FlashblocksCache>>,
     // TODO: stream handle
     // TODO: track latest payload id
 }
@@ -87,13 +91,18 @@ impl FlashblocksRpcOverlay {
                 let flashblock = serde_json::from_str::<FlashblocksPayloadV1>(&bytes)
                     .expect("TODO: handle error ");
 
-                // match message {
-                // InternalMessage::NewPayload(payload) => {
-                //     if let Err(e) = cache_cloned.process_payload(payload) {
-                //         error!("failed to process payload: {}", e);
-                //     }
-                // }
-                //                }
+                if flashblock.index == 0 {
+                    if let Some(base) = flashblock.base {
+
+                        // TODO: create new cache
+                        // FlashblocksCache::new(, base)
+
+                        // TODO: process flashblock delta
+                    }
+                } else {
+
+                    // TODO: proces flashblocks delta
+                }
             }
         });
     }
@@ -195,7 +204,9 @@ impl FlashblocksCache {
         Self { evm }
     }
 
-    pub fn process_payload(&mut self, payload: FlashblocksPayloadV1) {
-        todo!()
+    pub fn process_delta(&mut self, delta: ExecutionPayloadFlashblockDeltaV1) {
+
+        // TODO: convert delta transactions into TxEnv
+        // self.evm.transact_many(txs)
     }
 }
