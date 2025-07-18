@@ -15,7 +15,7 @@ use reth_revm::{
     primitives::hardfork::SpecId,
 };
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
-use rollup_boost::FlashblocksPayloadV1;
+use rollup_boost::{ExecutionPayloadBaseV1, FlashblocksPayloadV1};
 use std::{io::Read, sync::Arc};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -167,12 +167,30 @@ pub struct FlashblocksCache {
 }
 
 impl FlashblocksCache {
-    pub fn new<N: ProviderNodeTypes>(state_provider: ProviderFactory<N>) -> Self {
+    pub fn new<N: ProviderNodeTypes>(
+        state_provider: ProviderFactory<N>,
+        base: ExecutionPayloadBaseV1,
+    ) -> Self {
         let state = state_provider.latest().expect("TODO: handle error");
         let db = StateProviderDatabase::new(state);
         let cache_db = CacheDB::new(db);
+
+        let mut ctx = Context::mainnet().with_db(cache_db);
+
+        ctx.modify_block(|block| {
+            *block = BlockEnv {
+                number: U256::from(base.block_number),
+                gas_limit: base.gas_limit,
+                timestamp: U256::from(base.timestamp),
+                basefee: base.base_fee_per_gas.try_into().unwrap_or(u64::MAX),
+                beneficiary: base.fee_recipient,
+                prevrandao: Some(base.prev_randao),
+                ..Default::default()
+            };
+        });
+
         // TODO: update to config op stack evm
-        let evm = Context::mainnet().with_db(cache_db).build_mainnet();
+        let evm = ctx.build_mainnet();
 
         Self { evm }
     }
