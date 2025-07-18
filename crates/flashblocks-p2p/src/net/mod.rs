@@ -16,15 +16,19 @@ use tokio::sync::{broadcast, mpsc};
 use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
 
 #[derive(Debug)]
-pub struct FlashblocksNetworkBuilder<T> {
-    inner: T,
+struct FlashblocksNetworkBuilderCtx {
     authorizer_vk: VerifyingKey,
     flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
     publish_rx: mpsc::UnboundedReceiver<FlashblocksP2PMsg>,
 }
 
+#[derive(Debug)]
+pub struct FlashblocksNetworkBuilder<T> {
+    inner: T,
+    ctx: Option<FlashblocksNetworkBuilderCtx>,
+}
+
 impl<T> FlashblocksNetworkBuilder<T> {
-    /// Creates a new `FlashblocksNetworkBuilder` with the given inner builder and events channel.
     pub fn new(
         inner: T,
         authorizer_vk: VerifyingKey,
@@ -33,10 +37,16 @@ impl<T> FlashblocksNetworkBuilder<T> {
     ) -> Self {
         Self {
             inner,
-            authorizer_vk,
-            flashblocks_receiver_tx,
-            publish_rx,
+            ctx: Some(FlashblocksNetworkBuilderCtx {
+                authorizer_vk,
+                flashblocks_receiver_tx,
+                publish_rx,
+            }),
         }
+    }
+
+    pub fn disabled(inner: T) -> Self {
+        Self { inner, ctx: None }
     }
 }
 
@@ -59,13 +69,15 @@ where
         pool: Pool,
     ) -> eyre::Result<Self::Network> {
         let handle = self.inner.build_network(ctx, pool).await?;
-        let handler = FlashblocksHandler::<Network>::new(
-            handle.clone(),
-            self.authorizer_vk,
-            self.flashblocks_receiver_tx,
-            self.publish_rx,
-        );
-        handle.add_rlpx_sub_protocol(handler.into_rlpx_sub_protocol());
+        if let Some(ctx) = self.ctx {
+            let handler = FlashblocksHandler::<Network>::new(
+                handle.clone(),
+                ctx.authorizer_vk,
+                ctx.flashblocks_receiver_tx,
+                ctx.publish_rx,
+            );
+            handle.add_rlpx_sub_protocol(handler.into_rlpx_sub_protocol());
+        }
 
         Ok(handle)
     }

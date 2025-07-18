@@ -1,33 +1,23 @@
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
-
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
+use flashblocks_node::FlashblocksNodeArgs;
 use flashblocks_p2p::protocol::handler::FlashblocksHandler;
-use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay };
+use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay};
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
-use rollup_boost::parse_vk;
-use tokio::sync::{broadcast, mpsc };
+use tokio::sync::{broadcast, mpsc};
 use tracing::info;
 
-#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+#[derive(Debug, Clone, clap::Args)]
 #[command(next_help_heading = "Rollup")]
 struct FlashblocksRollupArgs {
     #[command(flatten)]
-    rollup_args: RollupArgs,
+    pub rollup_args: RollupArgs,
 
-    #[arg(long = "flashblocks.enabled", default_value = "false")]
-    flashblocks_enabled: bool,
-
-    #[arg(long = "flashblocks.websocket-url", value_name = "WEBSOCKET_URL")]
-    websocket_url: url::Url,
-
-    #[arg(long, 
-        env = "FLASHBLOCKS_BUILDER_VK", value_parser = parse_vk,
-        required = false,
-    )]
-    pub flashblocks_builder_vk: VerifyingKey,
+    #[command(flatten)]
+    pub flashblock_args: Option<FlashblocksNodeArgs>,
 }
 
 pub fn main() {
@@ -38,16 +28,14 @@ pub fn main() {
             let (inbound_tx, inbound_rx) = broadcast::channel(100);
             let (_publish_tx, publish_rx) = mpsc::unbounded_channel();
 
-            let flashblocks_overlay =
-                FlashblocksOverlay::new(chain_spec, inbound_rx);
+            let flashblocks_overlay = FlashblocksOverlay::new(chain_spec, inbound_rx);
             flashblocks_overlay.clone().start()?;
 
             info!(target: "reth::cli", "Launching Flashblocks RPC overlay node");
             let handle = builder
                 .node(OpNode::new(rollup_args))
                 .extend_rpc_modules(move |ctx| {
-                    if args.flashblocks_enabled {
-
+                    if args.flashblock_args.is_some() {
                         let eth_api = ctx.registry.eth_api().clone();
                         let api_ext = FlashblocksApiExt::new(eth_api.clone(), flashblocks_overlay);
 
@@ -58,13 +46,12 @@ pub fn main() {
                 .launch_with_debug_capabilities()
                 .await?;
 
-
             let custom_rlpx_handler = FlashblocksHandler::new(
                 handle.node.network.clone(),
                 VerifyingKey::default(),
                 inbound_tx,
                 publish_rx,
-             );
+            );
 
             handle
                 .node

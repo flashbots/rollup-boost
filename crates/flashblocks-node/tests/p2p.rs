@@ -29,7 +29,7 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::info;
 
 pub struct NodeContext {
-    inbound_tx: broadcast::Sender<FlashblocksPayloadV1>,
+    flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
     publish_tx: mpsc::UnboundedSender<FlashblocksP2PMsg>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
@@ -114,7 +114,7 @@ async fn setup_node(
 
     if let Some((peer_id, addr)) = trusted_peer {
         // If a trusted peer is provided, add it to the network
-        node.network.add_trusted_peer(peer_id, addr);
+        node.network.add_peer(peer_id, addr);
     }
 
     let http_api_addr = node
@@ -126,7 +126,7 @@ async fn setup_node(
     let local_node_record = network_handle.local_node_record();
 
     Ok(NodeContext {
-        inbound_tx,
+        flashblocks_tx: inbound_tx,
         publish_tx,
         local_node_record,
         http_api_addr,
