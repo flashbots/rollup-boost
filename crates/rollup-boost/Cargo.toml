@@ -21,6 +21,7 @@ sha2.workspace = true
 reth-optimism-payload-builder.workspace = true
 reth-rpc-layer.workspace = true
 op-alloy-rpc-types-engine.workspace = true
+op-alloy-consensus.workspace = true
 alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
 alloy-primitives.workspace = true
@@ -75,7 +76,6 @@ bytes = "1.2"
 [dev-dependencies]
 rand = "0.9.0"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
-op-alloy-consensus = "0.17.2"
 alloy-eips = { version = "1.0.9", features = ["serde"] }
 alloy-consensus = { version = "1.0.9", features = ["serde"] }
 anyhow = "1.0"
