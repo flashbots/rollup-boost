@@ -4,15 +4,12 @@ resolver = "3"
 members = [
     "crates/rollup-boost",
     "crates/websocket-proxy",
-    "crates/flashblocks-rpc",
     "crates/flashblocks-p2p",
-    "crates/flashblocks-node",
 ]
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
-flashblocks-p2p = { path = "crates/flashblocks-p2p" }
-flashblocks-rpc = { path = "crates/flashblocks-rpc" }
+# flashblocks-p2p = { path = "crates/flashblocks-p2p" }
 
 tracing = "0.1.4"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter", "json"] }
@@ -28,18 +25,20 @@ tokio-stream = "0.1.17"
 eyre = "0.6.12"
 url = "2.2.0"
 sha2 = { version = "0.10", default-features = false }
+parking_lot = "0.12.4"
 
 # Reth deps
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-network-peers = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-optimism-payload-builder = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-ethereum = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-eth-wire = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-network = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-network-peers = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-node-api = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-node-builder = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-provider = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-transaction-pool = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-rpc-layer = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.13"
