@@ -1,31 +1,27 @@
 [workspace]
-resolver = "3"
+resolver = "2"
 
-members = [
-    "crates/rollup-boost",
-    "crates/websocket-proxy",
-    "crates/flashblocks-p2p",
-]
+members = ["crates/rollup-boost", "crates/flashblocks-p2p"]
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
 # flashblocks-p2p = { path = "crates/flashblocks-p2p" }
 
-tracing = "0.1.4"
-tracing-subscriber = { version = "0.3.11", features = ["env-filter", "json"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clap = { version = "4", features = ["derive", "env"] }
-futures = "0.3.31"
-thiserror = "2.0.11"
+futures = "0.3"
+thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1.0.96"
-metrics = "0.24.0"
+serde_json = "1"
+metrics = "0.24"
 metrics-derive = "0.1"
 tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1.17"
-eyre = "0.6.12"
-url = "2.2.0"
+tokio-stream = "0.1"
+eyre = "0.6"
+url = "2"
 sha2 = { version = "0.10", default-features = false }
-parking_lot = "0.12.4"
+parking_lot = "0.12"
 
 # Reth deps
 reth-optimism-payload-builder = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
@@ -39,24 +35,28 @@ reth-node-builder = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" 
 reth-provider = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
 reth-transaction-pool = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
 reth-rpc-layer = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
+reth-op = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c", features = [
+    "full",
+    "alloy-compat",
+] }
 
 # Alloy libraries
-alloy-rpc-types-engine = "1.0.13"
-alloy-rpc-types-eth = "1.0.13"
-alloy-primitives = { version = "1.2.0", features = ["rand"] }
-alloy-serde = "1.0.13"
-alloy-eips = "1.0.13"
-alloy-json-rpc = "1.0.13"
-alloy-consensus = "1.0.13"
-alloy-rpc-types = "1.0.13"
-alloy-genesis = "1.0.13"
-alloy-rpc-client = "1.0.13"
-alloy-rlp = "0.3.12"
-alloy-provider = "1.0.13"
-op-alloy-network = "0.18.7"
-op-alloy-rpc-types-engine = "0.18.7"
-op-alloy-consensus = "0.18.7"
-op-alloy-rpc-types = "0.18.7"
-tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
+alloy-rpc-types-engine = "1"
+alloy-rpc-types-eth = "1"
+alloy-primitives = { version = "1", features = ["rand"] }
+alloy-serde = "1"
+alloy-eips = "1"
+alloy-json-rpc = "1"
+alloy-consensus = "1"
+alloy-rpc-types = "1"
+alloy-genesis = "1"
+alloy-rpc-client = "1"
+alloy-rlp = "0.3"
+alloy-provider = "1"
+op-alloy-network = "0.18"
+op-alloy-rpc-types-engine = { version = "0.18", features = ["serde"] }
+op-alloy-consensus = { version = "0.18", features = ["alloy-compat"] }
+op-alloy-rpc-types = "0.18"
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
