@@ -26,14 +26,18 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info};
 use url::Url;
 
-pub struct FlashblocksRpcOverlay {
+pub struct FlashblocksRpcOverlay<N: ProviderNodeTypes> {
     url: Url,
+    provider_factory: ProviderFactory<N>,
     cache: Arc<RwLock<FlashblocksCache>>,
     // TODO: stream handle
     // TODO: track latest payload id
 }
 
-impl FlashblocksRpcOverlay {
+impl<N> FlashblocksRpcOverlay<N>
+where
+    N: ProviderNodeTypes,
+{
     pub fn new(url: Url, chain_spec: Arc<OpChainSpec>) -> Self {
         todo!()
         // Self {
@@ -44,7 +48,7 @@ impl FlashblocksRpcOverlay {
     pub fn spawn(&mut self) -> eyre::Result<()> {
         let url = self.url.clone();
         // TODO: return handle
-        FlashblocksRpcOverlay::handle_flashblocks_stream(url);
+        self.handle_flashblocks_stream(url);
         Ok(())
     }
 
@@ -52,7 +56,7 @@ impl FlashblocksRpcOverlay {
     //     self.cache.process_payload(payload)
     // }
 
-    fn handle_flashblocks_stream(url: Url) {
+    fn handle_flashblocks_stream(&self, url: Url) {
         let (tx, mut rx) = mpsc::channel(100);
         tokio::spawn(async move {
             //     let mut backoff = std::time::Duration::from_secs(1);
@@ -86,6 +90,8 @@ impl FlashblocksRpcOverlay {
             }
         });
 
+        let cache = self.cache.clone();
+        let provider_factory = self.provider_factory.clone();
         tokio::spawn(async move {
             while let Some(bytes) = rx.recv().await {
                 let flashblock = serde_json::from_str::<FlashblocksPayloadV1>(&bytes)
@@ -93,15 +99,16 @@ impl FlashblocksRpcOverlay {
 
                 if flashblock.index == 0 {
                     if let Some(base) = flashblock.base {
-
                         // TODO: create new cache
-                        // FlashblocksCache::new(, base)
+                        let new_cache = FlashblocksCache::new(provider_factory.clone(), base);
 
                         // TODO: process flashblock delta
+                        // new_cache.process_delta(flashblock.diff);
+                        // *cache.write().await = new_cache;
                     }
                 } else {
-
                     // TODO: proces flashblocks delta
+                    // cache.write().await.process_delta(flashblock.diff);
                 }
             }
         });
