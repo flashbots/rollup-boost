@@ -1,12 +1,19 @@
-use crate::{FlashblocksApi, cache::FlashblocksCache, rpc};
+use crate::{FlashblocksApi, rpc};
 use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
 use reth_node_api::NodeTypesWithDB;
 use reth_optimism_chainspec::OpChainSpec;
-use reth_provider::{ProviderFactory, providers::ProviderNodeTypes};
-use reth_revm::{database::StateProviderDatabase, db::CacheDB};
+use reth_provider::{ProviderFactory, StateProvider, providers::ProviderNodeTypes};
+use reth_revm::{
+    Context, Journal, MainBuilder, MainContext, MainnetEvm,
+    context::{BlockEnv, CfgEnv, Evm, TxEnv},
+    database::StateProviderDatabase,
+    db::CacheDB,
+    handler::instructions::EthInstructions,
+    primitives::hardfork::SpecId,
+};
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::FlashblocksPayloadV1;
 use std::{io::Read, sync::Arc};
@@ -15,7 +22,6 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info};
 use url::Url;
 
-#[derive(Clone)]
 pub struct FlashblocksRpcOverlay {
     url: Url,
     cache: FlashblocksCache,
@@ -25,10 +31,10 @@ pub struct FlashblocksRpcOverlay {
 
 impl FlashblocksRpcOverlay {
     pub fn new(url: Url, chain_spec: Arc<OpChainSpec>) -> Self {
-        Self {
-            url,
-            cache: FlashblocksCache::new(chain_spec),
-        }
+        todo!()
+        // Self {
+        //     url,
+        // }
     }
 
     pub fn spawn(&mut self) -> eyre::Result<()> {
@@ -38,9 +44,9 @@ impl FlashblocksRpcOverlay {
         Ok(())
     }
 
-    pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
-        self.cache.process_payload(payload)
-    }
+    // pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
+    //     self.cache.process_payload(payload)
+    // }
 
     fn handle_flashblocks_stream(url: Url) {
         let (tx, mut rx) = mpsc::channel(100);
@@ -77,7 +83,9 @@ impl FlashblocksRpcOverlay {
         });
 
         tokio::spawn(async move {
-            while let Some(message) = rx.recv().await {
+            while let Some(bytes) = rx.recv().await {
+                let flashblock = serde_json::from_str::<FlashblocksPayloadV1>(&bytes)
+                    .expect("TODO: handle error ");
 
                 // match message {
                 // InternalMessage::NewPayload(payload) => {
@@ -123,36 +131,53 @@ fn try_parse_message(bytes: &[u8]) -> eyre::Result<String> {
     Ok(text)
 }
 
-#[async_trait]
-impl FlashblocksApi for FlashblocksRpcOverlay {
-    async fn block_by_number(&self, full: bool) -> Option<RpcBlock<Optimism>> {
-        self.cache.get_block(full)
-    }
+// #[async_trait]
+// impl FlashblocksApi for FlashblocksRpcOverlay {
+//     async fn block_by_number(&self, full: bool) -> Option<RpcBlock<Optimism>> {
+//         self.cache.get_block(full)
+//     }
+//
+//     async fn get_transaction_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Optimism>> {
+//         self.cache.get_receipt(&tx_hash)
+//     }
+//
+//     async fn get_balance(&self, address: Address) -> Option<U256> {
+//         self.cache.get_balance(address)
+//     }
+//
+//     async fn get_transaction_count(&self, address: Address) -> Option<u64> {
+//         self.cache.get_transaction_count(address)
+//     }
+// }
+//
 
-    async fn get_transaction_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Optimism>> {
-        self.cache.get_receipt(&tx_hash)
-    }
+pub type CacheEvm = MainnetEvm<
+    Context<
+        BlockEnv,
+        TxEnv,
+        CfgEnv,
+        CacheDB<StateProviderDatabase<Box<dyn StateProvider>>>,
+        Journal<CacheDB<StateProviderDatabase<Box<dyn StateProvider>>>>,
+        (),
+    >,
+>;
 
-    async fn get_balance(&self, address: Address) -> Option<U256> {
-        self.cache.get_balance(address)
-    }
-
-    async fn get_transaction_count(&self, address: Address) -> Option<u64> {
-        self.cache.get_transaction_count(address)
-    }
+pub struct FlashblocksCache {
+    pub evm: CacheEvm,
 }
 
-pub struct FlashblocksCache0<ExtDB> {
-    // TODO: need some reference to the db
-    cache_db: CacheDB<ExtDB>,
-}
-
-impl<ExtDB> FlashblocksCache0<ExtDB> {
+impl FlashblocksCache {
     pub fn new<N: ProviderNodeTypes>(state_provider: ProviderFactory<N>) -> Self {
         let state = state_provider.latest().expect("TODO: handle error");
         let db = StateProviderDatabase::new(state);
         let cache_db = CacheDB::new(db);
+        // TODO: update to config op stack evm
+        let evm = Context::mainnet().with_db(cache_db).build_mainnet();
 
-        Self { cache_db }
+        Self { evm }
+    }
+
+    pub fn process_payload(&mut self, payload: FlashblocksPayloadV1) {
+        todo!()
     }
 }
