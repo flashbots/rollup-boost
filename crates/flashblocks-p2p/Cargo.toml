@@ -16,8 +16,7 @@ reth-transaction-pool = { workspace = true }
 
 ed25519-dalek = { version = "2", features = ["serde"] }
 blake3 = "1"                                            # fast hashing for payload IDs
-serde = { version = "1", features = ["derive"] }
-
+serde.workspace = true
 metrics.workspace = true
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
@@ -27,9 +26,7 @@ clap.workspace = true
 tracing.workspace = true
 alloy-primitives.workspace = true
 alloy-rlp.workspace = true
-serde_json = "1.0"
-thiserror = "2"
-parking_lot = "0.12"
-
-
-rollup-boost = { path = "../rollup-boost" }
+serde_json.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+rollup-boost.workspace = true
