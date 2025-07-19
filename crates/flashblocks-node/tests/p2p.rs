@@ -7,8 +7,10 @@ use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::SigningKey;
 use flashblocks_p2p::protocol::handler::FlashblocksHandler;
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, Metadata};
+use op_alloy_consensus::{OpPooledTransaction, OpTxEnvelope};
+use reth_eth_wire::BasicNetworkPrimitives;
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
-use reth_network::{Peers, PeersInfo};
+use reth_network::{NetworkHandle, Peers, PeersInfo, events::NetworkPeersEvents};
 use reth_network_peers::{NodeRecord, PeerId};
 use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
 use reth_node_core::{
@@ -17,7 +19,7 @@ use reth_node_core::{
 };
 use reth_optimism_chainspec::OpChainSpecBuilder;
 use reth_optimism_node::{OpNode, args::RollupArgs};
-use reth_optimism_primitives::OpReceipt;
+use reth_optimism_primitives::{OpPrimitives, OpReceipt};
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::{TaskExecutor, TaskManager};
 use rollup_boost::{
@@ -28,6 +30,14 @@ use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::A
 use tokio::sync::{broadcast, mpsc};
 use tracing::info;
 
+type Network = NetworkHandle<
+    BasicNetworkPrimitives<
+        OpPrimitives,
+        OpPooledTransaction,
+        reth_network::types::NewBlock<alloy_consensus::Block<OpTxEnvelope>>,
+    >,
+>;
+
 pub struct NodeContext {
     flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
     publish_tx: mpsc::UnboundedSender<FlashblocksP2PMsg>,
@@ -35,6 +45,7 @@ pub struct NodeContext {
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
     _node: Box<dyn Any + Sync + Send>,
+    network_handle: Network,
 }
 
 impl NodeContext {
@@ -132,6 +143,7 @@ async fn setup_node(
         http_api_addr,
         _node_exit_future: node_exit_future,
         _node: Box::new(node),
+        network_handle,
     })
 }
 
@@ -319,6 +331,11 @@ async fn test_peering() -> eyre::Result<()> {
     let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
     node_1.publish_tx.send(proto_message)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
+    let peers = node_0.network_handle.get_all_peers().await?;
+    let peer_1 = &peers[1].remote_id;
+
+    let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
+    info!(?rep_1, "Peer reputation");
 
     // Query pending block after sending the base payload with an empty delta
     let pending_block = provider_0
@@ -342,6 +359,9 @@ async fn test_peering() -> eyre::Result<()> {
 
     node_1.publish_tx.send(proto_message)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+    let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
+    info!(?rep_1, "Peer reputation");
 
     // Query pending block after sending the second payload with two transactions
     let block = provider_0

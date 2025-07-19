@@ -1,6 +1,5 @@
-use clap::{Args, Parser};
+use clap::Args;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use eyre::Context;
 use url::Url;
 
 use hex::FromHex;
@@ -46,13 +45,15 @@ pub struct FlashblocksArgs {
 
     #[arg(
         long,
-        env = "FLASHBLOCKS_AUTHORIZATION_SK", value_parser = parse_sk,
+        env = "FLASHBLOCKS_AUTHORIZER_SK",
+        value_parser = parse_sk,
         required = false,
     )]
-    pub flashblocks_authorization_sk: SigningKey,
+    pub flashblocks_authorizer_sk: SigningKey,
 
     #[arg(long, 
-        env = "FLASHBLOCKS_BUILDER_VK", value_parser = parse_vk,
+        env = "FLASHBLOCKS_BUILDER_VK",
+        value_parser = parse_vk,
         required = false,
     )]
     pub flashblocks_builder_vk: VerifyingKey,
@@ -60,11 +61,11 @@ pub struct FlashblocksArgs {
 
 pub fn parse_sk(s: &str) -> eyre::Result<SigningKey> {
     let bytes =
-        <[u8; 32]>::from_hex(s.trim()).context("failed parsing flashblocks_authorization_sk")?;
+        <[u8; 32]>::from_hex(s.trim())?;
     Ok(SigningKey::from_bytes(&bytes))
 }
 
 pub fn parse_vk(s: &str) -> eyre::Result<VerifyingKey> {
-    let bytes = <[u8; 32]>::from_hex(s.trim()).context("failed parsing flashblocks_builder_vk")?;
+    let bytes = <[u8; 32]>::from_hex(s.trim())?;
     Ok(VerifyingKey::from_bytes(&bytes)?)
 }

@@ -138,7 +138,7 @@ impl RollupBoostArgs {
             PayloadSource::Builder,
             self.flashblocks
                 .as_ref()
-                .map(|fb| fb.flashblocks_authorization_sk.clone()),
+                .map(|fb| fb.flashblocks_authorizer_sk.clone()),
             self.flashblocks
                 .as_ref()
                 .map(|fb| fb.flashblocks_builder_vk.clone()),
