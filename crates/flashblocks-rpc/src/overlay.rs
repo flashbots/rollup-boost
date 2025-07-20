@@ -214,122 +214,118 @@ impl FlashblocksCache {
     }
 
     pub fn process_delta(&mut self, delta: ExecutionPayloadFlashblockDeltaV1) -> eyre::Result<()> {
-        // Process each transaction in the delta
-        for tx_bytes in delta.transactions {
-            // Decode the transaction from bytes
-            let tx_envelope =
-                OpTxEnvelope::decode_2718(&mut tx_bytes.as_ref()).expect("TODO: Handle error");
+        let txs = delta
+            .transactions
+            .iter()
+            .map(|tx_bytes| {
+                let tx_envelope =
+                    OpTxEnvelope::decode_2718(&mut tx_bytes.as_ref()).expect("TODO: Handle error");
 
-            // Convert transaction envelope to TxEnv for EVM execution
-            let tx_env = match &tx_envelope {
-                OpTxEnvelope::Legacy(tx) => {
-                    let signer = tx.recover_signer().expect("TODO: handle error");
+                match &tx_envelope {
+                    OpTxEnvelope::Legacy(tx) => {
+                        let signer = tx.recover_signer().expect("TODO: handle error");
 
-                    let tx_kind = if let Some(to) = tx.to() {
-                        TxKind::Call(to)
-                    } else {
-                        TxKind::Create
-                    };
+                        let tx_kind = if let Some(to) = tx.to() {
+                            TxKind::Call(to)
+                        } else {
+                            TxKind::Create
+                        };
 
-                    TxEnv {
-                        caller: signer,
-                        gas_limit: tx.gas_limit(),
-                        gas_price: tx.gas_price().unwrap_or_default(),
-                        kind: tx_kind,
-                        value: tx.value(),
-                        data: tx.input().to_owned(),
-                        nonce: tx.nonce(),
-                        ..Default::default()
+                        TxEnv {
+                            caller: signer,
+                            gas_limit: tx.gas_limit(),
+                            gas_price: tx.gas_price().unwrap_or_default(),
+                            kind: tx_kind,
+                            value: tx.value(),
+                            data: tx.input().to_owned(),
+                            nonce: tx.nonce(),
+                            ..Default::default()
+                        }
+                    }
+                    OpTxEnvelope::Eip2930(tx) => {
+                        let signer = tx.recover_signer().expect("TODO: handle error");
+
+                        let tx_kind = match tx.to() {
+                            Some(to) => TxKind::Call(to),
+                            None => TxKind::Create,
+                        };
+                        let access_list = tx.access_list().unwrap().clone();
+
+                        TxEnv {
+                            caller: signer,
+                            gas_limit: tx.gas_limit(),
+                            gas_price: tx.gas_price().unwrap_or_default(),
+                            kind: tx_kind,
+                            value: tx.value(),
+                            data: tx.input().to_owned(),
+                            nonce: tx.nonce(),
+                            access_list,
+                            ..Default::default()
+                        }
+                    }
+                    OpTxEnvelope::Eip1559(tx) => {
+                        let signer = tx.recover_signer().expect("TODO: handle error");
+
+                        let tx_kind = match tx.to() {
+                            Some(to) => TxKind::Call(to),
+                            None => TxKind::Create,
+                        };
+                        let access_list = tx.access_list().unwrap().clone();
+
+                        TxEnv {
+                            caller: signer,
+                            gas_limit: tx.gas_limit(),
+                            gas_price: tx.gas_price().unwrap_or_default(),
+                            kind: tx_kind,
+                            value: tx.value(),
+                            data: tx.input().to_owned(),
+                            nonce: tx.nonce(),
+                            access_list,
+                            ..Default::default()
+                        }
+                    }
+
+                    OpTxEnvelope::Eip7702(tx) => {
+                        let signer = tx.recover_signer().expect("TODO: handle error");
+                        let tx_kind = match tx.to() {
+                            Some(to) => TxKind::Call(to),
+                            None => TxKind::Create,
+                        };
+
+                        TxEnv {
+                            caller: signer,
+                            gas_limit: tx.gas_limit(),
+                            gas_price: tx.gas_price().unwrap_or_default(),
+                            kind: tx_kind,
+                            value: tx.value(),
+                            data: tx.input().to_owned(),
+                            nonce: tx.nonce(),
+                            ..Default::default()
+                        }
+                    }
+
+                    OpTxEnvelope::Deposit(tx) => {
+                        let tx_kind = match tx.to() {
+                            Some(to) => TxKind::Call(to),
+                            None => TxKind::Create,
+                        };
+
+                        TxEnv {
+                            caller: tx.from,
+                            gas_limit: tx.gas_limit(),
+                            gas_price: tx.gas_price().unwrap_or_default(),
+                            kind: tx_kind,
+                            value: tx.value(),
+                            data: tx.input().to_owned(),
+                            nonce: tx.nonce(),
+                            ..Default::default()
+                        }
                     }
                 }
-                OpTxEnvelope::Eip2930(tx) => {
-                    let signer = tx.recover_signer().expect("TODO: handle error");
+            })
+            .collect::<Vec<TxEnv>>();
 
-                    let tx_kind = match tx.to() {
-                        Some(to) => TxKind::Call(to),
-                        None => TxKind::Create,
-                    };
-
-                    TxEnv {
-                        caller: signer,
-                        gas_limit: tx.gas_limit(),
-                        gas_price: tx.gas_price().unwrap_or_default(),
-                        kind: tx_kind,
-                        value: tx.value(),
-                        data: tx.input().to_owned(),
-                        nonce: tx.nonce(),
-                        access_list: *tx.access_list().unwrap(),
-                        ..Default::default()
-                    }
-                }
-                OpTxEnvelope::Eip1559(tx) => {
-                    let signer = tx.recover_signer().expect("TODO: handle error");
-
-                    let tx_kind = match tx.to() {
-                        Some(to) => TxKind::Call(to),
-                        None => TxKind::Create,
-                    };
-
-                    TxEnv {
-                        caller: signer,
-                        gas_limit: tx.gas_limit(),
-                        gas_price: tx.gas_price().unwrap_or_default(),
-                        kind: tx_kind,
-                        value: tx.value(),
-                        data: tx.input().to_owned(),
-                        nonce: tx.nonce(),
-                        access_list: *tx.access_list().unwrap(),
-                        ..Default::default()
-                    }
-                }
-
-                OpTxEnvelope::Eip7702(tx) => {
-                    let signer = tx.recover_signer().expect("TODO: handle error");
-                    let tx_kind = match tx.to() {
-                        Some(to) => TxKind::Call(to),
-                        None => TxKind::Create,
-                    };
-
-                    TxEnv {
-                        caller: signer,
-                        gas_limit: tx.gas_limit(),
-                        gas_price: tx.gas_price().unwrap_or_default(),
-                        kind: tx_kind,
-                        value: tx.value(),
-                        data: tx.input().to_owned(),
-                        nonce: tx.nonce(),
-                        ..Default::default()
-                    }
-                }
-
-                OpTxEnvelope::Deposit(tx) => {
-                    let tx_kind = match tx.to() {
-                        Some(to) => TxKind::Call(to),
-                        None => TxKind::Create,
-                    };
-
-                    TxEnv {
-                        caller: tx.from,
-                        gas_limit: tx.gas_limit(),
-                        gas_price: tx.gas_price().unwrap_or_default(),
-                        kind: tx_kind,
-                        value: tx.value(),
-                        data: tx.input().to_owned(),
-                        nonce: tx.nonce(),
-                        ..Default::default()
-                    }
-                }
-            };
-
-            self.evm.modify_tx_env(|env| *env = tx_env);
-            let result = self
-                .evm
-                .transact()
-                .map_err(|e| eyre::eyre!("Transaction execution failed: {:?}", e))?;
-
-            // Commit the transaction result to the database
-            self.evm.db_mut().commit(result.state);
-        }
+        self.evm.transact_many_finalize(txs.into_iter());
 
         Ok(())
     }
