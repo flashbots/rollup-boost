@@ -138,7 +138,6 @@ impl RpcClient {
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         fields(
             otel.kind = ?SpanKind::Client,
@@ -178,7 +177,6 @@ impl RpcClient {
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(
@@ -202,7 +200,6 @@ impl RpcClient {
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(
@@ -234,7 +231,6 @@ impl RpcClient {
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(
@@ -272,7 +268,6 @@ impl RpcClient {
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(

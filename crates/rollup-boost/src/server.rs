@@ -335,7 +335,6 @@ where
     T: EngineApiExt,
 {
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(
@@ -436,7 +435,6 @@ where
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(otel.kind = ?SpanKind::Server, %payload_id)
@@ -458,7 +456,6 @@ where
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(otel.kind = ?SpanKind::Server, %parent_beacon_block_root)
@@ -480,7 +477,6 @@ where
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(otel.kind = ?SpanKind::Server, %payload_id)
@@ -502,7 +498,6 @@ where
     }
 
     #[instrument(
-        level = "info",
         skip_all,
         err,
         fields(
