@@ -7,7 +7,7 @@ use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverla
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 use tracing::info;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -26,7 +26,7 @@ pub fn main() {
             let rollup_args = args.rollup_args;
             let chain_spec = builder.config().chain.clone();
             let (inbound_tx, inbound_rx) = broadcast::channel(100);
-            let (_publish_tx, publish_rx) = mpsc::unbounded_channel();
+            let (_publish_tx, publish_rx) = broadcast::channel(100);
 
             let flashblocks_overlay = FlashblocksOverlay::new(chain_spec, inbound_rx);
             flashblocks_overlay.clone().start()?;

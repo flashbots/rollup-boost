@@ -10,7 +10,7 @@ use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverla
 use op_alloy_consensus::{OpPooledTransaction, OpTxEnvelope};
 use reth_eth_wire::BasicNetworkPrimitives;
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
-use reth_network::{NetworkHandle, Peers, PeersInfo, events::NetworkPeersEvents};
+use reth_network::{NetworkHandle, Peers, PeersInfo};
 use reth_network_peers::{NodeRecord, PeerId};
 use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
 use reth_node_core::{
@@ -40,7 +40,7 @@ type Network = NetworkHandle<
 
 pub struct NodeContext {
     flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    publish_tx: mpsc::UnboundedSender<FlashblocksP2PMsg>,
+    publish_tx: broadcast::Sender<FlashblocksP2PMsg>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
@@ -62,7 +62,7 @@ async fn setup_node(
     authorizer: SigningKey,
     trusted_peer: Option<(PeerId, SocketAddr)>,
 ) -> eyre::Result<NodeContext> {
-    let (publish_tx, publish_rx) = mpsc::unbounded_channel();
+    let (publish_tx, publish_rx) = broadcast::channel(100);
     let (inbound_tx, inbound_rx) = broadcast::channel(100);
 
     let genesis: Genesis = serde_json::from_str(include_str!("assets/genesis.json")).unwrap();
