@@ -231,11 +231,8 @@ impl FlashblocksService {
                 .max_flashblocks
                 .fetch_max(flashblocks_number, Ordering::Relaxed)
                 .max(flashblocks_number);
-            self.metrics.flashblocks_used.set(flashblocks_number as f64);
-            self.metrics.flashblocks_total.increment(flashblocks_number);
             self.metrics
-                .flashblocks_missing
-                .record(max_flashblocks.saturating_sub(flashblocks_number) as f64);
+                .record_flashblocks(flashblocks_number, max_flashblocks);
             tracing::Span::current().record("flashblocks_count", flashblocks_number);
             // Take payload and place new one in its place in one go to avoid double locking
             std::mem::replace(&mut *builder, FlashblockBuilder::new()).into_envelope(version)?
