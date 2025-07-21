@@ -34,7 +34,7 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-    pub fn new(url: Uri, secret: JwtSecret, target: ExecutionClient, timeout: u64) -> Self {
+    pub fn new(url: Uri, secret: JwtSecret, execution_client: ExecutionClient, timeout: u64) -> Self {
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
             .expect("no native root CA certificates found")
