@@ -29,5 +29,11 @@ pub struct FlashblocksServiceMetrics {
     pub messages_processed: Counter,
 
     #[metric(describe = "Number of flashblocks used to build a block")]
-    pub flashblocks_used: Histogram,
+    pub flashblocks_used: Gauge,
+
+    #[metric(describe = "Counter of totally used flashblocks")]
+    pub flashblocks_total: Counter,
+
+    #[metric(describe = "Measures the reduction in flashblocks issued.")]
+    pub flashblocks_missing: Histogram,
 }
