@@ -54,7 +54,7 @@ impl HttpClient {
         Self {
             client,
             url,
-            execution_client: target,
+            execution_client,
         }
     }
 
