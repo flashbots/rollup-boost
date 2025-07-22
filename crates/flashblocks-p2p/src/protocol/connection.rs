@@ -4,7 +4,7 @@ use futures::{Stream, StreamExt};
 use reth::payload::PayloadId;
 use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
 use reth_network::types::ReputationChangeKind;
-use rollup_boost::{Authorized, FlashblocksP2PMsg, FlashblocksPayloadV1};
+use rollup_boost::{AuthorizedPayload, FlashblocksP2PMsg, FlashblocksPayloadV1};
 use std::{
     pin::Pin,
     task::{Context, Poll, ready},
@@ -85,8 +85,30 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
             };
 
             match msg {
-                FlashblocksP2PMsg::FlashblocksPayloadV1(authorized) => {
-                    this.handle_flashblocks_payload_v1(authorized);
+                FlashblocksP2PMsg::Authorized(authorized) => {
+                    if let Err(error) = authorized.verify(this.handler.ctx.authorizer_vk) {
+                        tracing::warn!(
+                            target: "flashblocks::p2p",
+                            peer_id = %this.peer_id,
+                            %error,
+                            "Failed to verify flashblock",
+                        );
+                        this.handler
+                            .ctx
+                            .network_handle
+                            .reputation_change(this.peer_id, ReputationChangeKind::BadMessage);
+                        continue;
+                    }
+
+                    match &authorized.msg {
+                        rollup_boost::AuthorizedMsg::FlashblocksPayloadV1(_) => {
+                            this.handle_flashblocks_payload_v1(authorized.into_unchecked());
+                        }
+                        rollup_boost::AuthorizedMsg::InnitiateBuildReq(_) => todo!(),
+                        rollup_boost::AuthorizedMsg::InnitiateBuildRes(_initiate_build_res) => {
+                            todo!()
+                        }
+                    }
                 }
             }
         }
@@ -94,28 +116,19 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
-    fn handle_flashblocks_payload_v1(&mut self, message: Authorized<FlashblocksPayloadV1>) {
+    fn handle_flashblocks_payload_v1(
+        &mut self,
+        authorized: AuthorizedPayload<FlashblocksPayloadV1>,
+    ) {
         let mut state = self.handler.state.lock();
+        let authorization = &authorized.authorized.authorization;
+        let msg = authorized.msg();
 
-        if let Err(error) = message.verify(self.handler.ctx.authorizer_vk) {
+        if authorization.timestamp < state.payload_timestamp {
             tracing::warn!(
                 target: "flashblocks::p2p",
                 peer_id = %self.peer_id,
-                %error,
-                "Failed to verify flashblock",
-            );
-            self.handler
-                .ctx
-                .network_handle
-                .reputation_change(self.peer_id, ReputationChangeKind::BadMessage);
-            return;
-        }
-
-        if message.authorization.timestamp < state.payload_timestamp {
-            tracing::warn!(
-                target: "flashblocks::p2p",
-                peer_id = %self.peer_id,
-                timestamp = message.authorization.timestamp,
+                timestamp = authorization.timestamp,
                 "Received flashblock with outdated timestamp",
             );
             self.handler
@@ -126,31 +139,31 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         }
 
         // Check if this is a globally new payload
-        if message.authorization.timestamp > state.payload_timestamp {
+        if authorization.timestamp > state.payload_timestamp {
             state.flashblock_index = 0;
-            state.payload_timestamp = message.authorization.timestamp;
-            state.payload_id = message.payload.payload_id;
+            state.payload_timestamp = authorization.timestamp;
+            state.payload_id = msg.payload_id;
             state.flashblocks.fill(None);
         }
 
         // Check if this is a new payload from this peer
-        if self.payload_id != message.payload.payload_id {
-            self.payload_id = message.payload.payload_id;
+        if self.payload_id != msg.payload_id {
+            self.payload_id = msg.payload_id;
             self.received.fill(false);
         }
 
         // Check if this peer is spamming us with the same payload index
         let len = self.received.len();
         self.received
-            .resize_with(len.max(message.payload.index as usize + 1), || false);
-        if self.received[message.payload.index as usize] {
+            .resize_with(len.max(msg.index as usize + 1), || false);
+        if self.received[msg.index as usize] {
             // We've already seen this index from this peer.
             // They could be trying to DOS us.
             tracing::warn!(
                 target: "flashblocks::p2p",
                 peer_id = %self.peer_id,
-                payload_id = %message.payload.payload_id,
-                index = message.payload.index,
+                payload_id = %msg.payload_id,
+                index = msg.index,
                 "Received duplicate flashblock from peer",
             );
             self.handler
@@ -159,10 +172,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 .reputation_change(self.peer_id, ReputationChangeKind::AlreadySeenTransaction);
             return;
         }
-        self.received[message.payload.index as usize] = true;
+        self.received[msg.index as usize] = true;
 
-        self.handler
-            .ctx
-            .publish(&mut state, FlashblocksP2PMsg::FlashblocksPayloadV1(message));
+        self.handler.ctx.publish(&mut state, authorized);
     }
 }

@@ -10,7 +10,7 @@ use reth_node_builder::{
     node::{FullNodeTypes, NodeTypes},
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
-use rollup_boost::{FlashblocksP2PMsg, FlashblocksPayloadV1};
+use rollup_boost::{AuthorizedPayload, FlashblocksPayloadV1};
 use tokio::sync::broadcast;
 
 use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
@@ -19,7 +19,7 @@ use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
 struct FlashblocksNetworkBuilderCtx {
     authorizer_vk: VerifyingKey,
     flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    publish_rx: broadcast::Receiver<FlashblocksP2PMsg>,
+    publish_rx: broadcast::Receiver<AuthorizedPayload<FlashblocksPayloadV1>>,
 }
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ impl<T> FlashblocksNetworkBuilder<T> {
         inner: T,
         authorizer_vk: VerifyingKey,
         flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
-        publish_rx: broadcast::Receiver<FlashblocksP2PMsg>,
+        publish_rx: broadcast::Receiver<AuthorizedPayload<FlashblocksPayloadV1>>,
     ) -> Self {
         Self {
             inner,

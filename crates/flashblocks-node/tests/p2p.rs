@@ -23,11 +23,11 @@ use reth_optimism_primitives::{OpPrimitives, OpReceipt};
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::{TaskExecutor, TaskManager};
 use rollup_boost::{
-    Authorization, Authorized, ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1,
-    FlashblocksP2PMsg, FlashblocksPayloadV1,
+    Authorization, AuthorizedPayload, ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1,
+    FlashblocksPayloadV1,
 };
 use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 use tracing::info;
 
 type Network = NetworkHandle<
@@ -40,7 +40,7 @@ type Network = NetworkHandle<
 
 pub struct NodeContext {
     flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    publish_tx: broadcast::Sender<FlashblocksP2PMsg>,
+    publish_tx: broadcast::Sender<AuthorizedPayload<FlashblocksPayloadV1>>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
@@ -327,9 +327,9 @@ async fn test_peering() -> eyre::Result<()> {
         &authorizer,
         builder.verifying_key(),
     );
-    let authorized = Authorized::new(&builder, authorization, payload_0.clone());
-    let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
-    node_1.publish_tx.send(proto_message)?;
+    let msg = payload_0.clone();
+    let authorized = AuthorizedPayload::new(&builder, authorization, msg);
+    node_1.publish_tx.send(authorized)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
     let peers = node_0.network_handle.get_all_peers().await?;
     let peer_1 = &peers[1].remote_id;
@@ -354,10 +354,8 @@ async fn test_peering() -> eyre::Result<()> {
         &authorizer,
         builder.verifying_key(),
     );
-    let authorized = Authorized::new(&builder, authorization, payload_1.clone());
-    let proto_message = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized);
-
-    node_1.publish_tx.send(proto_message)?;
+    let authorized = AuthorizedPayload::new(&builder, authorization, payload_1.clone());
+    node_1.publish_tx.send(authorized)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;

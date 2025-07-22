@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use alloy_primitives::{B64, Bytes};
 use alloy_rlp::{Decodable, Encodable, Header};
 use alloy_rpc_types_engine::PayloadId;
@@ -15,17 +17,47 @@ pub struct Authorization {
     pub authorizer_sig: Signature,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Authorized<T: Serialize> {
-    pub payload: T,
-    pub authorization: Authorization,
-    pub builder_sig: Signature,
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
+pub struct InitiateBuildReq;
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
+pub enum InitiateBuildRes {
+    Granted = 0x00,
+    Denied = 0x01,
+}
+
+/// A message that can be sent over the Flashblocks P2P network.
+#[repr(u8)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
+pub enum FlashblocksP2PMsg {
+    Authorized(Authorized) = 0x00,
 }
 
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
-pub enum FlashblocksP2PMsg {
-    FlashblocksPayloadV1(Authorized<FlashblocksPayloadV1>) = 0x00,
+pub enum AuthorizedMsg {
+    FlashblocksPayloadV1(FlashblocksPayloadV1) = 0x00,
+    InnitiateBuildReq(InitiateBuildReq) = 0x01,
+    InnitiateBuildRes(InitiateBuildRes) = 0x02,
+}
+
+impl From<FlashblocksPayloadV1> for AuthorizedMsg {
+    fn from(payload: FlashblocksPayloadV1) -> Self {
+        Self::FlashblocksPayloadV1(payload)
+    }
+}
+
+impl From<InitiateBuildReq> for AuthorizedMsg {
+    fn from(req: InitiateBuildReq) -> Self {
+        Self::InnitiateBuildReq(req)
+    }
+}
+
+impl From<InitiateBuildRes> for AuthorizedMsg {
+    fn from(res: InitiateBuildRes) -> Self {
+        Self::InnitiateBuildRes(res)
+    }
 }
 
 impl Authorization {
@@ -141,38 +173,92 @@ impl Decodable for Authorization {
     }
 }
 
-impl<T: Serialize> Authorized<T> {
-    pub fn new(builder_sk: &SigningKey, authorization: Authorization, payload: T) -> Self {
-        let hash = blake3::hash(&serde_json::to_vec(&payload).unwrap());
-        let builder_sig = builder_sk.sign(hash.as_bytes());
+/// A signed and authorized message that can be sent over the Flashblocks P2P network.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthorizedPayload<T> {
+    pub authorized: Authorized,
+    /// The underlying message type
+    pub _marker: PhantomData<T>,
+}
+
+impl<T> AuthorizedPayload<T>
+where
+    T: Into<AuthorizedMsg>,
+{
+    pub fn new(actor_sk: &SigningKey, authorization: Authorization, msg: T) -> Self {
+        let msg = msg.into();
+        let authorized = Authorized::new(actor_sk, authorization, msg);
 
         Self {
-            payload,
+            authorized,
+            _marker: PhantomData,
+        }
+    }
+}
+
+/// A signed and authorized message that can be sent over the Flashblocks P2P network.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Authorized {
+    /// The msg that is being authorized and signed over.
+    pub msg: AuthorizedMsg,
+    /// The authorization that grants permission to send this message.
+    pub authorization: Authorization,
+    /// The signature of the actor, made over the hash of the message and authorization.
+    pub actor_sig: Signature,
+}
+
+impl Authorized {
+    pub fn new(actor_sk: &SigningKey, authorization: Authorization, msg: AuthorizedMsg) -> Self {
+        let mut encoded = Vec::new();
+        msg.encode(&mut encoded);
+        authorization.encode(&mut encoded);
+
+        let hash = blake3::hash(&encoded);
+        let actor_sig = actor_sk.sign(hash.as_bytes());
+
+        Self {
+            msg,
             authorization,
-            builder_sig,
+            actor_sig,
         }
     }
 
     pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
         self.authorization.verify(authorizer_pub)?;
 
-        let hash = blake3::hash(&serde_json::to_vec(&self.payload).unwrap());
+        let mut encoded = Vec::new();
+        self.msg.encode(&mut encoded);
+        self.authorization.encode(&mut encoded);
 
+        let hash = blake3::hash(&encoded);
         self.authorization
             .builder_pub
-            .verify(hash.as_bytes(), &self.builder_sig)
+            .verify(hash.as_bytes(), &self.actor_sig)
             .map_err(|_| FlashblocksP2PError::InvalidBuilderSig)
+    }
+
+    pub fn into_unchecked<T>(self) -> AuthorizedPayload<T> {
+        AuthorizedPayload::<T> {
+            authorized: self,
+            _marker: PhantomData,
+        }
     }
 }
 
-impl<T> Encodable for Authorized<T>
+impl<T> AuthorizedPayload<T>
 where
-    T: Encodable + Serialize,
+    AuthorizedMsg: AsRef<T>,
 {
+    pub fn msg(&self) -> &T {
+        self.authorized.msg.as_ref()
+    }
+}
+
+impl Encodable for Authorized {
     fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
         // encode once so we know the length beforehand
-        let sig_bytes = Bytes::copy_from_slice(&self.builder_sig.to_bytes());
-        let payload_len = self.payload.length() + self.authorization.length() + sig_bytes.length();
+        let sig_bytes = Bytes::copy_from_slice(&self.actor_sig.to_bytes());
+        let payload_len = self.msg.length() + self.authorization.length() + sig_bytes.length();
 
         Header {
             list: true,
@@ -181,7 +267,7 @@ where
         .encode(out);
 
         // 1. payload
-        self.payload.encode(out);
+        self.msg.encode(out);
         // 2. authorization
         self.authorization.encode(out);
         // 3. builder signature
@@ -189,8 +275,8 @@ where
     }
 
     fn length(&self) -> usize {
-        let sig_bytes = Bytes::copy_from_slice(&self.builder_sig.to_bytes());
-        let payload_len = self.payload.length() + self.authorization.length() + sig_bytes.length();
+        let sig_bytes = Bytes::copy_from_slice(&self.actor_sig.to_bytes());
+        let payload_len = self.msg.length() + self.authorization.length() + sig_bytes.length();
 
         Header {
             list: true,
@@ -201,10 +287,7 @@ where
     }
 }
 
-impl<T> Decodable for Authorized<T>
-where
-    T: Decodable + Serialize,
-{
+impl Decodable for Authorized {
     fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
         let header = Header::decode(buf)?;
         if !header.list {
@@ -214,7 +297,7 @@ where
         let mut body = &buf[..header.payload_length as usize];
 
         // 1. payload
-        let payload = T::decode(&mut body)?;
+        let payload = AuthorizedMsg::decode(&mut body)?;
         // 2. authorization
         let authorization = Authorization::decode(&mut body)?;
         // 3. builder signature
@@ -226,9 +309,9 @@ where
         *buf = &buf[header.payload_length as usize..];
 
         Ok(Self {
-            payload,
+            msg: payload,
             authorization,
-            builder_sig,
+            actor_sig: builder_sig,
         })
     }
 }
@@ -238,7 +321,7 @@ impl FlashblocksP2PMsg {
     pub fn encode(&self) -> BytesMut {
         let mut buf = BytesMut::new();
         match self {
-            FlashblocksP2PMsg::FlashblocksPayloadV1(payload) => {
+            FlashblocksP2PMsg::Authorized(payload) => {
                 buf.put_u8(0x00);
                 payload.encode(&mut buf);
             }
@@ -255,10 +338,109 @@ impl FlashblocksP2PMsg {
         buf.advance(1);
         match id {
             0x00 => {
-                let payload = Authorized::<FlashblocksPayloadV1>::decode(&mut &buf[..])?;
-                Ok(FlashblocksP2PMsg::FlashblocksPayloadV1(payload))
+                let payload = Authorized::decode(&mut &buf[..])?;
+                Ok(FlashblocksP2PMsg::Authorized(payload))
             }
             _ => Err(FlashblocksP2PError::UnknownMessageType),
+        }
+    }
+}
+
+impl AsRef<FlashblocksPayloadV1> for AuthorizedMsg {
+    fn as_ref(&self) -> &FlashblocksPayloadV1 {
+        match self {
+            Self::FlashblocksPayloadV1(p) => p,
+            _ => panic!("not a FlashblocksPayloadV1 message"),
+        }
+    }
+}
+
+impl Encodable for AuthorizedMsg {
+    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
+        match self {
+            Self::FlashblocksPayloadV1(p) => {
+                Header {
+                    list: true,
+                    payload_length: 1 + p.length(),
+                }
+                .encode(out);
+                0u32.encode(out);
+                p.encode(out);
+            }
+            Self::InnitiateBuildReq(_) => {
+                Header {
+                    list: true,
+                    payload_length: 1,
+                }
+                .encode(out);
+                1u32.encode(out);
+            }
+            Self::InnitiateBuildRes(r) => {
+                Header {
+                    list: true,
+                    payload_length: 1 + r.length(),
+                }
+                .encode(out);
+                2u32.encode(out);
+                r.encode(out);
+            }
+        };
+    }
+
+    fn length(&self) -> usize {
+        let body_len = match self {
+            Self::FlashblocksPayloadV1(p) => 1 + p.length(),
+            Self::InnitiateBuildReq(_) => 1,
+            Self::InnitiateBuildRes(r) => 1 + r.length(),
+        };
+
+        Header {
+            list: true,
+            payload_length: body_len,
+        }
+        .length()
+            + body_len
+    }
+}
+
+impl Decodable for AuthorizedMsg {
+    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
+        let hdr = Header::decode(buf)?;
+        if !hdr.list {
+            return Err(alloy_rlp::Error::Custom(
+                "AuthorizedMsg must be an RLP list",
+            ));
+        }
+
+        let tag = u8::decode(buf)?;
+        let value = match tag {
+            0 => Self::FlashblocksPayloadV1(FlashblocksPayloadV1::decode(buf)?),
+            1 => Self::InnitiateBuildReq(InitiateBuildReq),
+            2 => Self::InnitiateBuildRes(InitiateBuildRes::decode(buf)?),
+            _ => return Err(alloy_rlp::Error::Custom("unknown tag")),
+        };
+
+        Ok(value)
+    }
+}
+
+impl Encodable for InitiateBuildRes {
+    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
+        (*self as u32).encode(out);
+    }
+
+    fn length(&self) -> usize {
+        1
+    }
+}
+
+impl Decodable for InitiateBuildRes {
+    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
+        let tag = u8::decode(buf)?;
+        match tag {
+            0x00 => Ok(InitiateBuildRes::Granted),
+            0x01 => Ok(InitiateBuildRes::Denied),
+            _ => Err(alloy_rlp::Error::Custom("unknown tag")),
         }
     }
 }
@@ -373,15 +555,16 @@ mod tests {
         let (builder_sk, builder_vk) = sample_keys();
         let authorization = sample_authorization();
         let payload = sample_flashblocks_payload();
+        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload.clone());
 
-        let authorized = Authorized::new(&builder_sk, authorization.clone(), payload.clone());
+        let authorized = Authorized::new(&builder_sk, authorization.clone(), msg);
 
         // RLP round-trip
         let encoded = encode(&authorized);
         assert_eq!(encoded.len(), authorized.length());
 
         let mut slice = encoded.as_ref();
-        let decoded = Authorized::<FlashblocksPayloadV1>::decode(&mut slice).expect("decode ok");
+        let decoded = Authorized::decode(&mut slice).expect("decode ok");
         assert_eq!(decoded, authorized);
         assert!(slice.is_empty(), "decoder consumed all input");
 
@@ -391,7 +574,7 @@ mod tests {
 
         let hash = blake3::hash(&serde_json::to_vec(&payload).unwrap());
         builder_vk
-            .verify(hash.as_bytes(), &decoded.builder_sig)
+            .verify(hash.as_bytes(), &decoded.actor_sig)
             .expect("builder sig valid");
     }
 
@@ -400,12 +583,13 @@ mod tests {
         let (builder_sk, _) = sample_keys();
         let authorization = sample_authorization();
         let payload = sample_flashblocks_payload();
+        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload.clone());
 
-        let mut authorized = Authorized::new(&builder_sk, authorization, payload);
+        let mut authorized = Authorized::new(&builder_sk, authorization, msg);
         // flip one bit
-        let mut authorized_sig_bytes = authorized.builder_sig.to_bytes();
+        let mut authorized_sig_bytes = authorized.actor_sig.to_bytes();
         authorized_sig_bytes[0] ^= 0x01;
-        authorized.builder_sig =
+        authorized.actor_sig =
             Signature::try_from(authorized_sig_bytes.as_ref()).expect("valid signature bytes");
         assert!(
             authorized
@@ -420,16 +604,17 @@ mod tests {
         let (builder_sk, _) = sample_keys();
         let authorization = sample_authorization();
         let payload = sample_flashblocks_payload();
-        let authorized = Authorized::new(&builder_sk, authorization, payload);
+        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload.clone());
+        let authorized = Authorized::new(&builder_sk, authorization, msg);
 
-        let msg = FlashblocksP2PMsg::FlashblocksPayloadV1(authorized.clone());
+        let msg = FlashblocksP2PMsg::Authorized(authorized.clone());
 
         let encoded = msg.encode();
 
         let decoded = FlashblocksP2PMsg::decode(&mut &encoded[..]).expect("decode ok");
 
         match decoded {
-            FlashblocksP2PMsg::FlashblocksPayloadV1(inner) => {
+            FlashblocksP2PMsg::Authorized(inner) => {
                 assert_eq!(inner, authorized, "inner payload round-trips");
             }
         }

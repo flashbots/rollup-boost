@@ -6,7 +6,7 @@ use reth::payload::PayloadId;
 use reth_eth_wire::Capability;
 use reth_ethereum::network::{api::PeerId, protocol::ProtocolHandler};
 use reth_network::Peers;
-use rollup_boost::{FlashblocksP2PMsg, FlashblocksPayloadV1};
+use rollup_boost::{AuthorizedPayload, FlashblocksP2PMsg, FlashblocksPayloadV1};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -74,7 +74,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         network_handle: N,
         authorizer_vk: VerifyingKey,
         flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
-        mut publish_rx: broadcast::Receiver<FlashblocksP2PMsg>,
+        mut publish_rx: broadcast::Receiver<AuthorizedPayload<FlashblocksPayloadV1>>,
     ) -> Self {
         let peer_tx = broadcast::Sender::new(100);
         let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
@@ -108,14 +108,18 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
 impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
     /// Commit new and already verified flashblocks payloads to the state
     /// broadcast them to peers, and publish them to the stream.
-    pub fn publish(&self, state: &mut FlashblocksP2PState, msg: FlashblocksP2PMsg) {
-        let FlashblocksP2PMsg::FlashblocksPayloadV1(ref message) = msg;
+    pub fn publish(
+        &self,
+        state: &mut FlashblocksP2PState,
+        authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,
+    ) {
+        let payload = authorized_payload.msg();
 
         // Resize our array if needed
-        if message.payload.index as usize > MAX_FLASHBLOCK_INDEX {
+        if payload.index as usize > MAX_FLASHBLOCK_INDEX {
             tracing::error!(
                 target: "flashblocks::p2p",
-                index = message.payload.index,
+                index = payload.index,
                 max_index = MAX_FLASHBLOCK_INDEX,
                 "Received flashblocks payload with index exceeding maximum"
             );
@@ -124,22 +128,24 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
         let len = state.flashblocks.len();
         state
             .flashblocks
-            .resize_with(len.max(message.payload.index as usize + 1), || None);
-        let flashblock = &mut state.flashblocks[message.payload.index as usize];
+            .resize_with(len.max(payload.index as usize + 1), || None);
+        let flashblock = &mut state.flashblocks[payload.index as usize];
 
         // If we've already seen this index, skip it
         // Otherwise, add it to the list
         if flashblock.is_none() {
             // We haven't seen this index yet
             // Add the flashblock to our cache
-            *flashblock = Some(message.clone().payload);
+            *flashblock = Some(payload.clone());
             tracing::trace!(
                 target: "flashblocks::p2p",
-                payload_id = %message.payload.payload_id,
-                flashblock_index = message.payload.index,
+                payload_id = %payload.payload_id,
+                flashblock_index = payload.index,
                 "queueing flashblock",
             );
-            let bytes = msg.encode();
+
+            let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload.authorized.clone());
+            let bytes = p2p_msg.encode();
             let len = bytes.len();
             metrics::histogram!("flashblock_size").record(len as f64);
 
@@ -161,11 +167,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
                 );
             }
             self.peer_tx
-                .send((
-                    message.payload.payload_id,
-                    message.payload.index as usize,
-                    bytes,
-                ))
+                .send((payload.payload_id, payload.index as usize, bytes))
                 .ok();
             // Broadcast any flashblocks in the cache that are in order
             while let Some(Some(flashblock_event)) = state.flashblocks.get(state.flashblock_index) {
