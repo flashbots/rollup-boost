@@ -332,7 +332,7 @@ async fn test_peering() -> eyre::Result<()> {
     node_1.publish_tx.send(authorized)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
     let peers = node_0.network_handle.get_all_peers().await?;
-    let peer_1 = &peers[1].remote_id;
+    let peer_1 = &peers[0].remote_id;
 
     let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
     info!(?rep_1, "Peer reputation");

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Eq, PartialEq)]
 pub enum FlashblocksP2PError {
     #[error("invalid authorizer signature")]
     InvalidAuthorizerSig,

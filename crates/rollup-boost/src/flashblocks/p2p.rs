@@ -338,7 +338,7 @@ impl FlashblocksP2PMsg {
         buf.advance(1);
         match id {
             0x00 => {
-                let payload = Authorized::decode(&mut &buf[..])?;
+                let payload = Authorized::decode(buf)?;
                 Ok(FlashblocksP2PMsg::Authorized(payload))
             }
             _ => Err(FlashblocksP2PError::UnknownMessageType),
@@ -447,29 +447,32 @@ impl Decodable for InitiateBuildRes {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1};
-
     use super::*;
+    use crate::{ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1};
     use alloy_primitives::{Address, B256, Bloom, U256};
-    use alloy_rlp::{Decodable, encode};
+    use alloy_rlp::{Decodable, Encodable, encode};
     use alloy_rpc_types_eth::Withdrawal;
+    use bytes::{BufMut, BytesMut};
 
-    fn sample_keys() -> (SigningKey, VerifyingKey) {
-        // deterministic keys for reproducible tests
-        let bytes = [0u8; 32];
+    fn key_pair(seed: u8) -> (SigningKey, VerifyingKey) {
+        let bytes = [seed; 32];
         let sk = SigningKey::from_bytes(&bytes);
         let vk = sk.verifying_key();
         (sk, vk)
     }
 
-    fn sample_authorization() -> Authorization {
-        let (authorizer_sk, _) = sample_keys();
-        let (_, builder_vk) = sample_keys();
-        Authorization::new(
-            alloy_rpc_types_engine::PayloadId::default(),
-            1_700_000_321,
-            &authorizer_sk,
-            builder_vk,
+    fn sample_authorization() -> (Authorization, VerifyingKey) {
+        let (authorizer_sk, authorizer_vk) = key_pair(1);
+        let (_, builder_vk) = key_pair(2);
+
+        (
+            Authorization::new(
+                PayloadId::default(),
+                1_700_000_001,
+                &authorizer_sk,
+                builder_vk,
+            ),
+            authorizer_vk,
         )
     }
 
@@ -503,7 +506,7 @@ mod tests {
     fn sample_flashblocks_payload() -> FlashblocksPayloadV1 {
         FlashblocksPayloadV1 {
             payload_id: PayloadId::default(),
-            index: 7,
+            index: 42,
             diff: sample_diff(),
             metadata: serde_json::json!({ "ok": true }),
             base: Some(sample_base()),
@@ -511,9 +514,9 @@ mod tests {
     }
 
     #[test]
-    fn authorization_roundtrip() {
-        let (authorizer_sk, authorizer_vk) = sample_keys();
-        let (_, builder_vk) = sample_keys();
+    fn authorization_rlp_roundtrip_and_verify() {
+        let (authorizer_sk, authorizer_vk) = key_pair(1);
+        let (_, builder_vk) = key_pair(2);
 
         let auth = Authorization::new(
             PayloadId::default(),
@@ -522,102 +525,134 @@ mod tests {
             builder_vk,
         );
 
-        // RLP encode-then-decode
         let encoded = encode(&auth);
-        assert_eq!(encoded.len(), auth.length());
+        assert_eq!(encoded.len(), auth.length(), "length impl correct");
 
         let mut slice = encoded.as_ref();
-        let decoded = Authorization::decode(&mut slice).expect("decode succeeds");
-        assert_eq!(auth, decoded);
-        assert!(slice.is_empty());
+        let decoded = Authorization::decode(&mut slice).expect("decoding succeeds");
+        assert!(slice.is_empty(), "decoder consumed all bytes");
+        assert_eq!(decoded, auth, "round-trip preserves value");
 
-        // signature verifies
-        decoded.verify(authorizer_vk).expect("sig valid");
+        // Signature is valid
+        decoded.verify(authorizer_vk).expect("signature verifies");
     }
 
     #[test]
-    fn tampered_sig_is_rejected() {
-        let (authorizer_sk, authorizer_vk) = sample_keys();
-        let (_, builder_vk) = sample_keys();
+    fn authorization_signature_tamper_is_detected() {
+        let (authorizer_sk, authorizer_vk) = key_pair(1);
+        let (_, builder_vk) = key_pair(2);
 
         let mut auth = Authorization::new(PayloadId::default(), 42, &authorizer_sk, builder_vk);
 
-        // flip one bit in the signature
-        let mut auth_sig_bytes = auth.authorizer_sig.to_bytes();
-        auth_sig_bytes[0] ^= 0x01;
-        auth.authorizer_sig =
-            Signature::try_from(auth_sig_bytes.as_ref()).expect("valid signature bytes");
+        let mut sig_bytes = auth.authorizer_sig.to_bytes();
+        sig_bytes[0] ^= 1;
+        auth.authorizer_sig = Signature::try_from(sig_bytes.as_ref()).unwrap();
+
         assert!(auth.verify(authorizer_vk).is_err());
     }
 
     #[test]
-    fn authorized_roundtrip_and_verify() {
-        let (builder_sk, builder_vk) = sample_keys();
-        let authorization = sample_authorization();
+    fn authorized_rlp_roundtrip_and_verify() {
+        let (builder_sk, _builder_vk) = key_pair(2);
+        let (authorization, authorizer_vk) = sample_authorization();
+
         let payload = sample_flashblocks_payload();
-        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload.clone());
+        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload);
 
         let authorized = Authorized::new(&builder_sk, authorization.clone(), msg);
 
-        // RLP round-trip
+        // Encode → decode
         let encoded = encode(&authorized);
         assert_eq!(encoded.len(), authorized.length());
 
         let mut slice = encoded.as_ref();
-        let decoded = Authorized::decode(&mut slice).expect("decode ok");
+        let decoded = Authorized::decode(&mut slice).expect("decoding succeeds");
+        assert!(slice.is_empty());
         assert_eq!(decoded, authorized);
-        assert!(slice.is_empty(), "decoder consumed all input");
 
         decoded
-            .verify(authorization.builder_pub)
-            .expect("verify succeeds");
-
-        let hash = blake3::hash(&serde_json::to_vec(&payload).unwrap());
-        builder_vk
-            .verify(hash.as_bytes(), &decoded.actor_sig)
-            .expect("builder sig valid");
+            .verify(authorizer_vk)
+            .expect("composite verification succeeds");
     }
 
     #[test]
-    fn builder_sig_tamper_fails() {
-        let (builder_sk, _) = sample_keys();
-        let authorization = sample_authorization();
+    fn authorized_builder_signature_tamper_is_detected() {
+        let (builder_sk, _) = key_pair(2);
+        let (authorization, authorizer_vk) = sample_authorization();
         let payload = sample_flashblocks_payload();
-        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload.clone());
+        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload);
 
         let mut authorized = Authorized::new(&builder_sk, authorization, msg);
-        // flip one bit
-        let mut authorized_sig_bytes = authorized.actor_sig.to_bytes();
-        authorized_sig_bytes[0] ^= 0x01;
-        authorized.actor_sig =
-            Signature::try_from(authorized_sig_bytes.as_ref()).expect("valid signature bytes");
-        assert!(
-            authorized
-                .verify(authorized.authorization.builder_pub)
-                .is_err(),
-            "tampered sig must be rejected"
-        );
+
+        let mut sig_bytes = authorized.actor_sig.to_bytes();
+        sig_bytes[0] ^= 1;
+        authorized.actor_sig = Signature::try_from(sig_bytes.as_ref()).unwrap();
+
+        assert!(authorized.verify(authorizer_vk).is_err());
+    }
+
+    #[test]
+    fn authorized_msg_variants_rlp_roundtrip() {
+        let variants = [
+            AuthorizedMsg::FlashblocksPayloadV1(sample_flashblocks_payload()),
+            AuthorizedMsg::InnitiateBuildReq(InitiateBuildReq),
+            AuthorizedMsg::InnitiateBuildRes(InitiateBuildRes::Granted),
+            AuthorizedMsg::InnitiateBuildRes(InitiateBuildRes::Denied),
+        ];
+
+        for msg in variants {
+            let encoded = encode(&msg);
+            assert_eq!(encoded.len(), msg.length());
+
+            let mut slice = encoded.as_ref();
+            let decoded = AuthorizedMsg::decode(&mut slice).expect("decodes");
+            assert!(slice.is_empty());
+            assert_eq!(decoded, msg);
+        }
+    }
+
+    #[test]
+    fn initiate_build_res_rlp_roundtrip() {
+        for res in [InitiateBuildRes::Granted, InitiateBuildRes::Denied] {
+            let encoded = encode(res);
+            assert_eq!(encoded.len(), res.length());
+
+            let mut slice = encoded.as_ref();
+            let decoded = InitiateBuildRes::decode(&mut slice).expect("decodes");
+            assert_eq!(decoded, res);
+            assert!(slice.is_empty());
+        }
     }
 
     #[test]
     fn p2p_msg_roundtrip() {
-        let (builder_sk, _) = sample_keys();
-        let authorization = sample_authorization();
+        let (builder_sk, _) = key_pair(2);
+        let (authorization, _authorizer_vk) = sample_authorization();
         let payload = sample_flashblocks_payload();
-        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload.clone());
+        let msg = AuthorizedMsg::FlashblocksPayloadV1(payload);
+
         let authorized = Authorized::new(&builder_sk, authorization, msg);
+        let p2p = FlashblocksP2PMsg::Authorized(authorized.clone());
 
-        let msg = FlashblocksP2PMsg::Authorized(authorized.clone());
+        let encoded = p2p.encode();
 
-        let encoded = msg.encode();
-
-        let decoded = FlashblocksP2PMsg::decode(&mut &encoded[..]).expect("decode ok");
+        let mut view: &[u8] = &encoded;
+        let decoded = FlashblocksP2PMsg::decode(&mut view).expect("decoding succeeds");
+        assert!(view.is_empty(), "all bytes consumed");
 
         match decoded {
-            FlashblocksP2PMsg::Authorized(inner) => {
-                assert_eq!(inner, authorized, "inner payload round-trips");
-            }
+            FlashblocksP2PMsg::Authorized(inner) => assert_eq!(inner, authorized),
         }
-        assert_eq!(encoded.remaining(), 0, "decoder consumed all input");
+    }
+
+    #[test]
+    fn p2p_msg_unknown_type_errors() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0xFF); // unknown discriminator
+
+        let mut slice: &[u8] = &buf;
+        let err =
+            FlashblocksP2PMsg::decode(&mut slice).expect_err("should fail on unknown message type");
+        assert_eq!(err, FlashblocksP2PError::UnknownMessageType);
     }
 }
