@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{FlashblocksP2PError, FlashblocksPayloadV1};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Authorization {
     pub payload_id: PayloadId,
     pub timestamp: u64,
@@ -18,14 +18,10 @@ pub struct Authorization {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
-pub struct InitiateBuildReq;
+pub struct StartPublish;
 
-#[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
-pub enum InitiateBuildRes {
-    Granted = 0x00,
-    Denied = 0x01,
-}
+pub struct StopPublish;
 
 /// A message that can be sent over the Flashblocks P2P network.
 #[repr(u8)]
@@ -38,8 +34,8 @@ pub enum FlashblocksP2PMsg {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub enum AuthorizedMsg {
     FlashblocksPayloadV1(FlashblocksPayloadV1) = 0x00,
-    InnitiateBuildReq(InitiateBuildReq) = 0x01,
-    InnitiateBuildRes(InitiateBuildRes) = 0x02,
+    StartPublish(StartPublish) = 0x01,
+    StopPublish(StopPublish) = 0x02,
 }
 
 impl From<FlashblocksPayloadV1> for AuthorizedMsg {
@@ -48,15 +44,15 @@ impl From<FlashblocksPayloadV1> for AuthorizedMsg {
     }
 }
 
-impl From<InitiateBuildReq> for AuthorizedMsg {
-    fn from(req: InitiateBuildReq) -> Self {
-        Self::InnitiateBuildReq(req)
+impl From<StartPublish> for AuthorizedMsg {
+    fn from(req: StartPublish) -> Self {
+        Self::StartPublish(req)
     }
 }
 
-impl From<InitiateBuildRes> for AuthorizedMsg {
-    fn from(res: InitiateBuildRes) -> Self {
-        Self::InnitiateBuildRes(res)
+impl From<StopPublish> for AuthorizedMsg {
+    fn from(res: StopPublish) -> Self {
+        Self::StopPublish(res)
     }
 }
 
@@ -367,7 +363,7 @@ impl Encodable for AuthorizedMsg {
                 0u32.encode(out);
                 p.encode(out);
             }
-            Self::InnitiateBuildReq(_) => {
+            Self::StartPublish(_) => {
                 Header {
                     list: true,
                     payload_length: 1,
@@ -375,14 +371,13 @@ impl Encodable for AuthorizedMsg {
                 .encode(out);
                 1u32.encode(out);
             }
-            Self::InnitiateBuildRes(r) => {
+            Self::StopPublish(_) => {
                 Header {
                     list: true,
-                    payload_length: 1 + r.length(),
+                    payload_length: 1,
                 }
                 .encode(out);
                 2u32.encode(out);
-                r.encode(out);
             }
         };
     }
@@ -390,8 +385,8 @@ impl Encodable for AuthorizedMsg {
     fn length(&self) -> usize {
         let body_len = match self {
             Self::FlashblocksPayloadV1(p) => 1 + p.length(),
-            Self::InnitiateBuildReq(_) => 1,
-            Self::InnitiateBuildRes(r) => 1 + r.length(),
+            Self::StartPublish(_) => 1,
+            Self::StopPublish(_) => 1,
         };
 
         Header {
@@ -415,33 +410,12 @@ impl Decodable for AuthorizedMsg {
         let tag = u8::decode(buf)?;
         let value = match tag {
             0 => Self::FlashblocksPayloadV1(FlashblocksPayloadV1::decode(buf)?),
-            1 => Self::InnitiateBuildReq(InitiateBuildReq),
-            2 => Self::InnitiateBuildRes(InitiateBuildRes::decode(buf)?),
+            1 => Self::StartPublish(StartPublish),
+            2 => Self::StopPublish(StopPublish),
             _ => return Err(alloy_rlp::Error::Custom("unknown tag")),
         };
 
         Ok(value)
-    }
-}
-
-impl Encodable for InitiateBuildRes {
-    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
-        (*self as u32).encode(out);
-    }
-
-    fn length(&self) -> usize {
-        1
-    }
-}
-
-impl Decodable for InitiateBuildRes {
-    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
-        let tag = u8::decode(buf)?;
-        match tag {
-            0x00 => Ok(InitiateBuildRes::Granted),
-            0x01 => Ok(InitiateBuildRes::Denied),
-            _ => Err(alloy_rlp::Error::Custom("unknown tag")),
-        }
     }
 }
 
@@ -595,9 +569,8 @@ mod tests {
     fn authorized_msg_variants_rlp_roundtrip() {
         let variants = [
             AuthorizedMsg::FlashblocksPayloadV1(sample_flashblocks_payload()),
-            AuthorizedMsg::InnitiateBuildReq(InitiateBuildReq),
-            AuthorizedMsg::InnitiateBuildRes(InitiateBuildRes::Granted),
-            AuthorizedMsg::InnitiateBuildRes(InitiateBuildRes::Denied),
+            AuthorizedMsg::StartPublish(StartPublish),
+            AuthorizedMsg::StopPublish(StopPublish),
         ];
 
         for msg in variants {
@@ -608,19 +581,6 @@ mod tests {
             let decoded = AuthorizedMsg::decode(&mut slice).expect("decodes");
             assert!(slice.is_empty());
             assert_eq!(decoded, msg);
-        }
-    }
-
-    #[test]
-    fn initiate_build_res_rlp_roundtrip() {
-        for res in [InitiateBuildRes::Granted, InitiateBuildRes::Denied] {
-            let encoded = encode(res);
-            assert_eq!(encoded.len(), res.length());
-
-            let mut slice = encoded.as_ref();
-            let decoded = InitiateBuildRes::decode(&mut slice).expect("decodes");
-            assert_eq!(decoded, res);
-            assert!(slice.is_empty());
         }
     }
 

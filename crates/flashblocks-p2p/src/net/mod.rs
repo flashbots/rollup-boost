@@ -1,4 +1,4 @@
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use reth::chainspec::Hardforks;
 use reth_eth_wire::NetPrimitivesFor;
 use reth_ethereum::network::api::FullNetwork;
@@ -18,6 +18,7 @@ use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
 #[derive(Debug)]
 struct FlashblocksNetworkBuilderCtx {
     authorizer_vk: VerifyingKey,
+    builder_sk: SigningKey,
     flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
     publish_rx: broadcast::Receiver<AuthorizedPayload<FlashblocksPayloadV1>>,
 }
@@ -32,6 +33,7 @@ impl<T> FlashblocksNetworkBuilder<T> {
     pub fn new(
         inner: T,
         authorizer_vk: VerifyingKey,
+        builder_sk: SigningKey,
         flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
         publish_rx: broadcast::Receiver<AuthorizedPayload<FlashblocksPayloadV1>>,
     ) -> Self {
@@ -39,6 +41,7 @@ impl<T> FlashblocksNetworkBuilder<T> {
             inner,
             ctx: Some(FlashblocksNetworkBuilderCtx {
                 authorizer_vk,
+                builder_sk,
                 flashblocks_receiver_tx,
                 publish_rx,
             }),
@@ -73,6 +76,7 @@ where
             let handler = FlashblocksHandler::<Network>::new(
                 handle.clone(),
                 ctx.authorizer_vk,
+                ctx.builder_sk,
                 ctx.flashblocks_receiver_tx,
                 ctx.publish_rx,
             );

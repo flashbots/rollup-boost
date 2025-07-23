@@ -1,10 +1,15 @@
-use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
+use crate::protocol::handler::{
+    FlashblocksHandler, FlashblocksP2PNetworHandle, PeerMsg, PublishingStatus,
+};
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
 use reth::payload::PayloadId;
 use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
 use reth_network::types::ReputationChangeKind;
-use rollup_boost::{AuthorizedPayload, FlashblocksP2PMsg, FlashblocksPayloadV1};
+use rollup_boost::{
+    Authorized, AuthorizedMsg, AuthorizedPayload, FlashblocksP2PMsg, FlashblocksPayloadV1,
+    StartPublish, StopPublish,
+};
 use std::{
     pin::Pin,
     task::{Context, Poll, ready},
@@ -12,14 +17,15 @@ use std::{
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::trace;
 
+pub const INNITIATE_BUILD_TIMOUT: u64 = 8; // seconds
+
 pub struct FlashblocksConnection<N> {
     pub handler: FlashblocksHandler<N>,
     pub conn: ProtocolConnection,
     pub peer_id: PeerId,
-    /// Receiver for newly created or received and validated flashblocks payloads
-    /// which will be broadcasted to all peers. May not be strictly ordered.
+    /// Receiver for peer messages to be sent to all peers.
     /// We send bytes over this stream to avoid repeatedly having to serialize the payloads.
-    pub peer_rx: BroadcastStream<(PayloadId, usize, BytesMut)>,
+    pub peer_rx: BroadcastStream<PeerMsg>,
     /// Most recent payload received from this peer.
     pub payload_id: PayloadId,
     /// A list of flashblocks indices that we have already received from
@@ -37,26 +43,38 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
             // Check if there are any flashblocks ready to broadcast to our peers.
             if let Poll::Ready(Some(res)) = this.peer_rx.poll_next_unpin(cx) {
                 match res {
-                    Ok((payload_id, flashblock_index, bytes)) => {
-                        // Check if this flashblock actually originated from this peer.
-                        if this.payload_id != payload_id
-                            || this.received.get(flashblock_index) != Some(&true)
-                        {
-                            trace!(
-                                target: "flashblocks::p2p",
-                                peer_id = %this.peer_id,
-                                %payload_id,
-                                %flashblock_index,
-                                "Broadcasting flashblock message to peer"
-                            );
-                            return Poll::Ready(Some(bytes));
+                    Ok(peer_msg) => {
+                        match peer_msg {
+                            PeerMsg::FlashblocksPayload((payload_id, flashblock_index, bytes)) => {
+                                // Check if this flashblock actually originated from this peer.
+                                if this.payload_id != payload_id
+                                    || this.received.get(flashblock_index) != Some(&true)
+                                {
+                                    trace!(
+                                        target: "flashblocks::p2p",
+                                        peer_id = %this.peer_id,
+                                        %payload_id,
+                                        %flashblock_index,
+                                        "Broadcasting flashblock message to peer"
+                                    );
+                                    return Poll::Ready(Some(bytes));
+                                }
+                            }
+                            PeerMsg::Other(bytes_mut) => {
+                                trace!(
+                                    target: "flashblocks::p2p",
+                                    peer_id = %this.peer_id,
+                                    "Broadcasting message to peer"
+                                );
+                                return Poll::Ready(Some(bytes_mut));
+                            }
                         }
                     }
                     Err(error) => {
                         tracing::error!(
                             target: "flashblocks::p2p",
                             %error,
-                            "Failed to receive flashblocks message from peer_rx"
+                            "failed to receive flashblocks message from peer_rx"
                         );
                     }
                 }
@@ -74,7 +92,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                         target: "flashblocks::p2p",
                         peer_id = %this.peer_id,
                         %error,
-                        "Failed to decode flashblocks message from peer",
+                        "failed to decode flashblocks message from peer",
                     );
                     this.handler
                         .ctx
@@ -91,7 +109,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                             target: "flashblocks::p2p",
                             peer_id = %this.peer_id,
                             %error,
-                            "Failed to verify flashblock",
+                            "failed to verify flashblock",
                         );
                         this.handler
                             .ctx
@@ -104,9 +122,11 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                         rollup_boost::AuthorizedMsg::FlashblocksPayloadV1(_) => {
                             this.handle_flashblocks_payload_v1(authorized.into_unchecked());
                         }
-                        rollup_boost::AuthorizedMsg::InnitiateBuildReq(_) => todo!(),
-                        rollup_boost::AuthorizedMsg::InnitiateBuildRes(_initiate_build_res) => {
-                            todo!()
+                        rollup_boost::AuthorizedMsg::StartPublish(_) => {
+                            this.handle_start_publish(authorized.into_unchecked());
+                        }
+                        rollup_boost::AuthorizedMsg::StopPublish(_) => {
+                            this.handle_stop_publish(authorized.into_unchecked());
                         }
                     }
                 }
@@ -118,32 +138,24 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
 impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
     fn handle_flashblocks_payload_v1(
         &mut self,
-        authorized: AuthorizedPayload<FlashblocksPayloadV1>,
+        authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,
     ) {
         let mut state = self.handler.state.lock();
-        let authorization = &authorized.authorized.authorization;
-        let msg = authorized.msg();
+        let authorization = &authorized_payload.authorized.authorization;
+        let msg = authorized_payload.msg();
 
         if authorization.timestamp < state.payload_timestamp {
             tracing::warn!(
                 target: "flashblocks::p2p",
                 peer_id = %self.peer_id,
                 timestamp = authorization.timestamp,
-                "Received flashblock with outdated timestamp",
+                "received flashblock with outdated timestamp",
             );
             self.handler
                 .ctx
                 .network_handle
                 .reputation_change(self.peer_id, ReputationChangeKind::BadMessage);
             return;
-        }
-
-        // Check if this is a globally new payload
-        if authorization.timestamp > state.payload_timestamp {
-            state.flashblock_index = 0;
-            state.payload_timestamp = authorization.timestamp;
-            state.payload_id = msg.payload_id;
-            state.flashblocks.fill(None);
         }
 
         // Check if this is a new payload from this peer
@@ -164,7 +176,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 peer_id = %self.peer_id,
                 payload_id = %msg.payload_id,
                 index = msg.index,
-                "Received duplicate flashblock from peer",
+                "received duplicate flashblock from peer",
             );
             self.handler
                 .ctx
@@ -174,6 +186,149 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         }
         self.received[msg.index as usize] = true;
 
-        self.handler.ctx.publish(&mut state, authorized);
+        let active_publishers = match &mut state.publishing_status {
+            PublishingStatus::Publishing { .. } => {
+                // We are currently building, so we should not be seeing any new flashblocks
+                // over the p2p network.
+                tracing::error!(
+                    target: "flashblocks::p2p",
+                    peer_id = %self.peer_id,
+                    "received flashblock while already building",
+                );
+                return;
+            }
+            PublishingStatus::WaitingToPublish {
+                active_publishers, ..
+            } => active_publishers,
+            PublishingStatus::NotPublishing { active_publishers } => active_publishers,
+        };
+
+        if let Some(base) = &msg.base {
+            if let Some((_, block_number)) = active_publishers
+                .iter_mut()
+                .find(|(publisher, _)| *publisher == authorization.builder_pub)
+            {
+                // This is an existing publisher, we should update their block number
+                *block_number = base.block_number;
+            } else {
+                // This is a new publisher, we should add them to the list of active publishers
+                active_publishers.push((authorization.builder_pub, base.block_number));
+            }
+        }
+
+        self.handler.ctx.publish(&mut state, authorized_payload);
+    }
+
+    // TODO: handle propogating this if we care
+    fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
+        let state = self.handler.state.lock();
+
+        // Check if the request is expired for dos protection
+        if state.payload_timestamp
+            > authorized_payload.authorized.authorization.timestamp + INNITIATE_BUILD_TIMOUT
+        {
+            tracing::warn!(
+                target: "flashblocks::p2p",
+                peer_id = %self.peer_id,
+                current_timestamp = state.payload_timestamp,
+                timestamp = authorized_payload.authorized.authorization.timestamp,
+                "received initiate build request with outdated timestamp",
+            );
+            self.handler
+                .ctx
+                .network_handle
+                .reputation_change(self.peer_id, ReputationChangeKind::BadMessage);
+            return;
+        }
+
+        let Some(authorization) = &state.authorization else {
+            // We have no intention to build, so we ignore this request
+            return;
+        };
+
+        match &state.innitiate_build_height {
+            Some(_) => {
+                // We are currently waiting to build, but someone else is requesting to build
+                // This could happen during a double failover.
+                // We should not give permission to build unless we're the builder.
+                // We have a potential race condition here so we'll just wait for the
+                // build request override to kick in next block.
+                tracing::warn!(
+                    target: "flashblocks::p2p",
+                    peer_id = %self.peer_id,
+                    "received initiate build request while already waiting to build",
+                );
+            }
+            None => {
+                // We are currently the builder
+                tracing::info!(
+                    target: "flashblocks::p2p",
+                    peer_id = %self.peer_id,
+                    "Received initiate build request, stopping"
+                );
+
+                let authorized_msg = AuthorizedMsg::StopPublish(StopPublish::Granted);
+                let authorized = Authorized::new(
+                    &self.handler.ctx.builder_sk,
+                    authorization.clone(),
+                    authorized_msg,
+                );
+                let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
+                let peer_msg = PeerMsg::Other(p2p_msg.encode());
+                self.handler.ctx.peer_tx.send(peer_msg).ok();
+            }
+        }
+    }
+
+    // TODO: handle propogating this if we care
+    fn handle_stop_publish(&mut self, authorized_payload: AuthorizedPayload<StopPublish>) {
+        let mut state = self.handler.state.lock();
+        if state.payload_timestamp
+            > authorized_payload.authorized.authorization.timestamp + INNITIATE_BUILD_TIMOUT
+        {
+            tracing::warn!(
+                target: "flashblocks::p2p",
+                peer_id = %self.peer_id,
+                current_timestamp = state.payload_timestamp,
+                timestamp = authorized_payload.authorized.authorization.timestamp,
+                "Received initiate build response with outdated timestamp",
+            );
+            self.handler
+                .ctx
+                .network_handle
+                .reputation_change(self.peer_id, ReputationChangeKind::BadMessage);
+            return;
+        }
+
+        let Some(_authorization) = &state.authorization else {
+            // We have no intention to build
+            return;
+        };
+
+        match &state.innitiate_build_height {
+            Some(_innitiate_build_time) => {
+                // It's now safe to start building
+                state.innitiate_build_height = None;
+                tracing::info!(
+                    target: "flashblocks::p2p",
+                    peer_id = %self.peer_id,
+                    "Received initiate build response, starting build",
+                );
+            }
+            None => {
+                // We are already building, we should never have received this message
+                tracing::warn!(
+                    target: "flashblocks::p2p",
+                    peer_id = %self.peer_id,
+                    "Received initiate build response while already building",
+                );
+            }
+        }
+
+        tracing::info!(
+            target: "flashblocks::p2p",
+            peer_id = %self.peer_id,
+            "Received initiate build response, stopping"
+        );
     }
 }

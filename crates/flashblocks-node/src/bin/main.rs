@@ -1,6 +1,6 @@
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
 use clap::Parser;
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use flashblocks_node::FlashblocksNodeArgs;
 use flashblocks_p2p::protocol::handler::FlashblocksHandler;
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay};
@@ -49,6 +49,7 @@ pub fn main() {
             let custom_rlpx_handler = FlashblocksHandler::new(
                 handle.node.network.clone(),
                 VerifyingKey::default(),
+                SigningKey::default(),
                 inbound_tx,
                 publish_rx,
             );
