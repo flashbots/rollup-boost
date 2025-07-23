@@ -13,12 +13,14 @@ use crate::{FlashblocksP2PError, FlashblocksPayloadV1};
 pub struct Authorization {
     pub payload_id: PayloadId,
     pub timestamp: u64,
-    pub builder_pub: VerifyingKey,
+    pub builder_vk: VerifyingKey,
     pub authorizer_sig: Signature,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
-pub struct StartPublish;
+pub struct StartPublish {
+    pub block_number: u64,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub struct StopPublish;
@@ -72,7 +74,7 @@ impl Authorization {
         Self {
             payload_id,
             timestamp,
-            builder_pub,
+            builder_vk: builder_pub,
             authorizer_sig: sig,
         }
     }
@@ -80,7 +82,7 @@ impl Authorization {
     pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
         let mut msg = self.payload_id.0.to_vec();
         msg.extend_from_slice(&self.timestamp.to_le_bytes());
-        msg.extend_from_slice(self.builder_pub.as_bytes());
+        msg.extend_from_slice(self.builder_vk.as_bytes());
         let hash = blake3::hash(&msg);
         authorizer_pub
             .verify(hash.as_bytes(), &self.authorizer_sig)
@@ -91,7 +93,7 @@ impl Authorization {
 impl Encodable for Authorization {
     fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
         // pre-serialize the key & sig once so we can reuse the bytes & lengths
-        let pub_bytes = Bytes::copy_from_slice(self.builder_pub.as_bytes()); // 33 bytes
+        let pub_bytes = Bytes::copy_from_slice(self.builder_vk.as_bytes()); // 33 bytes
         let sig_bytes = Bytes::copy_from_slice(&self.authorizer_sig.to_bytes()); // 64 bytes
 
         let payload_len = self.payload_id.0.length()
@@ -116,7 +118,7 @@ impl Encodable for Authorization {
     }
 
     fn length(&self) -> usize {
-        let pub_bytes = Bytes::copy_from_slice(self.builder_pub.as_bytes());
+        let pub_bytes = Bytes::copy_from_slice(self.builder_vk.as_bytes());
         let sig_bytes = Bytes::copy_from_slice(&self.authorizer_sig.to_bytes());
 
         let payload_len = self.payload_id.0.length()
@@ -163,7 +165,7 @@ impl Decodable for Authorization {
         Ok(Self {
             payload_id,
             timestamp,
-            builder_pub,
+            builder_vk: builder_pub,
             authorizer_sig,
         })
     }
@@ -228,7 +230,7 @@ impl Authorized {
 
         let hash = blake3::hash(&encoded);
         self.authorization
-            .builder_pub
+            .builder_vk
             .verify(hash.as_bytes(), &self.actor_sig)
             .map_err(|_| FlashblocksP2PError::InvalidBuilderSig)
     }
@@ -351,33 +353,85 @@ impl AsRef<FlashblocksPayloadV1> for AuthorizedMsg {
     }
 }
 
+impl AsRef<StartPublish> for AuthorizedMsg {
+    fn as_ref(&self) -> &StartPublish {
+        match self {
+            Self::StartPublish(req) => req,
+            _ => panic!("not a StartPublish message"),
+        }
+    }
+}
+
+impl AsRef<StopPublish> for AuthorizedMsg {
+    fn as_ref(&self) -> &StopPublish {
+        match self {
+            Self::StopPublish(res) => res,
+            _ => panic!("not a StopPublish message"),
+        }
+    }
+}
+
+impl Encodable for StartPublish {
+    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
+        self.block_number.encode(out);
+    }
+
+    fn length(&self) -> usize {
+        self.block_number.length()
+    }
+}
+
+impl Decodable for StartPublish {
+    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
+        Ok(StartPublish {
+            block_number: u64::decode(buf)?,
+        })
+    }
+}
+
+impl Encodable for StopPublish {
+    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {}
+
+    fn length(&self) -> usize {
+        0
+    }
+}
+
+impl Decodable for StopPublish {
+    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
+        Ok(StopPublish)
+    }
+}
+
 impl Encodable for AuthorizedMsg {
     fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
         match self {
-            Self::FlashblocksPayloadV1(p) => {
+            Self::FlashblocksPayloadV1(payload) => {
                 Header {
                     list: true,
-                    payload_length: 1 + p.length(),
+                    payload_length: 1 + payload.length(),
                 }
                 .encode(out);
                 0u32.encode(out);
-                p.encode(out);
+                payload.encode(out);
             }
-            Self::StartPublish(_) => {
+            Self::StartPublish(start) => {
                 Header {
                     list: true,
-                    payload_length: 1,
+                    payload_length: 1 + start.length(),
                 }
                 .encode(out);
                 1u32.encode(out);
+                start.encode(out);
             }
-            Self::StopPublish(_) => {
+            Self::StopPublish(stop) => {
                 Header {
                     list: true,
-                    payload_length: 1,
+                    payload_length: 1 + stop.length(),
                 }
                 .encode(out);
                 2u32.encode(out);
+                stop.encode(out);
             }
         };
     }
@@ -410,8 +464,8 @@ impl Decodable for AuthorizedMsg {
         let tag = u8::decode(buf)?;
         let value = match tag {
             0 => Self::FlashblocksPayloadV1(FlashblocksPayloadV1::decode(buf)?),
-            1 => Self::StartPublish(StartPublish),
-            2 => Self::StopPublish(StopPublish),
+            1 => Self::StartPublish(StartPublish::decode(buf)?),
+            2 => Self::StopPublish(StopPublish::decode(buf)?),
             _ => return Err(alloy_rlp::Error::Custom("unknown tag")),
         };
 
@@ -569,7 +623,7 @@ mod tests {
     fn authorized_msg_variants_rlp_roundtrip() {
         let variants = [
             AuthorizedMsg::FlashblocksPayloadV1(sample_flashblocks_payload()),
-            AuthorizedMsg::StartPublish(StartPublish),
+            AuthorizedMsg::StartPublish(StartPublish { block_number: 100 }),
             AuthorizedMsg::StopPublish(StopPublish),
         ];
 

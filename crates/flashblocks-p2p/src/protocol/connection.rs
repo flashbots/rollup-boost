@@ -206,22 +206,24 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         if let Some(base) = &msg.base {
             if let Some((_, block_number)) = active_publishers
                 .iter_mut()
-                .find(|(publisher, _)| *publisher == authorization.builder_pub)
+                .find(|(publisher, _)| *publisher == authorization.builder_vk)
             {
                 // This is an existing publisher, we should update their block number
                 *block_number = base.block_number;
             } else {
                 // This is a new publisher, we should add them to the list of active publishers
-                active_publishers.push((authorization.builder_pub, base.block_number));
+                active_publishers.push((authorization.builder_vk, base.block_number));
             }
         }
 
         self.handler.ctx.publish(&mut state, authorized_payload);
     }
 
-    // TODO: handle propogating this if we care
+    // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
-        let state = self.handler.state.lock();
+        let mut state = self.handler.state.lock();
+        let authorization = &authorized_payload.authorized.authorization;
+        let msg = authorized_payload.msg();
 
         // Check if the request is expired for dos protection
         if state.payload_timestamp
@@ -241,46 +243,56 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             return;
         }
 
-        let Some(authorization) = &state.authorization else {
-            // We have no intention to build, so we ignore this request
-            return;
-        };
+        match &mut state.publishing_status {
+            PublishingStatus::Publishing { authorization } => {
+                tracing::info!(
+                    target: "flashblocks::p2p",
+                    peer_id = %self.peer_id,
+                    "Received StartPublish over p2p, stopping publishing flashblocks"
+                );
 
-        match &state.innitiate_build_height {
-            Some(_) => {
+                let authorized = Authorized::new(
+                    &self.handler.ctx.builder_sk,
+                    authorization.clone(),
+                    StopPublish.into(),
+                );
+                let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
+                let peer_msg = PeerMsg::Other(p2p_msg.encode());
+                self.handler.ctx.peer_tx.send(peer_msg).ok();
+
+                state.publishing_status = PublishingStatus::NotPublishing {
+                    active_publishers: vec![(authorization.builder_vk, msg.block_number)],
+                };
+            }
+            PublishingStatus::WaitingToPublish {
+                active_publishers, ..
+            } => {
                 // We are currently waiting to build, but someone else is requesting to build
                 // This could happen during a double failover.
-                // We should not give permission to build unless we're the builder.
                 // We have a potential race condition here so we'll just wait for the
                 // build request override to kick in next block.
                 tracing::warn!(
                     target: "flashblocks::p2p",
                     peer_id = %self.peer_id,
-                    "received initiate build request while already waiting to build",
-                );
-            }
-            None => {
-                // We are currently the builder
-                tracing::info!(
-                    target: "flashblocks::p2p",
-                    peer_id = %self.peer_id,
-                    "Received initiate build request, stopping"
+                    "Received StartPublish over p2p while already waiting to publish, ignoring",
                 );
 
-                let authorized_msg = AuthorizedMsg::StopPublish(StopPublish::Granted);
-                let authorized = Authorized::new(
-                    &self.handler.ctx.builder_sk,
-                    authorization.clone(),
-                    authorized_msg,
-                );
-                let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
-                let peer_msg = PeerMsg::Other(p2p_msg.encode());
-                self.handler.ctx.peer_tx.send(peer_msg).ok();
+                if let Some((_, block_number)) = active_publishers
+                    .iter_mut()
+                    .find(|(publisher, _)| *publisher == authorization.builder_vk)
+                {
+                    // This is an existing publisher, we should update their block number
+                    *block_number = msg.block_number;
+                } else {
+                    // This is a new publisher, we should add them to the list of active publishers
+                    active_publishers.push((authorization.builder_vk, msg.block_number));
+                }
             }
+            PublishingStatus::NotPublishing { active_publishers } => {}
         }
     }
 
-    // TODO: handle propogating this if we care
+    // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_stop_publish(&mut self, authorized_payload: AuthorizedPayload<StopPublish>) {
         let mut state = self.handler.state.lock();
         if state.payload_timestamp

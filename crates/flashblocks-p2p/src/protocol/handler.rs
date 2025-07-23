@@ -226,7 +226,9 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
             }
             PublishingStatus::NotPublishing { active_publishers } => {
                 // Send an authorized message to the network
-                let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
+                let authorized_msg = AuthorizedMsg::StartPublish(StartPublish {
+                    block_number: new_block_number,
+                });
                 let authorized_payload =
                     Authorized::new(&self.ctx.builder_sk, new_authorization, authorized_msg);
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
