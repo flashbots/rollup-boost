@@ -376,7 +376,7 @@ At its most abstract level within this specification, the Flashtestation Registr
 
 1. **Storing addresses** that have been validated through attestation
 2. **Associating addresses** with their specific workload identity
-3. **Storing attestation quotes** for future verification and revocation, as well as the attested data
+3. **Storing attestation quotes** for future verification and revocation, as well as the extendedRegistrationData
 4. **Providing efficient lookup** capabilities to verify if an address is authorized for a particular workloadID
 
 The registry operates on these key abstractions:
@@ -404,7 +404,7 @@ The Flashtestation Registry maintains a 1:1 mapping between these entities:
 
 The Flashtestation Registry provides these core operations:
 
-#### 1. Lookup
+#### 1. Lookup and quote retrieval
 
 The most frequent operation is checking if an address is valid for a specific workload:
 
@@ -506,11 +506,11 @@ The Policy layer provides these operations:
 
 ```
 // Check if an address is allowed under any workload in a policy
-function isAllowedPolicy(policyId, teeAddress) → boolean
+function isAllowedPolicy(teeAddress) → boolean
 
 // Governance operations
-function addWorkloadToPolicy(policyId, workloadId)
-function removeWorkloadFromPolicy(policyId, workloadId)
+function addWorkloadToPolicy(workloadId)
+function removeWorkloadFromPolicy(workloadId)
 function setWorkloadMetadata(workloadId, commitHash, sourceLocators)
 
 // View operations
@@ -608,7 +608,7 @@ When a contract needs to verify if an operation is authorized:
 
 1. The contract checks if the sender is allowed under a specific policy:
    ```
-   if (policy.isAllowedPolicy(POLICY_ID, msg.sender)) {
+   if (policy.isAllowedPolicy(msg.sender)) {
      // Permit the operation
    }
    ```
@@ -770,7 +770,7 @@ The Flashtestations protocol can be extended to provide cryptographic guarantees
 The block builder TEE proof system works through a final transaction appended to each block. This transaction:
 
 1. Calls a designated smart contract method that accepts a block content hash
-2. Verifies the caller's authorization using `isAllowedPolicy(block_builder_policy_id, msg.sender)`
+2. Verifies the caller's authorization using `isAllowedPolicy(msg.sender)`
 
 The key insight is that the required private key to sign this transaction is protected within the TEE environment. Thus, only a genuine TEE-based block builder with the proper attestation can successfully execute this transaction.
 
@@ -814,7 +814,7 @@ The smart contract that verifies block builder TEE proofs includes a `version` p
 function verifyBlockBuilderProof(uint8 version, bytes32 blockContentHash) external {
     // Check if the caller is an authorized TEE block builder
     require(
-        IPolicyRegistry(POLICY_REGISTRY_CONTRACT).isAllowedPolicy(BLOCK_BUILDER_POLICY_ID, msg.sender),
+        IPolicyRegistry(POLICY_REGISTRY_CONTRACT).isAllowedPolicy(msg.sender),
         "Unauthorized block builder"
     );
     
