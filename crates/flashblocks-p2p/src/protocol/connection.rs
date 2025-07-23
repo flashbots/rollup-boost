@@ -7,8 +7,8 @@ use reth::payload::PayloadId;
 use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
 use reth_network::types::ReputationChangeKind;
 use rollup_boost::{
-    Authorized, AuthorizedMsg, AuthorizedPayload, FlashblocksP2PMsg, FlashblocksPayloadV1,
-    StartPublish, StopPublish,
+    Authorized, AuthorizedPayload, FlashblocksP2PMsg, FlashblocksPayloadV1, StartPublish,
+    StopPublish,
 };
 use std::{
     pin::Pin,
@@ -243,7 +243,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             return;
         }
 
-        match &mut state.publishing_status {
+        let active_publishers = match &mut state.publishing_status {
             PublishingStatus::Publishing { authorization } => {
                 tracing::info!(
                     target: "flashblocks::p2p",
@@ -253,7 +253,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
 
                 let authorized = Authorized::new(
                     &self.handler.ctx.builder_sk,
-                    authorization.clone(),
+                    *authorization,
                     StopPublish.into(),
                 );
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
@@ -263,6 +263,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 state.publishing_status = PublishingStatus::NotPublishing {
                     active_publishers: vec![(authorization.builder_vk, msg.block_number)],
                 };
+
+                return;
             }
             PublishingStatus::WaitingToPublish {
                 active_publishers, ..
@@ -276,19 +278,20 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                     peer_id = %self.peer_id,
                     "Received StartPublish over p2p while already waiting to publish, ignoring",
                 );
-
-                if let Some((_, block_number)) = active_publishers
-                    .iter_mut()
-                    .find(|(publisher, _)| *publisher == authorization.builder_vk)
-                {
-                    // This is an existing publisher, we should update their block number
-                    *block_number = msg.block_number;
-                } else {
-                    // This is a new publisher, we should add them to the list of active publishers
-                    active_publishers.push((authorization.builder_vk, msg.block_number));
-                }
+                active_publishers
             }
-            PublishingStatus::NotPublishing { active_publishers } => {}
+            PublishingStatus::NotPublishing { active_publishers } => active_publishers,
+        };
+
+        if let Some((_, block_number)) = active_publishers
+            .iter_mut()
+            .find(|(publisher, _)| *publisher == authorization.builder_vk)
+        {
+            // This is an existing publisher, we should update their block number
+            *block_number = msg.block_number;
+        } else {
+            // This is a new publisher, we should add them to the list of active publishers
+            active_publishers.push((authorization.builder_vk, msg.block_number));
         }
     }
 
@@ -312,35 +315,68 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             return;
         }
 
-        let Some(_authorization) = &state.authorization else {
-            // We have no intention to build
-            return;
-        };
-
-        match &state.innitiate_build_height {
-            Some(_innitiate_build_time) => {
-                // It's now safe to start building
-                state.innitiate_build_height = None;
-                tracing::info!(
-                    target: "flashblocks::p2p",
-                    peer_id = %self.peer_id,
-                    "Received initiate build response, starting build",
-                );
-            }
-            None => {
-                // We are already building, we should never have received this message
+        match &mut state.publishing_status {
+            PublishingStatus::Publishing { .. } => {
                 tracing::warn!(
                     target: "flashblocks::p2p",
                     peer_id = %self.peer_id,
-                    "Received initiate build response while already building",
+                    "Received StopPublish over p2p while we are the publisher"
                 );
             }
-        }
+            PublishingStatus::WaitingToPublish {
+                active_publishers,
+                authorization,
+                ..
+            } => {
+                // We are currently waiting to build, but someone else is requesting to build
+                // This could happen during a double failover.
+                // We have a potential race condition here so we'll just wait for the
+                // build request override to kick in next block.
+                tracing::info!(
+                    target: "flashblocks::p2p",
+                    peer_id = %self.peer_id,
+                    "Received StopPublish over p2p while waiting to publish",
+                );
 
-        tracing::info!(
-            target: "flashblocks::p2p",
-            peer_id = %self.peer_id,
-            "Received initiate build response, stopping"
-        );
+                // Remove the publisher from the list of active publishers
+                if let Some(index) = active_publishers.iter().position(|(publisher, _)| {
+                    *publisher == authorized_payload.authorized.authorization.builder_vk
+                }) {
+                    active_publishers.remove(index);
+                } else {
+                    tracing::warn!(
+                        target: "flashblocks::p2p",
+                        peer_id = %self.peer_id,
+                        "Received StopPublish for unknown publisher",
+                    );
+                }
+
+                if active_publishers.is_empty() {
+                    // If there are no active publishers left, we should stop waiting to publish
+                    tracing::info!(
+                        target: "flashblocks::p2p",
+                        peer_id = %self.peer_id,
+                        "starting to publish"
+                    );
+                    state.publishing_status = PublishingStatus::Publishing {
+                        authorization: *authorization,
+                    };
+                }
+            }
+            PublishingStatus::NotPublishing { active_publishers } => {
+                // Remove the publisher from the list of active publishers
+                if let Some(index) = active_publishers.iter().position(|(publisher, _)| {
+                    *publisher == authorized_payload.authorized.authorization.builder_vk
+                }) {
+                    active_publishers.remove(index);
+                } else {
+                    tracing::warn!(
+                        target: "flashblocks::p2p",
+                        peer_id = %self.peer_id,
+                        "Received StopPublish for unknown publisher",
+                    );
+                }
+            }
+        }
     }
 }

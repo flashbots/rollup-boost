@@ -275,11 +275,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                     %block_height,
                     "stopping to publish flashblocks",
                 );
-                let authorized_payload = Authorized::new(
-                    &self.ctx.builder_sk,
-                    authorization.clone(),
-                    StopPublish.into(),
-                );
+                let authorized_payload =
+                    Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                 let peer_msg = PeerMsg::Other(p2p_msg.encode());
                 self.ctx.peer_tx.send(peer_msg).ok();
@@ -298,11 +295,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                     %block_height,
                     "aborting wait to publish flashblocks",
                 );
-                let authorized_payload = Authorized::new(
-                    &self.ctx.builder_sk,
-                    authorization.clone(),
-                    StopPublish.into(),
-                );
+                let authorized_payload =
+                    Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                 let peer_msg = PeerMsg::Other(p2p_msg.encode());
                 self.ctx.peer_tx.send(peer_msg).ok();

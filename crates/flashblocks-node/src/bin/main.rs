@@ -26,7 +26,6 @@ pub fn main() {
             let rollup_args = args.rollup_args;
             let chain_spec = builder.config().chain.clone();
             let (inbound_tx, inbound_rx) = broadcast::channel(100);
-            let (_publish_tx, publish_rx) = broadcast::channel(100);
 
             let flashblocks_overlay = FlashblocksOverlay::new(chain_spec, inbound_rx);
             flashblocks_overlay.clone().start()?;
@@ -49,9 +48,8 @@ pub fn main() {
             let custom_rlpx_handler = FlashblocksHandler::new(
                 handle.node.network.clone(),
                 VerifyingKey::default(),
-                SigningKey::default(),
+                SigningKey::from_bytes(&[0u8; 32]),
                 inbound_tx,
-                publish_rx,
             );
 
             handle
