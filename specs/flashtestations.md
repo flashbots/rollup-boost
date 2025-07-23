@@ -196,7 +196,7 @@ REPORTDATA[52:64]: Unused
 
 **`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived in the policy contract as keccak256(bytes.concat(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID || TDAttributes || XFAM)).
 
-**`appData`**: ABI-encoded address of the TEE workload that is cryptographically bound to the attestation quote through the `REPORTDATA` field.
+**`extendedRegistrationData`**: ABI-encoded application-specific attested data that is cryptographically bound to the attestation quote through the `REPORTDATA` field. Currently empty, reserved for future use. The registration data can include for example runtime configuration of the VM, identity of the VM operator, public IP of the instance.
 
 **`policyId`**: An identifier that maps to a list of approved `workloadId`s, enabling contracts to reference policies rather than specific workloads.
 
@@ -295,9 +295,9 @@ class RegisteredTEE():
 **Field descriptions:**
 
 - `parsedReportBody`: Parsed form of the quote for use in generating workloadId
-- `rawQuote`: The raw quote from the TEE device, which is stored to allow     for future quote quote invalidation
-- `appData`: The application-specific attested data (pubkey of the TEE)
-- `isValid`: True upon first registration, and false after a quote invalida    tion
+- `rawQuote`: The raw quote from the TEE device, which is stored to allow for future quote quote invalidation
+- `extendedRegistrationData`: The application-specific attested data, reserved for future upgrades
+- `isValid`: True upon first registration, and false after a quote invalidation
 
 ### Extended Registration Data
 
