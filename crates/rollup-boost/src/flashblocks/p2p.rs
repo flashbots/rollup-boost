@@ -438,9 +438,9 @@ impl Encodable for AuthorizedMsg {
 
     fn length(&self) -> usize {
         let body_len = match self {
-            Self::FlashblocksPayloadV1(p) => 1 + p.length(),
-            Self::StartPublish(_) => 1,
-            Self::StopPublish(_) => 1,
+            Self::FlashblocksPayloadV1(payload) => 1 + payload.length(),
+            Self::StartPublish(start) => 1 + start.length(),
+            Self::StopPublish(stop) => 1 + stop.length(),
         };
 
         Header {

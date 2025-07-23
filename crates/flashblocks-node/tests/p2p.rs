@@ -39,8 +39,8 @@ type Network = NetworkHandle<
 >;
 
 pub struct NodeContext {
+    p2p_handle: FlashblocksHandler<Network>,
     flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    publish_tx: broadcast::Sender<AuthorizedPayload<FlashblocksPayloadV1>>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
@@ -59,10 +59,10 @@ impl NodeContext {
 
 async fn setup_node(
     exec: TaskExecutor,
-    authorizer: SigningKey,
+    authorizer_sk: SigningKey,
+    builder_sk: SigningKey,
     trusted_peer: Option<(PeerId, SocketAddr)>,
 ) -> eyre::Result<NodeContext> {
-    let (publish_tx, publish_rx) = broadcast::channel(100);
     let (inbound_tx, inbound_rx) = broadcast::channel(100);
 
     let genesis: Genesis = serde_json::from_str(include_str!("assets/genesis.json")).unwrap();
@@ -113,15 +113,15 @@ async fn setup_node(
         .launch()
         .await?;
 
-    let custom_rlpx_handler = FlashblocksHandler::new(
+    let p2p_handle = FlashblocksHandler::new(
         node.network.clone(),
-        authorizer.verifying_key(),
+        authorizer_sk.verifying_key(),
+        builder_sk,
         inbound_tx.clone(),
-        publish_rx,
     );
 
     node.network
-        .add_rlpx_sub_protocol(custom_rlpx_handler.into_rlpx_sub_protocol());
+        .add_rlpx_sub_protocol(p2p_handle.clone().into_rlpx_sub_protocol());
 
     if let Some((peer_id, addr)) = trusted_peer {
         // If a trusted peer is provided, add it to the network
@@ -137,8 +137,8 @@ async fn setup_node(
     let local_node_record = network_handle.local_node_record();
 
     Ok(NodeContext {
+        p2p_handle,
         flashblocks_tx: inbound_tx,
-        publish_tx,
         local_node_record,
         http_api_addr,
         _node_exit_future: node_exit_future,
@@ -293,13 +293,14 @@ async fn test_peering() -> eyre::Result<()> {
     let tasks = TaskManager::current();
     let exec = tasks.executor();
     // let exec = TaskExecutor::current();
-    let node_0 = setup_node(exec, authorizer.clone(), None).await?;
+    let node_0 = setup_node(exec, authorizer.clone(), builder.clone(), None).await?;
     let provider_0 = node_0.provider().await?;
     let enr_0 = node_0.local_node_record;
 
     let node_1 = setup_node(
         TaskExecutor::current(),
         authorizer.clone(),
+        builder.clone(),
         Some((enr_0.id, enr_0.tcp_addr())),
     )
     .await?;
@@ -329,7 +330,12 @@ async fn test_peering() -> eyre::Result<()> {
     );
     let msg = payload_0.clone();
     let authorized = AuthorizedPayload::new(&builder, authorization, msg);
-    node_1.publish_tx.send(authorized)?;
+    node_1.p2p_handle.start_publishing(
+        authorization,
+        payload_0.base.unwrap().block_number,
+        payload_0.payload_id,
+    );
+    node_1.p2p_handle.publish_new(authorized).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
     let peers = node_0.network_handle.get_all_peers().await?;
     let peer_1 = &peers[0].remote_id;
@@ -355,7 +361,7 @@ async fn test_peering() -> eyre::Result<()> {
         builder.verifying_key(),
     );
     let authorized = AuthorizedPayload::new(&builder, authorization, payload_1.clone());
-    node_1.publish_tx.send(authorized)?;
+    node_1.p2p_handle.publish_new(authorized).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
