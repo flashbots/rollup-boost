@@ -79,13 +79,13 @@ impl Default for PublishingStatus {
 #[derive(Debug, Default)]
 pub struct FlashblocksP2PState {
     pub publishing_status: PublishingStatus,
-    /// Most recent payload id.
-    pub payload_id: PayloadId,
     /// Block number of the most recent flashblocks payload.
     /// We only recieve the block bumber from `ExecutionPayloadBaseV1`
     /// so this may be set to `None` in the even that we receive the flashblocks payloads
     /// out of order.
     pub block_number: Option<u64>,
+    /// Most recent payload id.
+    pub payload_id: PayloadId,
     /// Timestamp of the most recent flashblocks payload.
     pub payload_timestamp: u64,
     /// The index of the next flashblock to emit over the flashblocks_stream.
@@ -334,9 +334,10 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
 
         // Check if this is a globally new payload
         if authorization.timestamp > state.payload_timestamp {
-            state.flashblock_index = 0;
-            state.payload_timestamp = authorization.timestamp;
+            state.block_number = payload.base.as_ref().map(|b| b.block_number);
             state.payload_id = authorization.payload_id;
+            state.payload_timestamp = authorization.timestamp;
+            state.flashblock_index = 0;
             state.flashblocks.fill(None);
         }
 

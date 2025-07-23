@@ -32,6 +32,7 @@ pub enum FlashblocksP2PMsg {
     Authorized(Authorized) = 0x00,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub enum AuthorizedMsg {
@@ -390,7 +391,7 @@ impl Decodable for StartPublish {
 }
 
 impl Encodable for StopPublish {
-    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {}
+    fn encode(&self, _out: &mut dyn alloy_rlp::BufMut) {}
 
     fn length(&self) -> usize {
         0
@@ -398,7 +399,7 @@ impl Encodable for StopPublish {
 }
 
 impl Decodable for StopPublish {
-    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
+    fn decode(_buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
         Ok(StopPublish)
     }
 }
@@ -553,7 +554,7 @@ mod tests {
             builder_vk,
         );
 
-        let encoded = encode(&auth);
+        let encoded = encode(auth);
         assert_eq!(encoded.len(), auth.length(), "length impl correct");
 
         let mut slice = encoded.as_ref();

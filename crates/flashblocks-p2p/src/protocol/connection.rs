@@ -144,6 +144,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         let authorization = &authorized_payload.authorized.authorization;
         let msg = authorized_payload.msg();
 
+        // check if this is an old payload
         if authorization.timestamp < state.payload_timestamp {
             tracing::warn!(
                 target: "flashblocks::p2p",
@@ -203,6 +204,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             PublishingStatus::NotPublishing { active_publishers } => active_publishers,
         };
 
+        // Update the list of active publishers
         if let Some(base) = &msg.base {
             if let Some((_, block_number)) = active_publishers
                 .iter_mut()
