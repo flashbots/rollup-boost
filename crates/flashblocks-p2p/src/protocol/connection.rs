@@ -256,17 +256,15 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         };
 
         // Update the list of active publishers
-        if let Some(base) = &msg.base {
-            if let Some((_, block_number)) = active_publishers
-                .iter_mut()
-                .find(|(publisher, _)| *publisher == authorization.builder_vk)
-            {
-                // This is an existing publisher, we should update their block number
-                *block_number = base.block_number;
-            } else {
-                // This is a new publisher, we should add them to the list of active publishers
-                active_publishers.push((authorization.builder_vk, base.block_number));
-            }
+        if let Some((_, timestamp)) = active_publishers
+            .iter_mut()
+            .find(|(publisher, _)| *publisher == authorization.builder_vk)
+        {
+            // This is an existing publisher, we should update their block number
+            *timestamp = authorization.timestamp;
+        } else {
+            // This is a new publisher, we should add them to the list of active publishers
+            active_publishers.push((authorization.builder_vk, authorization.timestamp));
         }
 
         self.handler.ctx.publish(&mut state, authorized_payload);
@@ -276,7 +274,6 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
         let mut state = self.handler.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
-        let msg = authorized_payload.msg();
 
         // Check if the request is expired for dos protection.
         // It's important to ensure that this `StartPublish` request
@@ -297,7 +294,9 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         }
 
         let active_publishers = match &mut state.publishing_status {
-            PublishingStatus::Publishing { authorization } => {
+            PublishingStatus::Publishing {
+                authorization: our_authorization,
+            } => {
                 tracing::info!(
                     target: "flashblocks::p2p",
                     peer_id = %self.peer_id,
@@ -306,7 +305,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
 
                 let authorized = Authorized::new(
                     &self.handler.ctx.builder_sk,
-                    *authorization,
+                    *our_authorization,
                     StopPublish.into(),
                 );
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
@@ -314,7 +313,10 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 self.handler.ctx.peer_tx.send(peer_msg).ok();
 
                 state.publishing_status = PublishingStatus::NotPublishing {
-                    active_publishers: vec![(authorization.builder_vk, msg.block_number)],
+                    active_publishers: vec![(
+                        our_authorization.builder_vk,
+                        authorization.timestamp,
+                    )],
                 };
 
                 return;
@@ -336,15 +338,15 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             PublishingStatus::NotPublishing { active_publishers } => active_publishers,
         };
 
-        if let Some((_, block_number)) = active_publishers
+        if let Some((_, timestamp)) = active_publishers
             .iter_mut()
             .find(|(publisher, _)| *publisher == authorization.builder_vk)
         {
             // This is an existing publisher, we should update their block number
-            *block_number = msg.block_number;
+            *timestamp = authorization.timestamp;
         } else {
             // This is a new publisher, we should add them to the list of active publishers
-            active_publishers.push((authorization.builder_vk, msg.block_number));
+            active_publishers.push((authorization.builder_vk, authorization.timestamp));
         }
     }
 

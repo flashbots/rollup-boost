@@ -111,14 +111,10 @@ Every P2P message in the Flashblocks protocol is sent as an `AuthorizedMessage`.
 A small message indicating the intention to begin publishing flashblocks for a new L2 block.
 
 ```rust
-pub struct StartPublish {
-    pub block_number: u64,
-}
+pub struct StartPublish;
 ```
 
-* `block_number`: The L2 block number that the builder is starting to construct/publish. This allows peers (and other potential builders) to coordinate and avoid conflicts (only one builder should publish for a given block number at a time).
-
-The `StartPublish` message is always sent wrapped in an `AuthorizedMessage` (with the appropriate authorization and signatures). It serves as an announcement to the network that *“Builder X is about to start building block N.”*
+The `StartPublish` message is always sent wrapped in an `AuthorizedMessage` (with the appropriate authorization and signatures). It serves as an announcement to the network that *“Builder X is about to start publishing”*
 
 ### **`StopPublish`**
 

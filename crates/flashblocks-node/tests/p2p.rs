@@ -356,8 +356,6 @@ async fn test_double_failover() -> eyre::Result<()> {
         AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization_0, msg);
     nodes[0].p2p_handle.start_publishing(
         authorization_0,
-        payload_0.base.unwrap().block_number,
-        payload_0.payload_id,
     );
     nodes[0].p2p_handle.publish_new(authorized_0).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -376,7 +374,7 @@ async fn test_double_failover() -> eyre::Result<()> {
     );
     nodes[1]
         .p2p_handle
-        .start_publishing(authorization_1, 0, payload_1.payload_id);
+        .start_publishing(authorization_1);
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     nodes[1].p2p_handle.publish_new(authorized_1).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -397,7 +395,7 @@ async fn test_double_failover() -> eyre::Result<()> {
     );
     nodes[2]
         .p2p_handle
-        .start_publishing(authorization_2, 0, payload_2.payload_id);
+        .start_publishing(authorization_2);
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     nodes[2].p2p_handle.publish_new(authorized_2).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -457,8 +455,6 @@ async fn test_force_race_condition() -> eyre::Result<()> {
         AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization, msg);
     nodes[0].p2p_handle.start_publishing(
         authorization,
-        payload_0.base.unwrap().block_number,
-        payload_0.payload_id,
     );
     nodes[0].p2p_handle.publish_new(authorized).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -533,13 +529,9 @@ async fn test_force_race_condition() -> eyre::Result<()> {
     );
     nodes[1].p2p_handle.start_publishing(
         authorization_1,
-        payload_2.base.clone().unwrap().block_number,
-        payload_2.payload_id,
     );
     nodes[2].p2p_handle.start_publishing(
         authorization_2,
-        payload_2.base.clone().unwrap().block_number,
-        payload_2.payload_id,
     );
     // Wait for clearance to go through
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -554,7 +546,7 @@ async fn test_force_race_condition() -> eyre::Result<()> {
 
     nodes[2]
         .p2p_handle
-        .stop_publishing(payload_2.base.unwrap().block_number);
+        .stop_publishing();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     nodes[1].p2p_handle.publish_new(authorized_1)?;

@@ -27,16 +27,9 @@ pub struct Authorization {
     pub authorizer_sig: Signature,
 }
 
-/// A message requesting to start publishing flashblock payloads at a specific block number.
-///
-/// This message is sent to indicate that the sender wants to begin publishing flashblock
-/// payloads starting from the specified block number.
+/// A message requesting to start publishing flashblock payloads
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
-pub struct StartPublish {
-    /// The block number from which to start publishing flashblock payloads
-    pub block_number: u64,
-}
-
+pub struct StartPublish;
 /// A message requesting to stop publishing flashblock payloads.
 ///
 /// This is a simple marker message with no fields that indicates the sender
@@ -498,20 +491,16 @@ impl AsRef<StopPublish> for AuthorizedMsg {
 }
 
 impl Encodable for StartPublish {
-    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
-        self.block_number.encode(out);
-    }
+    fn encode(&self, _out: &mut dyn alloy_rlp::BufMut) {}
 
     fn length(&self) -> usize {
-        self.block_number.length()
+        0
     }
 }
 
 impl Decodable for StartPublish {
-    fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
-        Ok(StartPublish {
-            block_number: u64::decode(buf)?,
-        })
+    fn decode(_buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
+        Ok(StartPublish)
     }
 }
 
@@ -749,7 +738,7 @@ mod tests {
     fn authorized_msg_variants_rlp_roundtrip() {
         let variants = [
             AuthorizedMsg::FlashblocksPayloadV1(sample_flashblocks_payload()),
-            AuthorizedMsg::StartPublish(StartPublish { block_number: 100 }),
+            AuthorizedMsg::StartPublish(StartPublish),
             AuthorizedMsg::StopPublish(StopPublish),
         ];
 

@@ -31,8 +31,8 @@ const MAX_FRAME: usize = 1 << 24; // 16 MiB
 /// this is just a sanity check to prevent excessive memory usage.
 const MAX_FLASHBLOCK_INDEX: usize = 100;
 
-/// The maximum number of blocks we will wait for a previous publisher to stop
-const MAX_PUBLISH_WAIT_BLOCKS: u64 = 1;
+/// The maximum number of seconds we will wait for a previous publisher to stop
+const MAX_PUBLISH_WAIT_SEC: u64 = 2;
 
 /// Trait bound for network handles that can be used with the flashblocks P2P protocol.
 ///
@@ -101,11 +101,6 @@ impl Default for PublishingStatus {
 pub struct FlashblocksP2PState {
     /// Current publishing status indicating whether we're publishing, waiting, or not publishing.
     pub publishing_status: PublishingStatus,
-    /// Block number of the most recent flashblocks payload.
-    /// We only receive the block number from `ExecutionPayloadBaseV1`
-    /// so this may be set to `None` in the event that we receive the flashblocks payloads
-    /// out of order.
-    pub block_number: Option<u64>,
     /// Most recent payload ID for the current block being processed.
     pub payload_id: PayloadId,
     /// Timestamp of the most recent flashblocks payload.
@@ -258,18 +253,11 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
     ///
     /// # Arguments
     /// * `new_authorization` - Authorization token signed by rollup-boost for this block
-    /// * `new_block_number` - L2 block number being built
-    /// * `new_payload_id` - Unique identifier for this block's payload
     ///
     /// # Note
     /// Calling this method does not guarantee immediate publishing clearance.
     /// The node may need to wait for other publishers to stop first.
-    pub fn start_publishing(
-        &self,
-        new_authorization: Authorization,
-        new_block_number: u64,
-        new_payload_id: PayloadId,
-    ) {
+    pub fn start_publishing(&self, new_authorization: Authorization) {
         let mut state = self.state.lock();
         match &mut state.publishing_status {
             PublishingStatus::Publishing { authorization } => {
@@ -282,18 +270,18 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
             } => {
                 let most_recent_publisher = active_publishers
                     .iter()
-                    .map(|(_, block_number)| *block_number)
+                    .map(|(_, timestamp)| *timestamp)
                     .max()
                     .unwrap_or_default();
                 // We are waiting to publish, so we update the authorization and
                 // the block number at which we requested to start publishing.
-                if new_block_number >= most_recent_publisher + MAX_PUBLISH_WAIT_BLOCKS {
+                if new_authorization.timestamp >= most_recent_publisher + MAX_PUBLISH_WAIT_SEC {
                     // If the block number is greater than the one we requested to start publishing,
                     // we will update it.
                     tracing::warn!(
                         target: "flashblocks::p2p",
-                        %new_payload_id,
-                        %new_block_number,
+                        payload_id = %new_authorization.payload_id,
+                        timestamp = %new_authorization.timestamp,
                         "waiting to publish timed out, starting to publish",
                     );
                     state.publishing_status = PublishingStatus::Publishing {
@@ -306,9 +294,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
             }
             PublishingStatus::NotPublishing { active_publishers } => {
                 // Send an authorized `StartPublish` message to the network
-                let authorized_msg = AuthorizedMsg::StartPublish(StartPublish {
-                    block_number: new_block_number,
-                });
+                let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
                 let authorized_payload =
                     Authorized::new(&self.ctx.builder_sk, new_authorization, authorized_msg);
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
@@ -319,7 +305,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                     // If we have no previous publishers, we can start publishing immediately.
                     tracing::info!(
                         target: "flashblocks::p2p",
-                        payload_id = %new_payload_id,
+                        payload_id = %new_authorization.payload_id,
                         "starting to publish flashblocks",
                     );
                     state.publishing_status = PublishingStatus::Publishing {
@@ -329,7 +315,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                     // If we have previous publishers, we will wait for them to stop.
                     tracing::info!(
                         target: "flashblocks::p2p",
-                        payload_id = %new_payload_id,
+                        payload_id = %new_authorization.payload_id,
                         "waiting to publish flashblocks",
                     );
                     state.publishing_status = PublishingStatus::WaitingToPublish {
@@ -346,17 +332,15 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
     /// This method broadcasts a StopPublish message to all connected peers and transitions
     /// the node to a non-publishing state. It should be called when receiving a
     /// ForkChoiceUpdated without payload attributes or without an Authorization token.
-    ///
-    /// # Arguments
-    /// * `block_height` - The L2 block number at which publishing is being stopped
-    pub fn stop_publishing(&self, block_height: u64) {
+    pub fn stop_publishing(&self) {
         let mut state = self.state.lock();
         match &mut state.publishing_status {
             PublishingStatus::Publishing { authorization } => {
                 // We are currently publishing, so we send a stop message.
                 tracing::info!(
                     target: "flashblocks::p2p",
-                    %block_height,
+                    payload_id = %authorization.payload_id,
+                    timestamp = %authorization.timestamp,
                     "stopping to publish flashblocks",
                 );
                 let authorized_payload =
@@ -376,7 +360,8 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                 // We are waiting to publish, so we just update the status.
                 tracing::info!(
                     target: "flashblocks::p2p",
-                    %block_height,
+                    payload_id = %authorization.payload_id,
+                    timestamp = %authorization.timestamp,
                     "aborting wait to publish flashblocks",
                 );
                 let authorized_payload =
@@ -431,7 +416,6 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
 
         // Check if this is a globally new payload
         if authorization.timestamp > state.payload_timestamp {
-            state.block_number = payload.base.as_ref().map(|b| b.block_number);
             state.payload_id = authorization.payload_id;
             state.payload_timestamp = authorization.timestamp;
             state.flashblock_index = 0;
