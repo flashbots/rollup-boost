@@ -15,12 +15,11 @@
     - [**`TDReport`**](#tdreport)
     - [**`DCAPEndorsements`**](#dcapendorsements)
     - [**`RegisteredTEE`**](#registeredtee)
-    - [**`WorkloadID`**](#workloadid)
+    - [Extended Registration Data](#extended-registration-data)
   - [System Architecture](#system-architecture)
   - [TEE Attestation Mechanism](#tee-attestation-mechanism)
     - [Intel TDX DCAP Attestation](#intel-tdx-dcap-attestation)
     - [Onchain DCAP Attestation](#onchain-dcap-attestation)
-    - [Workload Identity Derivation](#workload-identity-derivation)
   - [Flashtestation Registry](#flashtestation-registry)
     - [Core Concepts](#core-concepts)
     - [Key Relationship Model](#key-relationship-model)
@@ -107,38 +106,38 @@ To achieve this, Flashtestations aims for the following objectives:
 Within the Flashtestations specification, the protocol architecture consists of four key components that work together to provide secure onchain TEE verification:
 
 ```
-┌─────────────────────┐                  ┌─────────────────────┐
-│ TDX VM              │                  │ Onchain Verifier    │
-│                     │  Attestation     │                     │
-│ ┌─────────────────┐ │  Quote           │ ┌─────────────────┐ │
-│ │ TEE Workload    │ │ ───────────────► │ │ DCAP Attestation│ │
-│ │                 │ │                  │ │ Verifier        │ │
-│ │ (workloadId)    │ │                  │ │                 │ │
-│ └─────────────────┘ │                  │ └────────┬────────┘ │
-│                     │                  │          │          │
-└─────────────────────┘                  │          ▼          │
-                                         │ ┌─────────────────┐ │
-┌─────────────────────┐                  │ │ Intel           │ │
-│ Consumer Contract   │                  │ │ Endorsements    │ │
-│                     │                  │ │                 │ │
-│ ┌─────────────────┐ │                  │ └────────┬────────┘ │
-│ │ Operation       │ │                  │          │          │
-│ │ Authorization   │ │                  │          ▼          │
-│ └─────────────────┘ │                  │ ┌─────────────────┐ │
-│         │           │                  │ │ Registration    │ │
-└─────────┼───────────┘                  │ │ Logic           │ │
-          │                              │ └────────┬────────┘ │
-          │                              └──────────┼──────────┘
-          │                                         │
-┌─────────▼───────────┐                             ▼
-│ Policy Registry     │                  ┌───────────────────────────┐
-│                     │  isValid         │ Flashtestation Registry   │
-│ ┌─────────────────┐ │  Query           │                           │
-│ │ workloadId[]    │ │ ◄───────────────►│ (teeAddress, attestation) │
-│ │ per policyId    │ │                  │ mappings                  │
-│ └─────────────────┘ │                  │                           │
-│                     │                  └───────────────────────────┘
-└─────────────────────┘
+┌─────────────────────────┐                  ┌─────────────────────┐
+│ TDX VM                  │                  │ Onchain Verifier    │
+│                         │  Attestation     │                     │
+│ ┌─────────────────┐     │  Quote           │ ┌─────────────────┐ │
+│ │ TEE Workload    │     │ ───────────────► │ │ DCAP Attestation│ │
+│ │                 │     │                  │ │ Verifier        │ │
+│ │ (measurements)  │     │                  │ │                 │ │
+│ └─────────────────┘     │                  │ └────────┬────────┘ │
+│                         │                  │          │          │
+└─────────────────────────┘                  │          ▼          │
+                                             │ ┌─────────────────┐ │
+┌─────────────────────────┐                  │ │ Intel           │ │
+│ Consumer Contract       │                  │ │ Endorsements    │ │
+│                         │                  │ │                 │ │
+│ ┌─────────────────┐     │                  │ └────────┬────────┘ │
+│ │ Operation       │     │                  │          │          │
+│ │ Authorization   │     │                  │          ▼          │
+│ └─────────────────┘     │                  │ ┌─────────────────┐ │
+│         │               │                  │ │ Registration    │ │
+└─────────┼───────────────┘                  │ │ Logic           │ │
+          │                                  │ └────────┬────────┘ │
+          │                                  └──────────┼──────────┘
+          │                                             │
+┌─────────▼──────────────┐                              ▼
+│ Policy                 │                  ┌───────────────────────────┐
+│                        │  isValid         │ Flashtestation Registry   │
+│ ┌─────────────────────┐│  Query           │                           │
+│ │ allowedWorkloadIds[]││ ◄───────────────►│ {teeAddress: registration}│
+│ │ {registration:      ││                  │   map                     │
+│ │   workloadId} map   ││                  │                           │
+│ └─────────────────────┘│                  └───────────────────────────┘
+└────────────────────────┘
 ```
 
 1. **Onchain Verifier**: Validates TDX attestation quotes against current Intel endorsements
@@ -194,11 +193,9 @@ REPORTDATA[52:64]: Unused
 
 **Workload**: The specific software running inside a TEE. Its identity is derived from measurement registers that contain cryptographic hashes of loaded code and configuration.
 
-**`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers. Derived in the policy contract as keccak256(bytes.concat(MRTD || RTMR[0..3] || MROWNER || MROWNERCONFIG || MRCONFIGID || TDAttributes || XFAM)).
+**`workloadId`**: A 32-byte hash uniquely identifying a specific TEE workload based on its measurement registers, derived and authorized by the policy contract.
 
 **`extendedRegistrationData`**: ABI-encoded application-specific attested data that is cryptographically bound to the attestation quote through the `REPORTDATA` field. Currently empty, reserved for future use. The registration data can include for example runtime configuration of the VM, identity of the VM operator, public IP of the instance.
-
-**`policyId`**: An identifier that maps to a list of approved `workloadId`s, enabling contracts to reference policies rather than specific workloads.
 
 **Policy Registry**: A mapping system that groups related workload identities under a single policy identifier, enabling flexible authorization rules without modifying consumer contracts.
 
@@ -474,14 +471,13 @@ The Policy layer sits above the Flashtestation Registry and provides a more flex
 
 ### Policy Abstraction
 
-A Policy is simply a named group of workload identities:
+A Policy is simply a named authorization mapping of addresses, implemented through a mapping of TEE registration data for the address and governable WorkloadIds.
 
 ```
-PolicyId → [WorkloadId₁, WorkloadId₂, ..., WorkloadIdₙ]
+Policy: [teeAddress -> **`RegisteredTEE`**] -> [**`RegisteredTEE`** -> **`WorkloadId`**] -> [**`WorkloadId`** -> bool]
 ```
 
 This abstraction allows contracts to reference a policy (e.g., "L2-BlockBuilding-Production") rather than specific workloads, enabling governance to update which workloads are acceptable without modifying contract code.
-
 
 ### Workload Metadata
 
@@ -507,6 +503,8 @@ The Policy layer provides these operations:
 ```
 // Check if an address is allowed under any workload in a policy
 function isAllowedPolicy(teeAddress) → boolean
+// Mapping of registrations to workloadIds
+function workloadIdForTDRegistration(RegisteredTEE) -> workloadId
 
 // Governance operations
 function addWorkloadToPolicy(workloadId)
@@ -520,7 +518,7 @@ function getWorkloadMetadata(workloadId) → (commitHash, sourceLocators)
 The key function `isAllowedPolicy` checks if an address is valid for ANY of the workloads in the policy group. Conceptually:
 
 ```
-function isAllowedPolicy(policyId, teeAddress) → (bool allowed, WorkloadId) {
+function isAllowedPolicy(teeAddress) → (bool allowed, WorkloadId) {
     // Get TEE registration
     (bool isValid, RegisteredTEE memory registration) = registry.getRegistration(teeAddress);
     if (!isValid) return (false, WorkloadId(0));
@@ -529,7 +527,7 @@ function isAllowedPolicy(policyId, teeAddress) → (bool allowed, WorkloadId) {
     WorkloadId workloadId = workloadIdForTDRegistration(registration);
 
     // Check if computed workloadId is in policy
-    for each allowedWorkloadId in getWorkloadsForPolicy(policyId) {
+    for each allowedWorkloadId in allowedWorkloadIds {
         if (workloadId == allowedWorkloadId) {
             return (true, workloadId);
         }
