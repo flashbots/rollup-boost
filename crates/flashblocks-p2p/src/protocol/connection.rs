@@ -116,6 +116,21 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
 
             match msg {
                 FlashblocksP2PMsg::Authorized(authorized) => {
+                    if authorized.authorization.builder_vk
+                        == this.handler.ctx.builder_sk.verifying_key()
+                    {
+                        tracing::warn!(
+                            target: "flashblocks::p2p",
+                            peer_id = %this.peer_id,
+                            "received our own message from peer",
+                        );
+                        this.handler
+                            .ctx
+                            .network_handle
+                            .reputation_change(this.peer_id, ReputationChangeKind::BadMessage);
+                        continue;
+                    }
+
                     if let Err(error) = authorized.verify(this.handler.ctx.authorizer_vk) {
                         tracing::warn!(
                             target: "flashblocks::p2p",

@@ -55,8 +55,6 @@ pub enum PublishingStatus {
     /// We are waiting for the previous publisher to stop.
     WaitingToPublish {
         authorization: Authorization,
-        /// The block number at which we requested to start publishing.
-        wait_block_number: u64,
         /// A map of active publishers (excluding ourselves) to their most recently published
         /// or requested to publish block number.
         active_publishers: Vec<(VerifyingKey, u64)>,
@@ -160,7 +158,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
     /// You must call `start_publishing` on the current block before publishing any payloads for
     /// this block.
     ///
-    /// TODO: We should eventually assert that flashblocks are consecutive have the correct parrent
+    /// TODO: We should eventually assert that flashblocks are consecutive and have the correct parrent
     pub fn publish_new(
         &self,
         authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,
@@ -204,12 +202,16 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
             }
             PublishingStatus::WaitingToPublish {
                 authorization,
-                wait_block_number,
-                ..
+                active_publishers,
             } => {
+                let most_recent_publisher = active_publishers
+                    .iter()
+                    .map(|(_, block_number)| *block_number)
+                    .max()
+                    .unwrap_or_default();
                 // We are waiting to publish, so we update the authorization and
                 // the block number at which we requested to start publishing.
-                if new_block_number > *wait_block_number {
+                if new_block_number >= most_recent_publisher + MAX_PUBLISH_WAIT_BLOCKS {
                     // If the block number is greater than the one we requested to start publishing,
                     // we will update it.
                     tracing::warn!(
@@ -227,7 +229,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                 }
             }
             PublishingStatus::NotPublishing { active_publishers } => {
-                // Send an authorized message to the network
+                // Send an authorized `StartPublish` message to the network
                 let authorized_msg = AuthorizedMsg::StartPublish(StartPublish {
                     block_number: new_block_number,
                 });
@@ -256,7 +258,6 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                     );
                     state.publishing_status = PublishingStatus::WaitingToPublish {
                         authorization: new_authorization,
-                        wait_block_number: new_block_number,
                         active_publishers: active_publishers.clone(),
                     };
                 }
