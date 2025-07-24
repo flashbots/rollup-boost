@@ -1,4 +1,3 @@
-use ed25519_dalek::{SigningKey, VerifyingKey};
 use reth::chainspec::Hardforks;
 use reth_eth_wire::NetPrimitivesFor;
 use reth_ethereum::network::api::FullNetwork;
@@ -10,47 +9,32 @@ use reth_node_builder::{
     node::{FullNodeTypes, NodeTypes},
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
-use rollup_boost::FlashblocksPayloadV1;
-use tokio::sync::broadcast;
 
 use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
 
 #[derive(Debug)]
-struct FlashblocksNetworkBuilderCtx {
-    authorizer_vk: VerifyingKey,
-    builder_sk: SigningKey,
-    flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
-}
-
-#[derive(Debug)]
-pub struct FlashblocksNetworkBuilder<T> {
+pub struct FlashblocksNetworkBuilder<T, N> {
     inner: T,
-    ctx: Option<FlashblocksNetworkBuilderCtx>,
+    flashblocks_p2p_handler: Option<FlashblocksHandler<N>>,
 }
 
-impl<T> FlashblocksNetworkBuilder<T> {
-    pub fn new(
-        inner: T,
-        authorizer_vk: VerifyingKey,
-        builder_sk: SigningKey,
-        flashblocks_receiver_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    ) -> Self {
+impl<T, N> FlashblocksNetworkBuilder<T, N> {
+    pub fn new(inner: T, flashblocks_p2p_handler: FlashblocksHandler<N>) -> Self {
         Self {
             inner,
-            ctx: Some(FlashblocksNetworkBuilderCtx {
-                authorizer_vk,
-                builder_sk,
-                flashblocks_receiver_tx,
-            }),
+            flashblocks_p2p_handler: Some(flashblocks_p2p_handler),
         }
     }
 
     pub fn disabled(inner: T) -> Self {
-        Self { inner, ctx: None }
+        Self {
+            inner,
+            flashblocks_p2p_handler: None,
+        }
     }
 }
 
-impl<T, Network, Node, Pool> NetworkBuilder<Node, Pool> for FlashblocksNetworkBuilder<T>
+impl<T, Network, Node, Pool> NetworkBuilder<Node, Pool> for FlashblocksNetworkBuilder<T, Network>
 where
     T: NetworkBuilder<Node, Pool, Network = Network>,
     Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>,
@@ -69,14 +53,8 @@ where
         pool: Pool,
     ) -> eyre::Result<Self::Network> {
         let handle = self.inner.build_network(ctx, pool).await?;
-        if let Some(ctx) = self.ctx {
-            let handler = FlashblocksHandler::<Network>::new(
-                handle.clone(),
-                ctx.authorizer_vk,
-                ctx.builder_sk,
-                ctx.flashblocks_receiver_tx,
-            );
-            handle.add_rlpx_sub_protocol(handler.into_rlpx_sub_protocol());
+        if let Some(flashblocks_p2p_handler) = self.flashblocks_p2p_handler {
+            handle.add_rlpx_sub_protocol(flashblocks_p2p_handler.into_rlpx_sub_protocol());
         }
 
         Ok(handle)
