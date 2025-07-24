@@ -17,8 +17,6 @@ use std::{
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::trace;
 
-pub const INNITIATE_BUILD_TIMOUT: u64 = 8; // seconds
-
 pub struct FlashblocksConnection<N> {
     pub handler: FlashblocksHandler<N>,
     pub conn: ProtocolConnection,
@@ -248,17 +246,16 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         self.handler.ctx.publish(&mut state, authorized_payload);
     }
 
-    // TODO: Handle replay attacks with StartPublish messages.
     // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
         let mut state = self.handler.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
         let msg = authorized_payload.msg();
 
-        // Check if the request is expired for dos protection
-        if state.payload_timestamp
-            > authorized_payload.authorized.authorization.timestamp + INNITIATE_BUILD_TIMOUT
-        {
+        // Check if the request is expired for dos protection.
+        // It's important to ensure that this `StartPublish` request
+        // is very recent, or it could be used in a replay attack.
+        if state.payload_timestamp > authorization.timestamp {
             tracing::warn!(
                 target: "flashblocks::p2p",
                 peer_id = %self.peer_id,
@@ -325,13 +322,15 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         }
     }
 
-    // TODO: Handle replay attacks with StopPublish messages.
     // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_stop_publish(&mut self, authorized_payload: AuthorizedPayload<StopPublish>) {
         let mut state = self.handler.state.lock();
-        if state.payload_timestamp
-            > authorized_payload.authorized.authorization.timestamp + INNITIATE_BUILD_TIMOUT
-        {
+        let authorization = &authorized_payload.authorized.authorization;
+
+        // Check if the request is expired for dos protection.
+        // It's important to ensure that this `StartPublish` request
+        // is very recent, or it could be used in a replay attack.
+        if state.payload_timestamp > authorization.timestamp {
             tracing::warn!(
                 target: "flashblocks::p2p",
                 peer_id = %self.peer_id,
