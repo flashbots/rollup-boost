@@ -22,6 +22,7 @@ use reth_optimism_node::{OpNode, args::RollupArgs};
 use reth_optimism_primitives::{OpPrimitives, OpReceipt};
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::{TaskExecutor, TaskManager};
+use reth_tracing::tracing_subscriber;
 use rollup_boost::{
     Authorization, AuthorizedPayload, ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1,
     FlashblocksPayloadV1,
@@ -305,8 +306,114 @@ async fn setup_nodes(n: u8) -> eyre::Result<(Vec<NodeContext>, SigningKey)> {
 }
 
 #[tokio::test]
-async fn test_peering() -> eyre::Result<()> {
-    reth_tracing::init_test_tracing();
+async fn test_double_failover() -> eyre::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter("warn,flashblocks=trace")
+        .with_target(false)
+        .with_target(false)
+        .without_time()
+        .init();
+
+    let (nodes, authorizer) = setup_nodes(3).await?;
+
+    let mut publish_flashblocks = nodes[0].p2p_handle.ctx.flashblock_tx.subscribe();
+    tokio::spawn(async move {
+        while let Ok(payload) = publish_flashblocks.recv().await {
+            println!("\n////////////////////////////////////////////////////////////////////\n");
+            println!(
+                "Received flashblock, payload_id: {}, index: {}",
+                payload.payload_id, payload.index
+            );
+            println!("\n////////////////////////////////////////////////////////////////////\n");
+        }
+    });
+
+    let latest_block = nodes[0]
+        .provider()
+        .await?
+        .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
+        .await?
+        .expect("latest block expected");
+    assert_eq!(latest_block.number(), 0);
+
+    // Querying pending block when it does not exists yet
+    let pending_block = nodes[0]
+        .provider()
+        .await?
+        .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
+        .await?;
+    assert!(pending_block.is_none());
+
+    let payload_0 = payload_base(0, PayloadId::new([0; 8]), 0);
+    let authorization_0 = Authorization::new(
+        payload_0.payload_id,
+        0,
+        &authorizer,
+        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+    let msg = payload_0.clone();
+    let authorized_0 =
+        AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization_0, msg);
+    nodes[0].p2p_handle.start_publishing(
+        authorization_0,
+        payload_0.base.unwrap().block_number,
+        payload_0.payload_id,
+    );
+    nodes[0].p2p_handle.publish_new(authorized_0).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    let payload_1 = payload_next(payload_0.payload_id, 1);
+    let authorization_1 = Authorization::new(
+        payload_1.payload_id,
+        0,
+        &authorizer,
+        nodes[1].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+    let authorized_1 = AuthorizedPayload::new(
+        &nodes[1].p2p_handle.ctx.builder_sk,
+        authorization_1,
+        payload_1.clone(),
+    );
+    nodes[1]
+        .p2p_handle
+        .start_publishing(authorization_1, 0, payload_1.payload_id);
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    nodes[1].p2p_handle.publish_new(authorized_1).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Send a new block, this time from node 1
+    let payload_2 = payload_next(payload_0.payload_id, 2);
+    let msg = payload_2.clone();
+    let authorization_2 = Authorization::new(
+        payload_2.payload_id,
+        0,
+        &authorizer,
+        nodes[2].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+    let authorized_2 = AuthorizedPayload::new(
+        &nodes[2].p2p_handle.ctx.builder_sk,
+        authorization_2,
+        msg.clone(),
+    );
+    nodes[2]
+        .p2p_handle
+        .start_publishing(authorization_2, 0, payload_2.payload_id);
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    nodes[2].p2p_handle.publish_new(authorized_2).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_force_race_condition() -> eyre::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter("warn,flashblocks=trace")
+        .with_target(false)
+        .with_target(false)
+        .without_time()
+        .init();
+
     let (nodes, authorizer) = setup_nodes(3).await?;
 
     let mut publish_flashblocks = nodes[0].p2p_handle.ctx.flashblock_tx.subscribe();
