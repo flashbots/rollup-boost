@@ -17,17 +17,28 @@ use std::{
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::trace;
 
+/// Represents a single P2P connection for the flashblocks protocol.
+///
+/// This struct manages the bidirectional communication with a single peer in the flashblocks
+/// P2P network. It handles incoming messages from the peer, validates and processes them,
+/// and also streams outgoing messages that need to be broadcast.
+///
+/// The connection implements the `Stream` trait to provide outgoing message bytes that
+/// should be sent to the connected peer over the underlying protocol connection.
 pub struct FlashblocksConnection<N> {
+    /// The flashblocks protocol handler that manages the overall protocol state.
     pub handler: FlashblocksHandler<N>,
+    /// The underlying protocol connection for sending and receiving raw bytes.
     pub conn: ProtocolConnection,
+    /// The unique identifier of the connected peer.
     pub peer_id: PeerId,
     /// Receiver for peer messages to be sent to all peers.
     /// We send bytes over this stream to avoid repeatedly having to serialize the payloads.
     pub peer_rx: BroadcastStream<PeerMsg>,
-    /// Most recent payload received from this peer.
+    /// Most recent payload ID received from this peer to track payload transitions.
     pub payload_id: PayloadId,
-    /// A list of flashblocks indices that we have already received from
-    /// this peer for the current payload.
+    /// A list of flashblock indices that we have already received from
+    /// this peer for the current payload, used to detect duplicate messages.
     pub received: Vec<bool>,
 }
 
@@ -161,6 +172,21 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
+    /// Handles incoming flashblock payload messages from a peer.
+    ///
+    /// This method validates the flashblock payload, checks for duplicates and ordering,
+    /// updates the active publisher tracking, and forwards valid payloads for processing.
+    /// It also manages peer reputation based on message validity and prevents spam attacks.
+    ///
+    /// # Arguments
+    /// * `authorized_payload` - The authorized flashblock payload received from the peer
+    ///
+    /// # Behavior
+    /// - Validates timestamp to prevent replay attacks
+    /// - Tracks payload transitions and resets duplicate detection
+    /// - Prevents duplicate flashblock spam from the same peer
+    /// - Updates active publisher information from base payload data
+    /// - Forwards valid payloads to the protocol handler for processing
     fn handle_flashblocks_payload_v1(
         &mut self,
         authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,

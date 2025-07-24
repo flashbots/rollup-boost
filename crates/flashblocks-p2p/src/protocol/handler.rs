@@ -34,26 +34,43 @@ const MAX_FLASHBLOCK_INDEX: usize = 100;
 /// The maximum number of blocks we will wait for a previous publisher to stop
 const MAX_PUBLISH_WAIT_BLOCKS: u64 = 1;
 
+/// Trait bound for network handles that can be used with the flashblocks P2P protocol.
+///
+/// This trait combines all the necessary bounds for a network handle to be used
+/// in the flashblocks P2P system, including peer management capabilities.
 pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
 impl<N: Clone + Unpin + Peers + std::fmt::Debug + 'static> FlashblocksP2PNetworHandle for N {}
 
+/// Messages that can be broadcast over a channel to each internal peer connection.
+///
+/// These messages are used internally to coordinate the broadcasting of flashblocks
+/// and publishing status changes to all connected peers.
 #[derive(Clone, Debug)]
 pub enum PeerMsg {
     /// Send an already serialized flashblock to all peers.
     FlashblocksPayloadV1((PayloadId, usize, BytesMut)),
-    /// Send a previously serialized p2p message to all peers.
+    /// Send a previously serialized StartPublish message to all peers.
     StartPublishing(BytesMut),
-    /// Send a previously serialized p2p message to all peers.
+    /// Send a previously serialized StopPublish message to all peers.
     StopPublishing(BytesMut),
 }
 
+/// The current publishing status of this node in the flashblocks P2P network.
+///
+/// This enum tracks whether we are actively publishing flashblocks, waiting to publish,
+/// or not publishing at all. It also maintains information about other active publishers
+/// to coordinate multi-builder scenarios and handle failover situations.
 #[derive(Clone, Debug)]
 pub enum PublishingStatus {
     /// We are currently publishing flashblocks.
-    Publishing { authorization: Authorization },
+    Publishing {
+        /// The authorization token that grants us permission to publish.
+        authorization: Authorization,
+    },
     /// We are waiting for the previous publisher to stop.
     WaitingToPublish {
+        /// The authorization token we will use once we start publishing.
         authorization: Authorization,
         /// A map of active publishers (excluding ourselves) to their most recently published
         /// or requested to publish block number.
@@ -75,60 +92,89 @@ impl Default for PublishingStatus {
     }
 }
 
-/// Protocol state is an helper struct to store the protocol events.
+/// Protocol state that stores the flashblocks P2P protocol events and coordination data.
+///
+/// This struct maintains the current state of flashblock publishing, including coordination
+/// with other publishers, payload buffering, and ordering information. It serves as the
+/// central state management for the flashblocks P2P protocol handler.
 #[derive(Debug, Default)]
 pub struct FlashblocksP2PState {
+    /// Current publishing status indicating whether we're publishing, waiting, or not publishing.
     pub publishing_status: PublishingStatus,
     /// Block number of the most recent flashblocks payload.
-    /// We only recieve the block bumber from `ExecutionPayloadBaseV1`
-    /// so this may be set to `None` in the even that we receive the flashblocks payloads
+    /// We only receive the block number from `ExecutionPayloadBaseV1`
+    /// so this may be set to `None` in the event that we receive the flashblocks payloads
     /// out of order.
     pub block_number: Option<u64>,
-    /// Most recent payload id.
+    /// Most recent payload ID for the current block being processed.
     pub payload_id: PayloadId,
     /// Timestamp of the most recent flashblocks payload.
     pub payload_timestamp: u64,
-    /// The index of the next flashblock to emit over the flashblocks_stream.
+    /// The index of the next flashblock to emit over the flashblocks stream.
+    /// Used to maintain strict ordering of flashblock delivery.
     pub flashblock_index: usize,
-    /// Buffer of flashblocks for the current payload.
+    /// Buffer of flashblocks for the current payload, indexed by flashblock sequence number.
+    /// Contains `None` for flashblocks not yet received, enabling out-of-order receipt
+    /// while maintaining in-order delivery.
     pub flashblocks: Vec<Option<FlashblocksPayloadV1>>,
 }
 
 impl FlashblocksP2PState {
-    /// Returns wether or now we are currently allowed to publish flashblocks.
+    /// Returns the current publishing status of this node.
+    ///
+    /// This indicates whether the node is actively publishing flashblocks,
+    /// waiting to publish, or not publishing at all.
     pub fn publishing_status(&self) -> PublishingStatus {
         self.publishing_status.clone()
     }
 }
 
-/// The protocol handler takes care of incoming and outgoing connections.
+/// Context struct containing shared resources for the flashblocks P2P protocol.
+///
+/// This struct holds the network handle, cryptographic keys, and communication channels
+/// used across all connections in the flashblocks P2P protocol. It provides the shared
+/// infrastructure needed for message verification, signing, and broadcasting.
 #[derive(Clone, Debug)]
 pub struct FlashblocksP2PCtx<N> {
-    /// Network handle, used to update peer state.
+    /// Network handle used to update peer reputation and manage connections.
     pub network_handle: N,
-    /// Authorizer verifying, used to verify flashblocks payloads.
+    /// Authorizer's verifying key used to verify authorization signatures from rollup-boost.
     pub authorizer_vk: VerifyingKey,
-    /// Builder signing key, used to sign authorized p2p messages.
+    /// Builder's signing key used to sign outgoing authorized P2P messages.
     pub builder_sk: SigningKey,
-    /// Sender for flashblocks payloads which will be broadcasted to all peers.
-    /// May not be strictly ordered.
+    /// Broadcast sender for peer messages that will be sent to all connected peers.
+    /// Messages may not be strictly ordered due to network conditions.
     pub peer_tx: broadcast::Sender<PeerMsg>,
-    /// Receiver of verified and strictly ordered flashbloacks payloads.
-    /// For consumption by the rpc overlay.
+    /// Broadcast sender for verified and strictly ordered flashblock payloads.
+    /// Used by RPC overlays and other consumers of flashblock data.
     pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
 }
 
-/// A cloneable protocol handler that takes care of incoming and outgoing connections.
+/// Main protocol handler for the flashblocks P2P protocol.
+///
+/// This handler manages incoming and outgoing connections, coordinates flashblock publishing,
+/// and maintains the protocol state across all peer connections. It implements the core
+/// logic for multi-builder coordination and failover scenarios in HA sequencer setups.
 #[derive(Clone, Debug)]
 pub struct FlashblocksHandler<N> {
-    /// Network handle, used to update peer state.
+    /// Shared context containing network handle, keys, and communication channels.
     pub ctx: FlashblocksP2PCtx<N>,
-    /// Mutable state of the flashblocks protocol.
+    /// Thread-safe mutable state of the flashblocks protocol.
+    /// Protected by a mutex to allow concurrent access from multiple connections.
     pub state: Arc<Mutex<FlashblocksP2PState>>,
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
-    /// Creates a new protocol handler with the given state.
+    /// Creates a new flashblocks P2P protocol handler.
+    ///
+    /// Initializes the handler with the necessary cryptographic keys, network handle,
+    /// and communication channels. The handler starts in a non-publishing state.
+    ///
+    /// # Arguments
+    /// * `network_handle` - Network handle for peer management and reputation updates
+    /// * `authorizer_vk` - Verifying key for validating authorization signatures from rollup-boost
+    /// * `builder_sk` - Signing key for this builder to sign outgoing messages
+    /// * `flashblock_tx` - Broadcast channel for publishing verified flashblocks to consumers
     pub fn new(
         network_handle: N,
         authorizer_vk: VerifyingKey,
@@ -148,17 +194,30 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         Self { ctx, state }
     }
 
-    /// Returns the capability for the `flashblocks v1` p2p rotocol.
+    /// Returns the P2P capability for the flashblocks v1 protocol.
+    ///
+    /// This capability is used during devp2p handshake to advertise support
+    /// for the flashblocks protocol with protocol name "flblk" and version 1.
     pub fn capability() -> Capability {
         Capability::new_static("flblk", 1)
     }
 
-    /// Publishes a newly created flashblock from the payload builder to the state and to the p2p network.
-    /// Returns an error if we don't have clearance to publish flashblocks.
-    /// You must call `start_publishing` on the current block before publishing any payloads for
-    /// this block.
+    /// Publishes a newly created flashblock from the payload builder to the P2P network.
     ///
-    /// TODO: We should eventually assert that flashblocks are consecutive and have the correct parrent
+    /// This method validates that the builder has authorization to publish and that
+    /// the authorization matches the current publishing session. The flashblock is
+    /// then processed, cached, and broadcast to all connected peers.
+    ///
+    /// # Arguments
+    /// * `authorized_payload` - The signed flashblock payload with authorization
+    ///
+    /// # Returns
+    /// * `Ok(())` if the flashblock was successfully published
+    /// * `Err` if the builder lacks authorization or the authorization is outdated
+    ///
+    /// # Note
+    /// You must call `start_publishing` before calling this method to establish
+    /// authorization for the current block.
     pub fn publish_new(
         &self,
         authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,
@@ -177,17 +236,34 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         Ok(())
     }
 
-    /// Returns the current publishing status.
-    /// You must call `start_publishing` on the current block before this will return the current
-    /// status.
+    /// Returns the current publishing status of this node.
+    ///
+    /// The status indicates whether the node is actively publishing flashblocks,
+    /// waiting for another publisher to stop, or not publishing at all.
+    ///
+    /// # Returns
+    /// The current `PublishingStatus` enum value
     pub fn publishing_status(&self) -> PublishingStatus {
         self.state.lock().publishing_status.clone()
     }
 
-    /// This should be called immediately after we receive a ForkChoiceUpdated
-    /// with attributes, and the included Auhorization for each block. It's important to
-    /// note that calling this does not guarantee that we will immediately have clearance
-    /// to publish.
+    /// Initiates flashblock publishing for a new block.
+    ///
+    /// This method should be called immediately after receiving a ForkChoiceUpdated
+    /// with payload attributes and the corresponding Authorization token. It coordinates
+    /// with other potential publishers to ensure only one builder publishes at a time.
+    ///
+    /// The method may transition the node to either Publishing or WaitingToPublish state
+    /// depending on whether other builders are currently active.
+    ///
+    /// # Arguments
+    /// * `new_authorization` - Authorization token signed by rollup-boost for this block
+    /// * `new_block_number` - L2 block number being built
+    /// * `new_payload_id` - Unique identifier for this block's payload
+    ///
+    /// # Note
+    /// Calling this method does not guarantee immediate publishing clearance.
+    /// The node may need to wait for other publishers to stop first.
     pub fn start_publishing(
         &self,
         new_authorization: Authorization,
@@ -265,9 +341,14 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         }
     }
 
-    /// Sends a message over the p2p network letting other peers know that we are stopping
-    /// This should be called whenever we receive a ForkChoiceUpdated without attributes
-    /// or without and `Authorization`.
+    /// Stops flashblock publishing and notifies the P2P network.
+    ///
+    /// This method broadcasts a StopPublish message to all connected peers and transitions
+    /// the node to a non-publishing state. It should be called when receiving a
+    /// ForkChoiceUpdated without payload attributes or without an Authorization token.
+    ///
+    /// # Arguments
+    /// * `block_height` - The L2 block number at which publishing is being stopped
     pub fn stop_publishing(&self, block_height: u64) {
         let mut state = self.state.lock();
         match &mut state.publishing_status {
@@ -313,8 +394,21 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
-    /// Commit new and already verified flashblocks payloads to the state
-    /// broadcast them to peers, and publish them to the stream.
+    /// Processes and publishes a verified flashblock payload to the P2P network and local stream.
+    ///
+    /// This method handles the core logic of flashblock processing, including validation,
+    /// caching, and broadcasting. It ensures flashblocks are delivered in order while
+    /// allowing out-of-order receipt from the network.
+    ///
+    /// # Arguments
+    /// * `state` - Mutable reference to the protocol state for updating flashblock cache
+    /// * `authorized_payload` - The authorized flashblock payload to process and publish
+    ///
+    /// # Behavior
+    /// - Validates payload consistency with authorization
+    /// - Updates global state for new payloads with newer timestamps
+    /// - Caches flashblocks and maintains ordering for sequential delivery
+    /// - Broadcasts to peers and publishes ordered flashblocks to the stream
     pub fn publish(
         &self,
         state: &mut FlashblocksP2PState,
