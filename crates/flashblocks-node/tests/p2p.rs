@@ -61,7 +61,7 @@ async fn setup_node(
     exec: TaskExecutor,
     authorizer_sk: SigningKey,
     builder_sk: SigningKey,
-    trusted_peer: Option<(PeerId, SocketAddr)>,
+    peers: Vec<(PeerId, SocketAddr)>,
 ) -> eyre::Result<NodeContext> {
     let (inbound_tx, inbound_rx) = broadcast::channel(100);
 
@@ -123,7 +123,7 @@ async fn setup_node(
     node.network
         .add_rlpx_sub_protocol(p2p_handle.clone().into_rlpx_sub_protocol());
 
-    if let Some((peer_id, addr)) = trusted_peer {
+    for (peer_id, addr) in peers {
         // If a trusted peer is provided, add it to the network
         node.network.add_peer(peer_id, addr);
     }
@@ -147,16 +147,16 @@ async fn setup_node(
     })
 }
 
-fn payload_0() -> FlashblocksPayloadV1 {
+fn payload_base(block_number: u64, payload_id: PayloadId, index: u64) -> FlashblocksPayloadV1 {
     FlashblocksPayloadV1 {
-        payload_id: PayloadId::new([0; 8]),
-        index: 0,
+        payload_id,
+        index,
         base: Some(ExecutionPayloadBaseV1 {
             parent_beacon_block_root: B256::default(),
             parent_hash: B256::default(),
             fee_recipient: Address::ZERO,
             prev_randao: B256::default(),
-            block_number: 1,
+            block_number,
             gas_limit: 0,
             timestamp: 0,
             extra_data: Bytes::new(),
@@ -180,7 +180,7 @@ const TX1_HASH: TxHash =
 const TX2_HASH: TxHash =
     b256!("0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8");
 
-fn payload_2() -> FlashblocksPayloadV1 {
+fn payload_next(payload_id: PayloadId, index: u64) -> FlashblocksPayloadV1 {
     // Create second payload (index 1) with transactions
     // tx1 hash: 0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548 (deposit transaction)
     // tx2 hash: 0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8
@@ -189,8 +189,8 @@ fn payload_2() -> FlashblocksPayloadV1 {
 
     // Send another test flashblock payload
     FlashblocksPayloadV1 {
-        payload_id: PayloadId::new([0; 8]),
-        index: 1,
+        payload_id,
+        index,
         base: None,
         diff: ExecutionPayloadFlashblockDeltaV1 {
             state_root: B256::default(),
@@ -283,98 +283,175 @@ fn payload_2() -> FlashblocksPayloadV1 {
 //
 //     Ok(())
 // }
+//
+async fn setup_nodes(n: u8) -> eyre::Result<(Vec<NodeContext>, SigningKey)> {
+    let mut nodes = Vec::new();
+    let mut peers = Vec::new();
+    let tasks = Box::leak(Box::new(TaskManager::current()));
+    let exec = Box::leak(Box::new(tasks.executor()));
+    let authorizer = SigningKey::from_bytes(&[0; 32]);
+
+    for i in 0..n {
+        let builder = SigningKey::from_bytes(&[(i + 1) % n; 32]);
+        let node = setup_node(exec.clone(), authorizer.clone(), builder, peers.clone()).await?;
+        let enr = node.local_node_record;
+        peers.push((enr.id, enr.tcp_addr()));
+        nodes.push(node);
+    }
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+    Ok((nodes, authorizer))
+}
 
 #[tokio::test]
 async fn test_peering() -> eyre::Result<()> {
     reth_tracing::init_test_tracing();
-    let authorizer = SigningKey::from_bytes(&[0u8; 32]);
-    let builder = SigningKey::from_bytes(&[1u8; 32]);
+    let (nodes, authorizer) = setup_nodes(3).await?;
 
-    let tasks = TaskManager::current();
-    let exec = tasks.executor();
-    // let exec = TaskExecutor::current();
-    let node_0 = setup_node(exec, authorizer.clone(), builder.clone(), None).await?;
-    let provider_0 = node_0.provider().await?;
-    let enr_0 = node_0.local_node_record;
+    let mut publish_flashblocks = nodes[0].p2p_handle.ctx.flashblock_tx.subscribe();
+    tokio::spawn(async move {
+        while let Ok(payload) = publish_flashblocks.recv().await {
+            println!("\n////////////////////////////////////////////////////////////////////\n");
+            println!(
+                "Received flashblock, payload_id: {}, index: {}",
+                payload.payload_id, payload.index
+            );
+            println!("\n////////////////////////////////////////////////////////////////////\n");
+        }
+    });
 
-    let node_1 = setup_node(
-        TaskExecutor::current(),
-        authorizer.clone(),
-        builder.clone(),
-        Some((enr_0.id, enr_0.tcp_addr())),
-    )
-    .await?;
-    let provider_1 = node_1.provider().await?;
-
-    let latest_block = provider_1
+    let latest_block = nodes[0]
+        .provider()
+        .await?
         .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
         .await?
         .expect("latest block expected");
     assert_eq!(latest_block.number(), 0);
 
     // Querying pending block when it does not exists yet
-    let pending_block = provider_1
+    let pending_block = nodes[0]
+        .provider()
+        .await?
         .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
         .await?;
     assert!(pending_block.is_none());
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(15000)).await;
-
-    let payload_0 = payload_0();
-    info!("Sending base payload");
+    let payload_0 = payload_base(0, PayloadId::new([0; 8]), 0);
+    info!("Sending payload 0, index 0");
     let authorization = Authorization::new(
         payload_0.payload_id,
         0,
         &authorizer,
-        builder.verifying_key(),
+        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
     );
     let msg = payload_0.clone();
-    let authorized = AuthorizedPayload::new(&builder, authorization, msg);
-    node_1.p2p_handle.start_publishing(
+    let authorized =
+        AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization, msg);
+    nodes[0].p2p_handle.start_publishing(
         authorization,
         payload_0.base.unwrap().block_number,
         payload_0.payload_id,
     );
-    node_1.p2p_handle.publish_new(authorized).unwrap();
-    tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
-    let peers = node_0.network_handle.get_all_peers().await?;
-    let peer_1 = &peers[0].remote_id;
+    nodes[0].p2p_handle.publish_new(authorized).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
-    info!(?rep_1, "Peer reputation");
+    // let peers = node_0.network_handle.get_all_peers().await?;
+    // let peer_1 = &peers[0].remote_id;
+    //
+    // let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
+    // info!(?rep_1, "Peer reputation");
 
     // Query pending block after sending the base payload with an empty delta
-    let pending_block = provider_0
+    let pending_block = nodes[1]
+        .provider()
+        .await?
         .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
         .await?
         .expect("pending block expected");
 
-    assert_eq!(pending_block.number(), 1);
+    assert_eq!(pending_block.number(), 0);
     assert_eq!(pending_block.transactions.hashes().len(), 0);
 
-    let payload_1 = payload_2();
-    info!("Sending base payload");
+    info!("Sending payload 0, index 1");
+    let payload_1 = payload_next(payload_0.payload_id, 1);
     let authorization = Authorization::new(
         payload_1.payload_id,
         0,
         &authorizer,
-        builder.verifying_key(),
+        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
     );
-    let authorized = AuthorizedPayload::new(&builder, authorization, payload_1.clone());
-    node_1.p2p_handle.publish_new(authorized).unwrap();
-    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+    let authorized = AuthorizedPayload::new(
+        &nodes[0].p2p_handle.ctx.builder_sk,
+        authorization,
+        payload_1.clone(),
+    );
+    nodes[0].p2p_handle.publish_new(authorized).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
-    info!(?rep_1, "Peer reputation");
+    // let rep_1 = node_0.network_handle.reputation_by_id(*peer_1).await?;
+    // info!(?rep_1, "Peer reputation");
 
     // Query pending block after sending the second payload with two transactions
-    let block = provider_0
+    let block = nodes[1]
+        .provider()
+        .await?
         .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
         .await?
         .expect("pending block expected");
 
-    assert_eq!(block.number(), 1);
+    assert_eq!(block.number(), 0);
     assert_eq!(block.transactions.hashes().len(), 2);
+
+    // Send a new block, this time from node 1
+    let payload_2 = payload_base(1, PayloadId::new([1; 8]), 0);
+    info!("Sending payload 1, index 0");
+    let authorization_1 = Authorization::new(
+        payload_2.payload_id,
+        1,
+        &authorizer,
+        nodes[1].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+    let authorization_2 = Authorization::new(
+        payload_2.payload_id,
+        1,
+        &authorizer,
+        nodes[2].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+    let msg = payload_2.clone();
+    let authorized_1 = AuthorizedPayload::new(
+        &nodes[1].p2p_handle.ctx.builder_sk,
+        authorization_1,
+        msg.clone(),
+    );
+    nodes[1].p2p_handle.start_publishing(
+        authorization_1,
+        payload_2.base.clone().unwrap().block_number,
+        payload_2.payload_id,
+    );
+    nodes[2].p2p_handle.start_publishing(
+        authorization_2,
+        payload_2.base.clone().unwrap().block_number,
+        payload_2.payload_id,
+    );
+    // Wait for clearance to go through
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    tracing::error!(
+        "{}",
+        nodes[1]
+            .p2p_handle
+            .publish_new(authorized_1.clone())
+            .unwrap_err()
+    );
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    nodes[2]
+        .p2p_handle
+        .stop_publishing(payload_2.base.unwrap().block_number);
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    nodes[1].p2p_handle.publish_new(authorized_1)?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     Ok(())
 }

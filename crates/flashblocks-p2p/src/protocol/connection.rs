@@ -45,7 +45,11 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                 match res {
                     Ok(peer_msg) => {
                         match peer_msg {
-                            PeerMsg::FlashblocksPayload((payload_id, flashblock_index, bytes)) => {
+                            PeerMsg::FlashblocksPayloadV1((
+                                payload_id,
+                                flashblock_index,
+                                bytes,
+                            )) => {
                                 // Check if this flashblock actually originated from this peer.
                                 if this.payload_id != payload_id
                                     || this.received.get(flashblock_index) != Some(&true)
@@ -55,16 +59,24 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                                         peer_id = %this.peer_id,
                                         %payload_id,
                                         %flashblock_index,
-                                        "Broadcasting flashblock message to peer"
+                                        "Broadcasting `FlashblocksPayloadV1` message to peer"
                                     );
                                     return Poll::Ready(Some(bytes));
                                 }
                             }
-                            PeerMsg::Other(bytes_mut) => {
+                            PeerMsg::StartPublishing(bytes_mut) => {
                                 trace!(
                                     target: "flashblocks::p2p",
                                     peer_id = %this.peer_id,
-                                    "Broadcasting message to peer"
+                                    "Broadcasting `StartPublishing` to peer"
+                                );
+                                return Poll::Ready(Some(bytes_mut));
+                            }
+                            PeerMsg::StopPublishing(bytes_mut) => {
+                                trace!(
+                                    target: "flashblocks::p2p",
+                                    peer_id = %this.peer_id,
+                                    "Broadcasting `StopPublishing` to peer"
                                 );
                                 return Poll::Ready(Some(bytes_mut));
                             }
@@ -259,7 +271,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                     StopPublish.into(),
                 );
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
-                let peer_msg = PeerMsg::Other(p2p_msg.encode());
+                let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                 self.handler.ctx.peer_tx.send(peer_msg).ok();
 
                 state.publishing_status = PublishingStatus::NotPublishing {
@@ -363,6 +375,12 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                     state.publishing_status = PublishingStatus::Publishing {
                         authorization: *authorization,
                     };
+                } else {
+                    tracing::info!(
+                        target: "flashblocks::p2p",
+                        peer_id = %self.peer_id,
+                        "still waiting on active publishers",
+                    );
                 }
             }
             PublishingStatus::NotPublishing { active_publishers } => {

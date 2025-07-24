@@ -41,9 +41,11 @@ impl<N: Clone + Unpin + Peers + std::fmt::Debug + 'static> FlashblocksP2PNetworH
 #[derive(Clone, Debug)]
 pub enum PeerMsg {
     /// Send an already serialized flashblock to all peers.
-    FlashblocksPayload((PayloadId, usize, BytesMut)),
+    FlashblocksPayloadV1((PayloadId, usize, BytesMut)),
     /// Send a previously serialized p2p message to all peers.
-    Other(BytesMut),
+    StartPublishing(BytesMut),
+    /// Send a previously serialized p2p message to all peers.
+    StopPublishing(BytesMut),
 }
 
 #[derive(Clone, Debug)]
@@ -232,7 +234,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                 let authorized_payload =
                     Authorized::new(&self.ctx.builder_sk, new_authorization, authorized_msg);
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
-                let peer_msg = PeerMsg::Other(p2p_msg.encode());
+                let peer_msg = PeerMsg::StartPublishing(p2p_msg.encode());
                 self.ctx.peer_tx.send(peer_msg).ok();
 
                 if active_publishers.is_empty() {
@@ -278,7 +280,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                 let authorized_payload =
                     Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
-                let peer_msg = PeerMsg::Other(p2p_msg.encode());
+                let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                 self.ctx.peer_tx.send(peer_msg).ok();
                 state.publishing_status = PublishingStatus::NotPublishing {
                     active_publishers: Vec::new(),
@@ -298,7 +300,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
                 let authorized_payload =
                     Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
-                let peer_msg = PeerMsg::Other(p2p_msg.encode());
+                let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                 self.ctx.peer_tx.send(peer_msg).ok();
                 state.publishing_status = PublishingStatus::NotPublishing {
                     active_publishers: active_publishers.clone(),
@@ -394,7 +396,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
             }
 
             let peer_msg =
-                PeerMsg::FlashblocksPayload((payload.payload_id, payload.index as usize, bytes));
+                PeerMsg::FlashblocksPayloadV1((payload.payload_id, payload.index as usize, bytes));
 
             self.peer_tx.send(peer_msg).ok();
             // Broadcast any flashblocks in the cache that are in order
