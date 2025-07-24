@@ -9,35 +9,66 @@ use serde::{Deserialize, Serialize};
 
 use crate::{FlashblocksP2PError, FlashblocksPayloadV1};
 
+/// An authorization token that grants a builder permission to publish flashblocks for a specific payload.
+///
+/// The `authorizer_sig` is made over the `payload_id`, `timestamp`, and `builder_vk`. This is
+/// useful because it allows the authorizer to control which builders can publish flashblocks in
+/// real time, without relying on consumers to verify the builder's public key against a
+/// pre-defined list.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Authorization {
+    /// The unique identifier of the payload this authorization applies to
     pub payload_id: PayloadId,
+    /// Unix timestamp when this authorization was created
     pub timestamp: u64,
+    /// The public key of the builder who is authorized to sign messages
     pub builder_vk: VerifyingKey,
+    /// The authorizer's signature over the payload_id, timestamp, and builder_vk
     pub authorizer_sig: Signature,
 }
 
+/// A message requesting to start publishing flashblock payloads at a specific block number.
+///
+/// This message is sent to indicate that the sender wants to begin publishing flashblock
+/// payloads starting from the specified block number.
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub struct StartPublish {
+    /// The block number from which to start publishing flashblock payloads
     pub block_number: u64,
 }
 
+/// A message requesting to stop publishing flashblock payloads.
+///
+/// This is a simple marker message with no fields that indicates the sender
+/// wants to stop publishing flashblock payloads.
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub struct StopPublish;
 
 /// A message that can be sent over the Flashblocks P2P network.
+///
+/// This enum represents the top-level message types that can be transmitted
+/// over the P2P network. Currently all messages are wrapped in authorization to ensure
+/// only authorized builders can create new messages.
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub enum FlashblocksP2PMsg {
+    /// An authorized message containing a signed and authorized payload
     Authorized(Authorized) = 0x00,
 }
 
+/// The different types of authorized messages that can be sent over the Flashblocks P2P network.
+///
+/// This enum represents the actual payload types that can be wrapped in authorization.
+/// Each variant corresponds to a specific type of operation or data transmission.
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
 pub enum AuthorizedMsg {
+    /// A flashblock payload containing a list of transactions and associated metadata
     FlashblocksPayloadV1(FlashblocksPayloadV1) = 0x00,
+    /// A declaration to start publishing flashblock payloads from a specific block number
     StartPublish(StartPublish) = 0x01,
+    /// A declaration to stop publishing flashblock payloads
     StopPublish(StopPublish) = 0x02,
 }
 
@@ -60,32 +91,60 @@ impl From<StopPublish> for AuthorizedMsg {
 }
 
 impl Authorization {
+    /// Creates a new authorization token for a builder to publish messages for a specific payload.
+    ///
+    /// This function creates a cryptographic authorization by signing a message containing the
+    /// payload ID, timestamp, and builder's public key using the authorizer's signing key.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload_id` - The unique identifier of the payload this authorization applies to
+    /// * `timestamp` - Unix timestamp associated with this `payload_id`
+    /// * `authorizer_sk` - The authorizer's signing key used to create the signature
+    /// * `actor_vk` - The verifying key of the actor being authorized
+    ///
+    /// # Returns
+    ///
+    /// A new `Authorization` instance with the generated signature
     pub fn new(
         payload_id: PayloadId,
         timestamp: u64,
         authorizer_sk: &SigningKey,
-        builder_pub: VerifyingKey,
+        actor_vk: VerifyingKey,
     ) -> Self {
         let mut msg = payload_id.0.to_vec();
         msg.extend_from_slice(&timestamp.to_le_bytes());
-        msg.extend_from_slice(builder_pub.as_bytes());
+        msg.extend_from_slice(actor_vk.as_bytes());
         let hash = blake3::hash(&msg);
         let sig = authorizer_sk.sign(hash.as_bytes());
 
         Self {
             payload_id,
             timestamp,
-            builder_vk: builder_pub,
+            builder_vk: actor_vk,
             authorizer_sig: sig,
         }
     }
 
-    pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
+    /// Verifies the authorization signature against the provided authorizer's verifying key.
+    ///
+    /// This function reconstructs the signed message from the authorization data and verifies
+    /// that the signature was created by the holder of the authorizer's private key.
+    ///
+    /// # Arguments
+    ///
+    /// * `authorizer_sk` - The verifying key of the authorizer to verify against
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the signature is valid
+    /// * `Err(FlashblocksP2PError::InvalidAuthorizerSig)` if the signature is invalid
+    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), FlashblocksP2PError> {
         let mut msg = self.payload_id.0.to_vec();
         msg.extend_from_slice(&self.timestamp.to_le_bytes());
         msg.extend_from_slice(self.builder_vk.as_bytes());
         let hash = blake3::hash(&msg);
-        authorizer_pub
+        authorizer_sk
             .verify(hash.as_bytes(), &self.authorizer_sig)
             .map_err(|_| FlashblocksP2PError::InvalidAuthorizerSig)
     }
@@ -172,11 +231,16 @@ impl Decodable for Authorization {
     }
 }
 
-/// A signed and authorized message that can be sent over the Flashblocks P2P network.
+/// A type-safe wrapper around an authorized message for the Flashblocks P2P network.
+///
+/// This struct provides type safety by encoding the specific message type `T`
+/// at the type level while wrapping the underlying `Authorized` message. It uses a
+/// phantom type marker to maintain type information without runtime overhead.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthorizedPayload<T> {
+    /// The underlying authorized message containing the actual payload and signatures
     pub authorized: Authorized,
-    /// The underlying message type
+    /// Phantom type marker to maintain type safety for the specific message type
     pub _marker: PhantomData<T>,
 }
 
@@ -184,6 +248,20 @@ impl<T> AuthorizedPayload<T>
 where
     T: Into<AuthorizedMsg>,
 {
+    /// Creates a new type-safe authorized payload.
+    ///
+    /// This constructor creates an authorized message by wrapping the provided message
+    /// with authorization and signing it with the actor's signing key.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor_sk` - The signing key of the actor (builder) creating the message
+    /// * `authorization` - The authorization token granting permission to send this message
+    /// * `msg` - The message payload to be authorized and signed
+    ///
+    /// # Returns
+    ///
+    /// A new `AuthorizedPayload<T>` instance with type safety for the message type
     pub fn new(actor_sk: &SigningKey, authorization: Authorization, msg: T) -> Self {
         let msg = msg.into();
         let authorized = Authorized::new(actor_sk, authorization, msg);
@@ -207,6 +285,20 @@ pub struct Authorized {
 }
 
 impl Authorized {
+    /// Creates a new authorized message by combining a message with authorization and signing it.
+    ///
+    /// This function takes a message and authorization token, encodes them together, creates
+    /// a hash of the combined data, and signs it with the actor's signing key.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor_sk` - The signing key of the actor (builder) creating the message
+    /// * `authorization` - The authorization token granting permission to send this message
+    /// * `msg` - The message to be authorized and signed
+    ///
+    /// # Returns
+    ///
+    /// A new `Authorized` instance containing the message, authorization, and signature
     pub fn new(actor_sk: &SigningKey, authorization: Authorization, msg: AuthorizedMsg) -> Self {
         let mut encoded = Vec::new();
         msg.encode(&mut encoded);
@@ -222,8 +314,23 @@ impl Authorized {
         }
     }
 
-    pub fn verify(&self, authorizer_pub: VerifyingKey) -> Result<(), FlashblocksP2PError> {
-        self.authorization.verify(authorizer_pub)?;
+    /// Verifies both the authorization and actor signatures.
+    ///
+    /// This function performs a two-step verification process:
+    /// 1. Verifies that the authorization signature is valid for the given authorizer
+    /// 2. Verifies that the actor signature is valid for the message and authorization
+    ///
+    /// # Arguments
+    ///
+    /// * `authorizer_sk` - The public key of the authorizer to verify against
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if both signatures are valid
+    /// * `Err(FlashblocksP2PError::InvalidAuthorizerSig)` if the authorization signature is invalid
+    /// * `Err(FlashblocksP2PError::InvalidBuilderSig)` if the actor signature is invalid
+    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), FlashblocksP2PError> {
+        self.authorization.verify(authorizer_sk)?;
 
         let mut encoded = Vec::new();
         self.msg.encode(&mut encoded);
@@ -236,6 +343,18 @@ impl Authorized {
             .map_err(|_| FlashblocksP2PError::InvalidBuilderSig)
     }
 
+    /// Converts this `Authorized` message into a type-safe `AuthorizedPayload<T>` without verification.
+    ///
+    /// This is an unchecked conversion that bypasses type checking. The caller must ensure
+    /// that the contained message is actually of type `T`.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The expected type of the contained message
+    ///
+    /// # Returns
+    ///
+    /// An `AuthorizedPayload<T>` wrapper around this authorized message
     pub fn into_unchecked<T>(self) -> AuthorizedPayload<T> {
         AuthorizedPayload::<T> {
             authorized: self,
@@ -248,6 +367,14 @@ impl<T> AuthorizedPayload<T>
 where
     AuthorizedMsg: AsRef<T>,
 {
+    /// Returns a reference to the underlying message of type `T`.
+    ///
+    /// This method provides type-safe access to the contained message by leveraging
+    /// the `AsRef` trait implementation to extract the specific message type.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the message of type `T`
     pub fn msg(&self) -> &T {
         self.authorized.msg.as_ref()
     }
@@ -316,7 +443,6 @@ impl Decodable for Authorized {
 }
 
 impl FlashblocksP2PMsg {
-    /// Creates a new `FlashblocksP2PError` with the given message ID and payload.
     pub fn encode(&self) -> BytesMut {
         let mut buf = BytesMut::new();
         match self {
@@ -328,7 +454,6 @@ impl FlashblocksP2PMsg {
         buf
     }
 
-    /// Decodes a `FlashblocksP2PError` from the given message buffer.
     pub fn decode(buf: &mut &[u8]) -> Result<Self, FlashblocksP2PError> {
         if buf.is_empty() {
             return Err(FlashblocksP2PError::InputTooShort);
