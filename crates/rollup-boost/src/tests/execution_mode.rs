@@ -23,7 +23,7 @@ impl BuilderProxyHandler for CounterHandler {
             tracing::info!("Proxy handler intercepted Engine API call: {}", method);
         } else {
             tracing::debug!("Proxy handler intercepted health check call: {}", method);
-        }   
+        }
         async move { None }.boxed()
     }
 }

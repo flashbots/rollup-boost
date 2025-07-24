@@ -33,11 +33,11 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, instrument};
-use std::collections::HashMap;
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
@@ -129,7 +129,7 @@ where
         self.payload_trace_context
             .remove_by_parent_hash(&parent_hash)
             .await;
-        
+
         let builder_healthy = matches!(self.probes.health(), Health::Healthy);
 
         // async call to builder to sync the builder node
@@ -500,7 +500,7 @@ where
                             span.id(),
                         )
                         .await;
-                        
+
                     self.payload_to_fcu_request
                         .lock()
                         .insert(payload_id, (fork_choice_state, payload_attributes));
@@ -784,7 +784,7 @@ pub mod tests {
                 None,
                 probes.clone(),
                 false,
-                true
+                true,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
