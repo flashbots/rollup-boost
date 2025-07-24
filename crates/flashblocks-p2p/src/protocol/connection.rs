@@ -248,6 +248,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         self.handler.ctx.publish(&mut state, authorized_payload);
     }
 
+    // TODO: Handle replay attacks with StartPublish messages.
     // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
         let mut state = self.handler.state.lock();
@@ -324,6 +325,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         }
     }
 
+    // TODO: Handle replay attacks with StopPublish messages.
     // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_stop_publish(&mut self, authorized_payload: AuthorizedPayload<StopPublish>) {
         let mut state = self.handler.state.lock();
