@@ -130,9 +130,7 @@ impl FlashblocksP2PState {
 /// used across all connections in the flashblocks P2P protocol. It provides the shared
 /// infrastructure needed for message verification, signing, and broadcasting.
 #[derive(Clone, Debug)]
-pub struct FlashblocksP2PCtx<N> {
-    /// Network handle used to update peer reputation and manage connections.
-    pub network_handle: N,
+pub struct FlashblocksP2PCtx {
     /// Authorizer's verifying key used to verify authorization signatures from rollup-boost.
     pub authorizer_vk: VerifyingKey,
     /// Builder's signing key used to sign outgoing authorized P2P messages.
@@ -145,6 +143,39 @@ pub struct FlashblocksP2PCtx<N> {
     pub flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
 }
 
+/// Handle for the flashblocks P2P protocol.
+///
+/// Encapsulates the shared context and mutable state of the flashblocks
+/// P2P protocol, allowing for thread-safe access and modification across multiple
+/// connections.
+#[derive(Clone, Debug)]
+pub struct FlashblocksHandle {
+    /// Shared context containing network handle, keys, and communication channels.
+    pub ctx: FlashblocksP2PCtx,
+    /// Thread-safe mutable state of the flashblocks protocol.
+    /// Protected by a mutex to allow concurrent access from multiple connections.
+    pub state: Arc<Mutex<FlashblocksP2PState>>,
+}
+
+impl FlashblocksHandle {
+    pub fn new(
+        authorizer_vk: VerifyingKey,
+        builder_sk: SigningKey,
+        flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
+    ) -> Self {
+        let peer_tx = broadcast::Sender::new(100);
+        let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
+        let ctx = FlashblocksP2PCtx {
+            authorizer_vk,
+            builder_sk,
+            peer_tx,
+            flashblock_tx,
+        };
+
+        Self { ctx, state }
+    }
+}
+
 /// Main protocol handler for the flashblocks P2P protocol.
 ///
 /// This handler manages incoming and outgoing connections, coordinates flashblock publishing,
@@ -152,11 +183,10 @@ pub struct FlashblocksP2PCtx<N> {
 /// logic for multi-builder coordination and failover scenarios in HA sequencer setups.
 #[derive(Clone, Debug)]
 pub struct FlashblocksHandler<N> {
+    /// Network handle used to update peer reputation and manage connections.
+    pub network_handle: N,
     /// Shared context containing network handle, keys, and communication channels.
-    pub ctx: FlashblocksP2PCtx<N>,
-    /// Thread-safe mutable state of the flashblocks protocol.
-    /// Protected by a mutex to allow concurrent access from multiple connections.
-    pub state: Arc<Mutex<FlashblocksP2PState>>,
+    pub flashblocks_handle: FlashblocksHandle,
 }
 
 impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
@@ -179,14 +209,20 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
         let peer_tx = broadcast::Sender::new(100);
         let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
         let ctx = FlashblocksP2PCtx {
-            network_handle: network_handle.clone(),
             authorizer_vk,
             builder_sk,
             peer_tx,
             flashblock_tx,
         };
+        let flashblocks_handle = FlashblocksHandle {
+            ctx: ctx.clone(),
+            state: state.clone(),
+        };
 
-        Self { ctx, state }
+        Self {
+            network_handle: network_handle.clone(),
+            flashblocks_handle,
+        }
     }
 
     /// Returns the P2P capability for the flashblocks v1 protocol.
@@ -196,7 +232,9 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
     pub fn capability() -> Capability {
         Capability::new_static("flblk", 1)
     }
+}
 
+impl FlashblocksHandle {
     /// Publishes a newly created flashblock from the payload builder to the P2P network.
     ///
     /// This method validates that the builder has authorization to publish and that
@@ -378,7 +416,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PCtx<N> {
+impl FlashblocksP2PCtx {
     /// Processes and publishes a verified flashblock payload to the P2P network and local stream.
     ///
     /// This method handles the core logic of flashblock processing, including validation,
@@ -544,7 +582,7 @@ impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksHandler<N> 
         );
 
         FlashblocksConnection {
-            peer_rx: BroadcastStream::new(self.ctx.peer_tx.subscribe()),
+            peer_rx: BroadcastStream::new(self.flashblocks_handle.ctx.peer_tx.subscribe()),
             handler: self,
             conn,
             peer_id,

@@ -116,7 +116,6 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                         "failed to decode flashblocks message from peer",
                     );
                     this.handler
-                        .ctx
                         .network_handle
                         .reputation_change(this.peer_id, ReputationChangeKind::BadMessage);
                     return Poll::Ready(None);
@@ -126,7 +125,12 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
             match msg {
                 FlashblocksP2PMsg::Authorized(authorized) => {
                     if authorized.authorization.builder_vk
-                        == this.handler.ctx.builder_sk.verifying_key()
+                        == this
+                            .handler
+                            .flashblocks_handle
+                            .ctx
+                            .builder_sk
+                            .verifying_key()
                     {
                         tracing::warn!(
                             target: "flashblocks::p2p",
@@ -134,13 +138,14 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                             "received our own message from peer",
                         );
                         this.handler
-                            .ctx
                             .network_handle
                             .reputation_change(this.peer_id, ReputationChangeKind::BadMessage);
                         continue;
                     }
 
-                    if let Err(error) = authorized.verify(this.handler.ctx.authorizer_vk) {
+                    if let Err(error) =
+                        authorized.verify(this.handler.flashblocks_handle.ctx.authorizer_vk)
+                    {
                         tracing::warn!(
                             target: "flashblocks::p2p",
                             peer_id = %this.peer_id,
@@ -148,7 +153,6 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
                             "failed to verify flashblock",
                         );
                         this.handler
-                            .ctx
                             .network_handle
                             .reputation_change(this.peer_id, ReputationChangeKind::BadMessage);
                         continue;
@@ -191,7 +195,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
         &mut self,
         authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,
     ) {
-        let mut state = self.handler.state.lock();
+        let mut state = self.handler.flashblocks_handle.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
         let msg = authorized_payload.msg();
 
@@ -204,7 +208,6 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 "received flashblock with outdated timestamp",
             );
             self.handler
-                .ctx
                 .network_handle
                 .reputation_change(self.peer_id, ReputationChangeKind::BadMessage);
             return;
@@ -231,7 +234,6 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 "received duplicate flashblock from peer",
             );
             self.handler
-                .ctx
                 .network_handle
                 .reputation_change(self.peer_id, ReputationChangeKind::AlreadySeenTransaction);
             return;
@@ -267,12 +269,15 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
             active_publishers.push((authorization.builder_vk, authorization.timestamp));
         }
 
-        self.handler.ctx.publish(&mut state, authorized_payload);
+        self.handler
+            .flashblocks_handle
+            .ctx
+            .publish(&mut state, authorized_payload);
     }
 
     // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
-        let mut state = self.handler.state.lock();
+        let mut state = self.handler.flashblocks_handle.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
 
         // Check if the request is expired for dos protection.
@@ -287,7 +292,6 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 "received initiate build request with outdated timestamp",
             );
             self.handler
-                .ctx
                 .network_handle
                 .reputation_change(self.peer_id, ReputationChangeKind::BadMessage);
             return;
@@ -304,13 +308,18 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 );
 
                 let authorized = Authorized::new(
-                    &self.handler.ctx.builder_sk,
+                    &self.handler.flashblocks_handle.ctx.builder_sk,
                     *our_authorization,
                     StopPublish.into(),
                 );
                 let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
                 let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
-                self.handler.ctx.peer_tx.send(peer_msg).ok();
+                self.handler
+                    .flashblocks_handle
+                    .ctx
+                    .peer_tx
+                    .send(peer_msg)
+                    .ok();
 
                 state.publishing_status = PublishingStatus::NotPublishing {
                     active_publishers: vec![(
@@ -352,7 +361,7 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
 
     // TODO: handle propogating this if we care. For now we assume direct peering.
     fn handle_stop_publish(&mut self, authorized_payload: AuthorizedPayload<StopPublish>) {
-        let mut state = self.handler.state.lock();
+        let mut state = self.handler.flashblocks_handle.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
 
         // Check if the request is expired for dos protection.
@@ -367,7 +376,6 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
                 "Received initiate build response with outdated timestamp",
             );
             self.handler
-                .ctx
                 .network_handle
                 .reputation_change(self.peer_id, ReputationChangeKind::BadMessage);
             return;

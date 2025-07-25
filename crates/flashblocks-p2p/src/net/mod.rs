@@ -10,31 +10,31 @@ use reth_node_builder::{
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 
-use crate::protocol::handler::{FlashblocksHandler, FlashblocksP2PNetworHandle};
+use crate::protocol::handler::{FlashblocksHandle, FlashblocksHandler, FlashblocksP2PNetworHandle};
 
 #[derive(Debug)]
-pub struct FlashblocksNetworkBuilder<T, N> {
+pub struct FlashblocksNetworkBuilder<T> {
     inner: T,
-    flashblocks_p2p_handler: Option<FlashblocksHandler<N>>,
+    flashblocks_p2p_handle: Option<FlashblocksHandle>,
 }
 
-impl<T, N> FlashblocksNetworkBuilder<T, N> {
-    pub fn new(inner: T, flashblocks_p2p_handler: FlashblocksHandler<N>) -> Self {
+impl<T> FlashblocksNetworkBuilder<T> {
+    pub fn new(inner: T, flashblocks_p2p_handle: FlashblocksHandle) -> Self {
         Self {
             inner,
-            flashblocks_p2p_handler: Some(flashblocks_p2p_handler),
+            flashblocks_p2p_handle: Some(flashblocks_p2p_handle),
         }
     }
 
     pub fn disabled(inner: T) -> Self {
         Self {
             inner,
-            flashblocks_p2p_handler: None,
+            flashblocks_p2p_handle: None,
         }
     }
 }
 
-impl<T, Network, Node, Pool> NetworkBuilder<Node, Pool> for FlashblocksNetworkBuilder<T, Network>
+impl<T, Network, Node, Pool> NetworkBuilder<Node, Pool> for FlashblocksNetworkBuilder<T>
 where
     T: NetworkBuilder<Node, Pool, Network = Network>,
     Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>,
@@ -53,8 +53,12 @@ where
         pool: Pool,
     ) -> eyre::Result<Self::Network> {
         let handle = self.inner.build_network(ctx, pool).await?;
-        if let Some(flashblocks_p2p_handler) = self.flashblocks_p2p_handler {
-            handle.add_rlpx_sub_protocol(flashblocks_p2p_handler.into_rlpx_sub_protocol());
+        if let Some(flashblocks_handle) = self.flashblocks_p2p_handle {
+            let flashblocks_rlpx = FlashblocksHandler {
+                network_handle: handle.clone(),
+                flashblocks_handle,
+            };
+            handle.add_rlpx_sub_protocol(flashblocks_rlpx.into_rlpx_sub_protocol());
         }
 
         Ok(handle)
