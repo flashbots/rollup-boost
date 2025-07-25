@@ -12,7 +12,7 @@ use rollup_boost::{
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use tracing::debug;
 
 use reth_ethereum::network::{
@@ -104,7 +104,7 @@ impl Default for PublishingStatus {
 #[derive(Debug, Default)]
 pub struct FlashblocksP2PState {
     /// Current publishing status indicating whether we're publishing, waiting, or not publishing.
-    pub publishing_status: PublishingStatus,
+    pub publishing_status: watch::Sender<PublishingStatus>,
     /// Most recent payload ID for the current block being processed.
     pub payload_id: PayloadId,
     /// Timestamp of the most recent flashblocks payload.
@@ -124,7 +124,7 @@ impl FlashblocksP2PState {
     /// This indicates whether the node is actively publishing flashblocks,
     /// waiting to publish, or not publishing at all.
     pub fn publishing_status(&self) -> PublishingStatus {
-        self.publishing_status.clone()
+        self.publishing_status.borrow().clone()
     }
 }
 
@@ -239,11 +239,12 @@ impl FlashblocksHandle {
         authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,
     ) -> Result<(), FlashblocksP2PError> {
         let mut state = self.state.lock();
-        let PublishingStatus::Publishing { authorization } = &state.publishing_status else {
+        let PublishingStatus::Publishing { authorization } = *state.publishing_status.borrow()
+        else {
             return Err(FlashblocksP2PError::NotClearedToPublish);
         };
 
-        if authorization != &authorized_payload.authorized.authorization {
+        if authorization != authorized_payload.authorized.authorization {
             return Err(FlashblocksP2PError::ExpiredAuthorization);
         }
         self.ctx.publish(&mut state, authorized_payload);
@@ -258,7 +259,16 @@ impl FlashblocksHandle {
     /// # Returns
     /// The current `PublishingStatus` enum value
     pub fn publishing_status(&self) -> PublishingStatus {
-        self.state.lock().publishing_status.clone()
+        self.state.lock().publishing_status.borrow().clone()
+    }
+
+    pub async fn await_clearance(&self) {
+        let mut status = self.state.lock().publishing_status.subscribe();
+        // Safe to unwrap becuase self holds a sender.
+        status
+            .wait_for(|status| matches!(status, PublishingStatus::Publishing { .. }))
+            .await
+            .unwrap();
     }
 
     /// Initiates flashblock publishing for a new block.
@@ -277,73 +287,75 @@ impl FlashblocksHandle {
     /// Calling this method does not guarantee immediate publishing clearance.
     /// The node may need to wait for other publishers to stop first.
     pub fn start_publishing(&self, new_authorization: Authorization) {
-        let mut state = self.state.lock();
-        match &mut state.publishing_status {
-            PublishingStatus::Publishing { authorization } => {
-                // We are already publishing, so we just update the authorization.
-                *authorization = new_authorization;
-            }
-            PublishingStatus::WaitingToPublish {
-                authorization,
-                active_publishers,
-            } => {
-                let most_recent_publisher = active_publishers
-                    .iter()
-                    .map(|(_, timestamp)| *timestamp)
-                    .max()
-                    .unwrap_or_default();
-                // We are waiting to publish, so we update the authorization and
-                // the block number at which we requested to start publishing.
-                if new_authorization.timestamp >= most_recent_publisher + MAX_PUBLISH_WAIT_SEC {
-                    // If the block number is greater than the one we requested to start publishing,
-                    // we will update it.
-                    tracing::warn!(
-                        target: "flashblocks::p2p",
-                        payload_id = %new_authorization.payload_id,
-                        timestamp = %new_authorization.timestamp,
-                        "waiting to publish timed out, starting to publish",
-                    );
-                    state.publishing_status = PublishingStatus::Publishing {
-                        authorization: new_authorization,
-                    };
-                } else {
-                    // Continue to wait for the previous builder to stop.
+        let state = self.state.lock();
+        state.publishing_status.send_modify(|status| {
+            match status {
+                PublishingStatus::Publishing { authorization } => {
+                    // We are already publishing, so we just update the authorization.
                     *authorization = new_authorization;
                 }
-            }
-            PublishingStatus::NotPublishing { active_publishers } => {
-                // Send an authorized `StartPublish` message to the network
-                let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
-                let authorized_payload =
-                    Authorized::new(&self.ctx.builder_sk, new_authorization, authorized_msg);
-                let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
-                let peer_msg = PeerMsg::StartPublishing(p2p_msg.encode());
-                self.ctx.peer_tx.send(peer_msg).ok();
+                PublishingStatus::WaitingToPublish {
+                    authorization,
+                    active_publishers,
+                } => {
+                    let most_recent_publisher = active_publishers
+                        .iter()
+                        .map(|(_, timestamp)| *timestamp)
+                        .max()
+                        .unwrap_or_default();
+                    // We are waiting to publish, so we update the authorization and
+                    // the block number at which we requested to start publishing.
+                    if new_authorization.timestamp >= most_recent_publisher + MAX_PUBLISH_WAIT_SEC {
+                        // If the block number is greater than the one we requested to start publishing,
+                        // we will update it.
+                        tracing::warn!(
+                            target: "flashblocks::p2p",
+                            payload_id = %new_authorization.payload_id,
+                            timestamp = %new_authorization.timestamp,
+                            "waiting to publish timed out, starting to publish",
+                        );
+                        *status = PublishingStatus::Publishing {
+                            authorization: new_authorization,
+                        };
+                    } else {
+                        // Continue to wait for the previous builder to stop.
+                        *authorization = new_authorization;
+                    }
+                }
+                PublishingStatus::NotPublishing { active_publishers } => {
+                    // Send an authorized `StartPublish` message to the network
+                    let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
+                    let authorized_payload =
+                        Authorized::new(&self.ctx.builder_sk, new_authorization, authorized_msg);
+                    let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
+                    let peer_msg = PeerMsg::StartPublishing(p2p_msg.encode());
+                    self.ctx.peer_tx.send(peer_msg).ok();
 
-                if active_publishers.is_empty() {
-                    // If we have no previous publishers, we can start publishing immediately.
-                    tracing::info!(
-                        target: "flashblocks::p2p",
-                        payload_id = %new_authorization.payload_id,
-                        "starting to publish flashblocks",
-                    );
-                    state.publishing_status = PublishingStatus::Publishing {
-                        authorization: new_authorization,
-                    };
-                } else {
-                    // If we have previous publishers, we will wait for them to stop.
-                    tracing::info!(
-                        target: "flashblocks::p2p",
-                        payload_id = %new_authorization.payload_id,
-                        "waiting to publish flashblocks",
-                    );
-                    state.publishing_status = PublishingStatus::WaitingToPublish {
-                        authorization: new_authorization,
-                        active_publishers: active_publishers.clone(),
-                    };
+                    if active_publishers.is_empty() {
+                        // If we have no previous publishers, we can start publishing immediately.
+                        tracing::info!(
+                            target: "flashblocks::p2p",
+                            payload_id = %new_authorization.payload_id,
+                            "starting to publish flashblocks",
+                        );
+                        *status = PublishingStatus::Publishing {
+                            authorization: new_authorization,
+                        };
+                    } else {
+                        // If we have previous publishers, we will wait for them to stop.
+                        tracing::info!(
+                            target: "flashblocks::p2p",
+                            payload_id = %new_authorization.payload_id,
+                            "waiting to publish flashblocks",
+                        );
+                        *status = PublishingStatus::WaitingToPublish {
+                            authorization: new_authorization,
+                            active_publishers: active_publishers.clone(),
+                        };
+                    }
                 }
             }
-        }
+        });
     }
 
     /// Stops flashblock publishing and notifies the P2P network.
@@ -352,48 +364,50 @@ impl FlashblocksHandle {
     /// the node to a non-publishing state. It should be called when receiving a
     /// ForkChoiceUpdated without payload attributes or without an Authorization token.
     pub fn stop_publishing(&self) {
-        let mut state = self.state.lock();
-        match &mut state.publishing_status {
-            PublishingStatus::Publishing { authorization } => {
-                // We are currently publishing, so we send a stop message.
-                tracing::info!(
-                    target: "flashblocks::p2p",
-                    payload_id = %authorization.payload_id,
-                    timestamp = %authorization.timestamp,
-                    "stopping to publish flashblocks",
-                );
-                let authorized_payload =
-                    Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
-                let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
-                let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
-                self.ctx.peer_tx.send(peer_msg).ok();
-                state.publishing_status = PublishingStatus::NotPublishing {
-                    active_publishers: Vec::new(),
-                };
+        let state = self.state.lock();
+        state.publishing_status.send_modify(|status| {
+            match status {
+                PublishingStatus::Publishing { authorization } => {
+                    // We are currently publishing, so we send a stop message.
+                    tracing::info!(
+                        target: "flashblocks::p2p",
+                        payload_id = %authorization.payload_id,
+                        timestamp = %authorization.timestamp,
+                        "stopping to publish flashblocks",
+                    );
+                    let authorized_payload =
+                        Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
+                    let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
+                    let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
+                    self.ctx.peer_tx.send(peer_msg).ok();
+                    *status = PublishingStatus::NotPublishing {
+                        active_publishers: Vec::new(),
+                    };
+                }
+                PublishingStatus::WaitingToPublish {
+                    authorization,
+                    active_publishers,
+                    ..
+                } => {
+                    // We are waiting to publish, so we just update the status.
+                    tracing::info!(
+                        target: "flashblocks::p2p",
+                        payload_id = %authorization.payload_id,
+                        timestamp = %authorization.timestamp,
+                        "aborting wait to publish flashblocks",
+                    );
+                    let authorized_payload =
+                        Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
+                    let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
+                    let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
+                    self.ctx.peer_tx.send(peer_msg).ok();
+                    *status = PublishingStatus::NotPublishing {
+                        active_publishers: active_publishers.clone(),
+                    };
+                }
+                PublishingStatus::NotPublishing { .. } => {}
             }
-            PublishingStatus::WaitingToPublish {
-                authorization,
-                active_publishers,
-                ..
-            } => {
-                // We are waiting to publish, so we just update the status.
-                tracing::info!(
-                    target: "flashblocks::p2p",
-                    payload_id = %authorization.payload_id,
-                    timestamp = %authorization.timestamp,
-                    "aborting wait to publish flashblocks",
-                );
-                let authorized_payload =
-                    Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
-                let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
-                let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
-                self.ctx.peer_tx.send(peer_msg).ok();
-                state.publishing_status = PublishingStatus::NotPublishing {
-                    active_publishers: active_publishers.clone(),
-                };
-            }
-            PublishingStatus::NotPublishing { .. } => {}
-        }
+        });
     }
 }
 

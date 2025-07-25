@@ -41,12 +41,12 @@ type Network = NetworkHandle<
 
 pub struct NodeContext {
     p2p_handle: FlashblocksHandle,
-    flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
+    _flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
     _node: Box<dyn Any + Sync + Send>,
-    network_handle: Network,
+    _network_handle: Network,
 }
 
 impl NodeContext {
@@ -143,12 +143,12 @@ async fn setup_node(
 
     Ok(NodeContext {
         p2p_handle,
-        flashblocks_tx: inbound_tx,
+        _flashblocks_tx: inbound_tx,
         local_node_record,
         http_api_addr,
         _node_exit_future: node_exit_future,
         _node: Box::new(node),
-        network_handle,
+        _network_handle: network_handle,
     })
 }
 

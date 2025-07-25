@@ -11,13 +11,11 @@ use crate::{
     probe::{Health, Probes},
 };
 use alloy_primitives::{B256, Bytes, bytes};
-use alloy_rlp::{RlpDecodable, RlpEncodable};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use http_body_util::{BodyExt, Full};
 use jsonrpsee::RpcModule;
 use jsonrpsee::core::BoxError;
@@ -35,7 +33,6 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
