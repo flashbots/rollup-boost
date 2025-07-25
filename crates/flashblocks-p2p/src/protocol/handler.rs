@@ -1,7 +1,6 @@
-use crate::protocol::connection::FlashblocksConnection;
+use crate::protocol::{connection::FlashblocksConnection, error::FlashblocksP2PError};
 use alloy_rlp::BytesMut;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use eyre::bail;
 use parking_lot::Mutex;
 use reth::payload::PayloadId;
 use reth_eth_wire::Capability;
@@ -32,7 +31,12 @@ const MAX_FRAME: usize = 1 << 24; // 16 MiB
 const MAX_FLASHBLOCK_INDEX: usize = 100;
 
 /// The maximum number of seconds we will wait for a previous publisher to stop
+/// before continueing anyways.
 const MAX_PUBLISH_WAIT_SEC: u64 = 2;
+
+/// The maximum number of broadcast channel messages we will buffer
+/// before dropping them. In practice, we should rarely need to buffer any messages.
+const BROADCAST_BUFFER_CAPACITY: usize = 100;
 
 /// Trait bound for network handles that can be used with the flashblocks P2P protocol.
 ///
@@ -146,8 +150,7 @@ pub struct FlashblocksP2PCtx {
 /// Handle for the flashblocks P2P protocol.
 ///
 /// Encapsulates the shared context and mutable state of the flashblocks
-/// P2P protocol, allowing for thread-safe access and modification across multiple
-/// connections.
+/// P2P protocol.
 #[derive(Clone, Debug)]
 pub struct FlashblocksHandle {
     /// Shared context containing network handle, keys, and communication channels.
@@ -163,7 +166,7 @@ impl FlashblocksHandle {
         builder_sk: SigningKey,
         flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
     ) -> Self {
-        let peer_tx = broadcast::Sender::new(100);
+        let peer_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
         let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
         let ctx = FlashblocksP2PCtx {
             authorizer_vk,
@@ -182,46 +185,26 @@ impl FlashblocksHandle {
 /// and maintains the protocol state across all peer connections. It implements the core
 /// logic for multi-builder coordination and failover scenarios in HA sequencer setups.
 #[derive(Clone, Debug)]
-pub struct FlashblocksHandler<N> {
+pub struct FlashblocksP2PProtocol<N> {
     /// Network handle used to update peer reputation and manage connections.
-    pub network_handle: N,
+    pub network: N,
     /// Shared context containing network handle, keys, and communication channels.
-    pub flashblocks_handle: FlashblocksHandle,
+    pub handle: FlashblocksHandle,
 }
 
-impl<N: FlashblocksP2PNetworHandle> FlashblocksHandler<N> {
+impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PProtocol<N> {
     /// Creates a new flashblocks P2P protocol handler.
     ///
     /// Initializes the handler with the necessary cryptographic keys, network handle,
     /// and communication channels. The handler starts in a non-publishing state.
     ///
     /// # Arguments
-    /// * `network_handle` - Network handle for peer management and reputation updates
-    /// * `authorizer_vk` - Verifying key for validating authorization signatures from rollup-boost
-    /// * `builder_sk` - Signing key for this builder to sign outgoing messages
-    /// * `flashblock_tx` - Broadcast channel for publishing verified flashblocks to consumers
-    pub fn new(
-        network_handle: N,
-        authorizer_vk: VerifyingKey,
-        builder_sk: SigningKey,
-        flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    ) -> Self {
-        let peer_tx = broadcast::Sender::new(100);
-        let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
-        let ctx = FlashblocksP2PCtx {
-            authorizer_vk,
-            builder_sk,
-            peer_tx,
-            flashblock_tx,
-        };
-        let flashblocks_handle = FlashblocksHandle {
-            ctx: ctx.clone(),
-            state: state.clone(),
-        };
-
+    /// * `network` - Network handle for peer management and reputation updates
+    /// * `handle` - Shared handle containing the protocol context and mutable state
+    pub fn new(network: N, handle: FlashblocksHandle) -> Self {
         Self {
-            network_handle: network_handle.clone(),
-            flashblocks_handle,
+            network: network.clone(),
+            handle,
         }
     }
 
@@ -254,16 +237,14 @@ impl FlashblocksHandle {
     pub fn publish_new(
         &self,
         authorized_payload: AuthorizedPayload<FlashblocksPayloadV1>,
-    ) -> eyre::Result<()> {
+    ) -> Result<(), FlashblocksP2PError> {
         let mut state = self.state.lock();
         let PublishingStatus::Publishing { authorization } = &state.publishing_status else {
-            bail!("attempt to publish flashblocks without clearance");
+            return Err(FlashblocksP2PError::NotClearedToPublish);
         };
 
         if authorization != &authorized_payload.authorized.authorization {
-            bail!(
-                "attempt to publish flashblocks with a previous authorization. Make sure to call `start_publishing` first."
-            );
+            return Err(FlashblocksP2PError::ExpiredAuthorization);
         }
         self.ctx.publish(&mut state, authorized_payload);
         Ok(())
@@ -533,7 +514,7 @@ impl FlashblocksP2PCtx {
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksHandler<N> {
+impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksP2PProtocol<N> {
     type ConnectionHandler = Self;
 
     fn on_incoming(&self, _socket_addr: SocketAddr) -> Option<Self::ConnectionHandler> {
@@ -549,7 +530,7 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksHandler<N> {
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksHandler<N> {
+impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksP2PProtocol<N> {
     type Connection = FlashblocksConnection<N>;
 
     fn protocol(&self) -> Protocol {
@@ -582,8 +563,8 @@ impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksHandler<N> 
         );
 
         FlashblocksConnection {
-            peer_rx: BroadcastStream::new(self.flashblocks_handle.ctx.peer_tx.subscribe()),
-            handler: self,
+            peer_rx: BroadcastStream::new(self.handle.ctx.peer_tx.subscribe()),
+            protocol: self,
             conn,
             peer_id,
             payload_id: Default::default(),

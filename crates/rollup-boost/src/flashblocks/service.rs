@@ -4,7 +4,8 @@ use super::primitives::{
 };
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
-    ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
+    ClientResult, EngineApiExt, FlashblocksError, NewPayload, OpExecutionPayloadEnvelope,
+    PayloadVersion, RpcClient,
 };
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
@@ -22,24 +23,9 @@ use reth_optimism_payload_builder::payload_id_optimism;
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
-use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::{error, info};
-
-#[derive(Debug, Error, PartialEq)]
-pub enum FlashblocksError {
-    #[error("Missing base payload for initial flashblock")]
-    MissingBasePayload,
-    #[error("Unexpected base payload for non-initial flashblock")]
-    UnexpectedBasePayload,
-    #[error("Missing delta for flashblock")]
-    MissingDelta,
-    #[error("Invalid index for flashblock")]
-    InvalidIndex,
-    #[error("Missing payload")]
-    MissingPayload,
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct FlashbotsMessage {

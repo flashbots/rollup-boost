@@ -7,7 +7,7 @@ use bytes::{Buf as _, BufMut as _, BytesMut};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::{FlashblocksP2PError, FlashblocksPayloadV1};
+use crate::{FlashblocksError, FlashblocksPayloadV1};
 
 /// An authorization token that grants a builder permission to publish flashblocks for a specific payload.
 ///
@@ -132,14 +132,14 @@ impl Authorization {
     ///
     /// * `Ok(())` if the signature is valid
     /// * `Err(FlashblocksP2PError::InvalidAuthorizerSig)` if the signature is invalid
-    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), FlashblocksP2PError> {
+    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), FlashblocksError> {
         let mut msg = self.payload_id.0.to_vec();
         msg.extend_from_slice(&self.timestamp.to_le_bytes());
         msg.extend_from_slice(self.builder_vk.as_bytes());
         let hash = blake3::hash(&msg);
         authorizer_sk
             .verify(hash.as_bytes(), &self.authorizer_sig)
-            .map_err(|_| FlashblocksP2PError::InvalidAuthorizerSig)
+            .map_err(|_| FlashblocksError::InvalidAuthorizerSig)
     }
 }
 
@@ -322,7 +322,7 @@ impl Authorized {
     /// * `Ok(())` if both signatures are valid
     /// * `Err(FlashblocksP2PError::InvalidAuthorizerSig)` if the authorization signature is invalid
     /// * `Err(FlashblocksP2PError::InvalidBuilderSig)` if the actor signature is invalid
-    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), FlashblocksP2PError> {
+    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), FlashblocksError> {
         self.authorization.verify(authorizer_sk)?;
 
         let mut encoded = Vec::new();
@@ -333,7 +333,7 @@ impl Authorized {
         self.authorization
             .builder_vk
             .verify(hash.as_bytes(), &self.actor_sig)
-            .map_err(|_| FlashblocksP2PError::InvalidBuilderSig)
+            .map_err(|_| FlashblocksError::InvalidBuilderSig)
     }
 
     /// Converts this `Authorized` message into a type-safe `AuthorizedPayload<T>` without verification.
@@ -447,9 +447,9 @@ impl FlashblocksP2PMsg {
         buf
     }
 
-    pub fn decode(buf: &mut &[u8]) -> Result<Self, FlashblocksP2PError> {
+    pub fn decode(buf: &mut &[u8]) -> Result<Self, FlashblocksError> {
         if buf.is_empty() {
-            return Err(FlashblocksP2PError::InputTooShort);
+            return Err(FlashblocksError::InputTooShort);
         }
         let id = buf[0];
         buf.advance(1);
@@ -458,7 +458,7 @@ impl FlashblocksP2PMsg {
                 let payload = Authorized::decode(buf)?;
                 Ok(FlashblocksP2PMsg::Authorized(payload))
             }
-            _ => Err(FlashblocksP2PError::UnknownMessageType),
+            _ => Err(FlashblocksError::UnknownMessageType),
         }
     }
 }
@@ -782,6 +782,6 @@ mod tests {
         let mut slice: &[u8] = &buf;
         let err =
             FlashblocksP2PMsg::decode(&mut slice).expect_err("should fail on unknown message type");
-        assert_eq!(err, FlashblocksP2PError::UnknownMessageType);
+        assert_eq!(err, FlashblocksError::UnknownMessageType);
     }
 }

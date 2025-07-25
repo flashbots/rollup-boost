@@ -1,5 +1,5 @@
 use crate::debug_api::ExecutionMode;
-use crate::{Authorization, BlockSelectionPolicy, EngineApiExt, FlashblocksP2PError};
+use crate::{Authorization, BlockSelectionPolicy, EngineApiExt};
 use crate::{
     client::rpc::RpcClient,
     debug_api::DebugServer,

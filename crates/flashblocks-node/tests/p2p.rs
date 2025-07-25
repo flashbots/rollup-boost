@@ -5,7 +5,7 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::SigningKey;
-use flashblocks_p2p::protocol::handler::FlashblocksHandler;
+use flashblocks_p2p::protocol::handler::{FlashblocksHandle, FlashblocksP2PProtocol};
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, Metadata};
 use op_alloy_consensus::{OpPooledTransaction, OpTxEnvelope};
 use reth_eth_wire::BasicNetworkPrimitives;
@@ -40,7 +40,7 @@ type Network = NetworkHandle<
 >;
 
 pub struct NodeContext {
-    p2p_handle: FlashblocksHandler<Network>,
+    p2p_handle: FlashblocksHandle,
     flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
@@ -114,15 +114,19 @@ async fn setup_node(
         .launch()
         .await?;
 
-    let p2p_handle = FlashblocksHandler::new(
-        node.network.clone(),
+    let p2p_handle = FlashblocksHandle::new(
         authorizer_sk.verifying_key(),
         builder_sk,
         inbound_tx.clone(),
     );
 
+    let p2p_protocol = FlashblocksP2PProtocol {
+        network: node.network.clone(),
+        handle: p2p_handle.clone(),
+    };
+
     node.network
-        .add_rlpx_sub_protocol(p2p_handle.clone().into_rlpx_sub_protocol());
+        .add_rlpx_sub_protocol(p2p_protocol.into_rlpx_sub_protocol());
 
     for (peer_id, addr) in peers {
         // If a trusted peer is provided, add it to the network
@@ -354,9 +358,7 @@ async fn test_double_failover() -> eyre::Result<()> {
     let msg = payload_0.clone();
     let authorized_0 =
         AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization_0, msg);
-    nodes[0].p2p_handle.start_publishing(
-        authorization_0,
-    );
+    nodes[0].p2p_handle.start_publishing(authorization_0);
     nodes[0].p2p_handle.publish_new(authorized_0).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -372,9 +374,7 @@ async fn test_double_failover() -> eyre::Result<()> {
         authorization_1,
         payload_1.clone(),
     );
-    nodes[1]
-        .p2p_handle
-        .start_publishing(authorization_1);
+    nodes[1].p2p_handle.start_publishing(authorization_1);
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     nodes[1].p2p_handle.publish_new(authorized_1).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -393,9 +393,7 @@ async fn test_double_failover() -> eyre::Result<()> {
         authorization_2,
         msg.clone(),
     );
-    nodes[2]
-        .p2p_handle
-        .start_publishing(authorization_2);
+    nodes[2].p2p_handle.start_publishing(authorization_2);
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     nodes[2].p2p_handle.publish_new(authorized_2).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -453,9 +451,7 @@ async fn test_force_race_condition() -> eyre::Result<()> {
     let msg = payload_0.clone();
     let authorized =
         AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization, msg);
-    nodes[0].p2p_handle.start_publishing(
-        authorization,
-    );
+    nodes[0].p2p_handle.start_publishing(authorization);
     nodes[0].p2p_handle.publish_new(authorized).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -527,12 +523,8 @@ async fn test_force_race_condition() -> eyre::Result<()> {
         authorization_1,
         msg.clone(),
     );
-    nodes[1].p2p_handle.start_publishing(
-        authorization_1,
-    );
-    nodes[2].p2p_handle.start_publishing(
-        authorization_2,
-    );
+    nodes[1].p2p_handle.start_publishing(authorization_1);
+    nodes[2].p2p_handle.start_publishing(authorization_2);
     // Wait for clearance to go through
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     tracing::error!(
@@ -544,9 +536,7 @@ async fn test_force_race_condition() -> eyre::Result<()> {
     );
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    nodes[2]
-        .p2p_handle
-        .stop_publishing();
+    nodes[2].p2p_handle.stop_publishing();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     nodes[1].p2p_handle.publish_new(authorized_1)?;

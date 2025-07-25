@@ -10,7 +10,9 @@ use reth_node_builder::{
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 
-use crate::protocol::handler::{FlashblocksHandle, FlashblocksHandler, FlashblocksP2PNetworHandle};
+use crate::protocol::handler::{
+    FlashblocksHandle, FlashblocksP2PNetworHandle, FlashblocksP2PProtocol,
+};
 
 #[derive(Debug)]
 pub struct FlashblocksNetworkBuilder<T> {
@@ -54,9 +56,9 @@ where
     ) -> eyre::Result<Self::Network> {
         let handle = self.inner.build_network(ctx, pool).await?;
         if let Some(flashblocks_handle) = self.flashblocks_p2p_handle {
-            let flashblocks_rlpx = FlashblocksHandler {
-                network_handle: handle.clone(),
-                flashblocks_handle,
+            let flashblocks_rlpx = FlashblocksP2PProtocol {
+                network: handle.clone(),
+                handle: flashblocks_handle,
             };
             handle.add_rlpx_sub_protocol(flashblocks_rlpx.into_rlpx_sub_protocol());
         }
