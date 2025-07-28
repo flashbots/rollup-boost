@@ -207,7 +207,9 @@ impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PProtocol<N> {
             handle,
         }
     }
+}
 
+impl<N> FlashblocksP2PProtocol<N> {
     /// Returns the P2P capability for the flashblocks v1 protocol.
     ///
     /// This capability is used during devp2p handshake to advertise support
@@ -576,13 +578,8 @@ impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksP2PProtocol
             "new flashblocks connection"
         );
 
-        FlashblocksConnection {
-            peer_rx: BroadcastStream::new(self.handle.ctx.peer_tx.subscribe()),
-            protocol: self,
-            conn,
-            peer_id,
-            payload_id: Default::default(),
-            received: Vec::new(),
-        }
+        let peer_rx = self.handle.ctx.peer_tx.subscribe();
+
+        FlashblocksConnection::new(self, conn, peer_id, BroadcastStream::new(peer_rx))
     }
 }

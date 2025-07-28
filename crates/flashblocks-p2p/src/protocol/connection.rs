@@ -3,6 +3,7 @@ use crate::protocol::handler::{
 };
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
+use metrics::gauge;
 use reth::payload::PayloadId;
 use reth_ethereum::network::{api::PeerId, eth_wire::multiplex::ProtocolConnection};
 use reth_network::types::ReputationChangeKind;
@@ -27,19 +28,52 @@ use tracing::trace;
 /// should be sent to the connected peer over the underlying protocol connection.
 pub struct FlashblocksConnection<N> {
     /// The flashblocks protocol handler that manages the overall protocol state.
-    pub protocol: FlashblocksP2PProtocol<N>,
+    protocol: FlashblocksP2PProtocol<N>,
     /// The underlying protocol connection for sending and receiving raw bytes.
-    pub conn: ProtocolConnection,
+    conn: ProtocolConnection,
     /// The unique identifier of the connected peer.
-    pub peer_id: PeerId,
+    peer_id: PeerId,
     /// Receiver for peer messages to be sent to all peers.
     /// We send bytes over this stream to avoid repeatedly having to serialize the payloads.
-    pub peer_rx: BroadcastStream<PeerMsg>,
+    peer_rx: BroadcastStream<PeerMsg>,
     /// Most recent payload ID received from this peer to track payload transitions.
-    pub payload_id: PayloadId,
+    payload_id: PayloadId,
     /// A list of flashblock indices that we have already received from
     /// this peer for the current payload, used to detect duplicate messages.
-    pub received: Vec<bool>,
+    received: Vec<bool>,
+}
+
+impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
+    /// Creates a new `FlashblocksConnection` instance.
+    ///
+    /// # Arguments
+    /// * `protocol` - The flashblocks protocol handler managing the connection.
+    /// * `conn` - The underlying protocol connection for sending and receiving messages.
+    /// * `peer_id` - The unique identifier of the connected peer.
+    /// * `peer_rx` - Receiver for peer messages to be sent to all peers.
+    pub fn new(
+        protocol: FlashblocksP2PProtocol<N>,
+        conn: ProtocolConnection,
+        peer_id: PeerId,
+        peer_rx: BroadcastStream<PeerMsg>,
+    ) -> Self {
+        gauge!("p2p.flashblocks_peers", "capability" => FlashblocksP2PProtocol::<N>::capability().to_string()).increment(1);
+
+        Self {
+            protocol,
+            conn,
+            peer_id,
+            peer_rx,
+            payload_id: PayloadId::default(),
+            received: Vec::new(),
+        }
+    }
+}
+
+impl<N> Drop for FlashblocksConnection<N> {
+    fn drop(&mut self) {
+        gauge!("p2p.flashblocks_peers", "capability" => FlashblocksP2PProtocol::<N>::capability().to_string()).decrement(1);
+    }
 }
 
 impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
