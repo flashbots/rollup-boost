@@ -43,9 +43,9 @@ const BROADCAST_BUFFER_CAPACITY: usize = 100;
 ///
 /// This trait combines all the necessary bounds for a network handle to be used
 /// in the flashblocks P2P system, including peer management capabilities.
-pub trait FlashblocksP2PNetworHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
+pub trait FlashblocksP2PNetworkHandle: Clone + Unpin + Peers + std::fmt::Debug + 'static {}
 
-impl<N: Clone + Unpin + Peers + std::fmt::Debug + 'static> FlashblocksP2PNetworHandle for N {}
+impl<N: Clone + Unpin + Peers + std::fmt::Debug + 'static> FlashblocksP2PNetworkHandle for N {}
 
 /// Messages that can be broadcast over a channel to each internal peer connection.
 ///
@@ -193,7 +193,7 @@ pub struct FlashblocksP2PProtocol<N> {
     pub handle: FlashblocksHandle,
 }
 
-impl<N: FlashblocksP2PNetworHandle> FlashblocksP2PProtocol<N> {
+impl<N: FlashblocksP2PNetworkHandle> FlashblocksP2PProtocol<N> {
     /// Creates a new flashblocks P2P protocol handler.
     ///
     /// Initializes the handler with the necessary cryptographic keys, network handle,
@@ -552,7 +552,7 @@ impl FlashblocksP2PCtx {
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksP2PProtocol<N> {
+impl<N: FlashblocksP2PNetworkHandle> ProtocolHandler for FlashblocksP2PProtocol<N> {
     type ConnectionHandler = Self;
 
     fn on_incoming(&self, _socket_addr: SocketAddr) -> Option<Self::ConnectionHandler> {
@@ -568,7 +568,7 @@ impl<N: FlashblocksP2PNetworHandle> ProtocolHandler for FlashblocksP2PProtocol<N
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> ConnectionHandler for FlashblocksP2PProtocol<N> {
+impl<N: FlashblocksP2PNetworkHandle> ConnectionHandler for FlashblocksP2PProtocol<N> {
     type Connection = FlashblocksConnection<N>;
 
     fn protocol(&self) -> Protocol {

@@ -31,6 +31,11 @@ sha2 = { version = "0.10", default-features = false }
 
 # Reth deps
 reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+# Issue with reth feature compatibility. Include this in all crates for temp fix.
+reth-op = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
+    "full",
+    "alloy-compat",
+] }
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }

@@ -33,3 +33,6 @@ parking_lot = "0.12"
 
 
 rollup-boost = { path = "../rollup-boost" }
+
+[dev-dependencies]
+reth-op.workspace = true

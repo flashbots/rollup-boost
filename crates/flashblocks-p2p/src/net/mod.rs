@@ -11,7 +11,7 @@ use reth_node_builder::{
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 
 use crate::protocol::handler::{
-    FlashblocksHandle, FlashblocksP2PNetworHandle, FlashblocksP2PProtocol,
+    FlashblocksHandle, FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol,
 };
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ where
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
         + Unpin
         + 'static,
-    Network: FlashblocksP2PNetworHandle
+    Network: FlashblocksP2PNetworkHandle
         + NetworkProtocols
         + FullNetwork<Primitives: NetPrimitivesFor<PrimitivesTy<Node::Types>>>,
 {

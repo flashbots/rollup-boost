@@ -1,5 +1,5 @@
 use crate::protocol::handler::{
-    FlashblocksP2PNetworHandle, FlashblocksP2PProtocol, PeerMsg, PublishingStatus,
+    FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol, PeerMsg, PublishingStatus,
 };
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
@@ -43,7 +43,7 @@ pub struct FlashblocksConnection<N> {
     received: Vec<bool>,
 }
 
-impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
+impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
     /// Creates a new `FlashblocksConnection` instance.
     ///
     /// # Arguments
@@ -76,7 +76,7 @@ impl<N> Drop for FlashblocksConnection<N> {
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
+impl<N: FlashblocksP2PNetworkHandle> Stream for FlashblocksConnection<N> {
     type Item = BytesMut;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -202,7 +202,7 @@ impl<N: FlashblocksP2PNetworHandle> Stream for FlashblocksConnection<N> {
     }
 }
 
-impl<N: FlashblocksP2PNetworHandle> FlashblocksConnection<N> {
+impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
     /// Handles incoming flashblock payload messages from a peer.
     ///
     /// This method validates the flashblock payload, checks for duplicates and ordering,
