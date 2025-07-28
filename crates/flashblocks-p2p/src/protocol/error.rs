@@ -8,10 +8,4 @@ pub enum FlashblocksP2PError {
         "attempt to publish flashblocks with expired authorization. Make sure to call `start_publishing` first"
     )]
     ExpiredAuthorization,
-    #[error("input too short")]
-    InputTooShort,
-    #[error("unknown message type")]
-    UnknownMessageType,
-    #[error("invalid builder signature")]
-    Rlp(#[from] alloy_rlp::Error),
 }
