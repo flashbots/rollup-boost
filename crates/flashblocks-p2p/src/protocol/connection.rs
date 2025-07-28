@@ -318,7 +318,19 @@ impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
             .publish(&mut state, authorized_payload);
     }
 
-    // TODO: handle propogating this if we care. For now we assume direct peering.
+    /// Handles incoming `StartPublish` messages from a peer.
+    ///
+    /// TODO: handle propogating this if we care. For now we assume direct peering.
+    ///
+    /// # Arguments
+    /// * `authorized_payload` - The authorized `StartPublish` message received from the peer
+    ///
+    /// # Behavior
+    /// - Validates the timestamp to prevent replay attacks
+    /// - Updates the publishing status to reflect the new publisher
+    /// - If we are currently publishing, sends a `StopPublish` message to ourselves
+    /// - If we are waiting to publish, updates the list of active publishers
+    /// - If we are not publishing, adds the new publisher to the list of active publishers
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
         let state = self.protocol.handle.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
@@ -399,7 +411,19 @@ impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
         });
     }
 
-    // TODO: handle propogating this if we care. For now we assume direct peering.
+    /// Handles incoming `StopPublish` messages from a peer.
+    ///
+    /// TODO: handle propogating this if we care. For now we assume direct peering.
+    ///
+    /// # Arguments
+    /// * `authorized_payload` - The authorized `StopPublish` message received from the peer
+    ///
+    /// # Behavior
+    /// - Validates the timestamp to prevent replay attacks
+    /// - Updates the publishing status based on the current state
+    /// - If we are currently publishing, logs a warning
+    /// - If we are waiting to publish, removes the publisher from the list of active publishers and checks if we can start publishing
+    /// - If we are not publishing, removes the publisher from the list of active publishers
     fn handle_stop_publish(&mut self, authorized_payload: AuthorizedPayload<StopPublish>) {
         let state = self.protocol.handle.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
