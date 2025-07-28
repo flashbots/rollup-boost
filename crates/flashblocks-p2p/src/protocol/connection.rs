@@ -1,5 +1,6 @@
 use crate::protocol::handler::{
-    FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol, PeerMsg, PublishingStatus,
+    FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol, MAX_FLASHBLOCK_INDEX, PeerMsg,
+    PublishingStatus,
 };
 use alloy_primitives::bytes::BytesMut;
 use futures::{Stream, StreamExt};
@@ -244,6 +245,19 @@ impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
         if self.payload_id != msg.payload_id {
             self.payload_id = msg.payload_id;
             self.received.fill(false);
+        }
+
+        // Check if the payload index is within the allowed range
+        if msg.index as usize > MAX_FLASHBLOCK_INDEX {
+            tracing::error!(
+                target: "flashblocks::p2p",
+                peer_id = %self.peer_id,
+                index = msg.index,
+                payload_id = %msg.payload_id,
+                max_index = MAX_FLASHBLOCK_INDEX,
+                "Received flashblocks payload with index exceeding maximum"
+            );
+            return;
         }
 
         // Check if this peer is spamming us with the same payload index

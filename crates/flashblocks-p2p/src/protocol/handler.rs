@@ -29,7 +29,7 @@ const MAX_FRAME: usize = 1 << 24; // 16 MiB
 /// Maximum index for flashblocks payloads.
 /// Not intended to ever be hit. Since we resize the flashblocks vector dynamically,
 /// this is just a sanity check to prevent excessive memory usage.
-const MAX_FLASHBLOCK_INDEX: usize = 100;
+pub(crate) const MAX_FLASHBLOCK_INDEX: usize = 100;
 
 /// The maximum number of seconds we will wait for a previous publisher to stop
 /// before continueing anyways.
