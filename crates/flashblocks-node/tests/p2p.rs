@@ -22,14 +22,14 @@ use reth_optimism_node::{OpNode, args::RollupArgs};
 use reth_optimism_primitives::{OpPrimitives, OpReceipt};
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::{TaskExecutor, TaskManager};
-use reth_tracing::tracing_subscriber;
+use reth_tracing::tracing_subscriber::{self, util::SubscriberInitExt};
 use rollup_boost::{
     Authorization, AuthorizedPayload, ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1,
     FlashblocksPayloadV1,
 };
 use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{Dispatch, info};
 
 type Network = NetworkHandle<
     BasicNetworkPrimitives<
@@ -56,6 +56,17 @@ impl NodeContext {
 
         Ok(RootProvider::new(client))
     }
+}
+
+fn init_tracing(filter: &str) -> tracing::subscriber::DefaultGuard {
+    let sub = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .with_target(false)
+        .without_time()
+        .finish();
+
+    Dispatch::new(sub).set_default()
 }
 
 async fn setup_node(
@@ -311,12 +322,7 @@ async fn setup_nodes(n: u8) -> eyre::Result<(Vec<NodeContext>, SigningKey)> {
 
 #[tokio::test]
 async fn test_double_failover() -> eyre::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter("warn,flashblocks=trace")
-        .with_target(false)
-        .with_target(false)
-        .without_time()
-        .init();
+    let _ = init_tracing("warn,flashblocks=trace");
 
     let (nodes, authorizer) = setup_nodes(3).await?;
 
@@ -403,12 +409,7 @@ async fn test_double_failover() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_force_race_condition() -> eyre::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter("warn,flashblocks=trace")
-        .with_target(false)
-        .with_target(false)
-        .without_time()
-        .init();
+    let _ = init_tracing("warn,flashblocks=trace");
 
     let (nodes, authorizer) = setup_nodes(3).await?;
 

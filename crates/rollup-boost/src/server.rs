@@ -285,14 +285,16 @@ where
     }
 }
 
-#[rpc(server, client)]
+#[rpc(client)]
 pub trait FlashblocksEngineApi {
-    #[method(name = "engine_forkchoiceUpdatedFlashblocksV1")]
-    async fn fork_choice_updated_flashblocks_v1(
+    /// When flashblocks is enabled
+    /// we add an additional parameter `authorization` to the FCU
+    #[method(name = "engine_forkchoiceUpdatedV3")]
+    async fn flashblocks_fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
-        flashblocks_authorization: Option<Authorization>,
+        authorization: Option<Authorization>,
     ) -> RpcResult<ForkchoiceUpdated>;
 }
 

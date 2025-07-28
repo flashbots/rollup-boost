@@ -179,7 +179,7 @@ impl RpcClient {
                     pk.clone(),
                 );
                 self.auth_client
-                    .fork_choice_updated_flashblocks_v1(
+                    .flashblocks_fork_choice_updated_v3(
                         fork_choice_state,
                         payload_attributes.clone(),
                         Some(authorization),
