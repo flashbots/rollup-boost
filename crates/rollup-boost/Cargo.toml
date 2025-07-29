@@ -24,6 +24,8 @@ alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
 alloy-primitives.workspace = true
 alloy-serde.workspace = true
+alloy-consensus.workspace = true
+alloy-eips.workspace = true
 
 tokio-tungstenite.workspace = true
 metrics-derive.workspace = true
@@ -69,8 +71,6 @@ tokio-util = { version = "0.7.13" }
 rand = "0.9.0"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
 op-alloy-consensus = "0.17.2"
-alloy-eips = { version = "1.0.9", features = ["serde"] }
-alloy-consensus = { version = "1.0.9", features = ["serde"] }
 anyhow = "1.0"
 assert_cmd = "2.0.10"
 predicates = "3.1.2"

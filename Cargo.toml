@@ -32,7 +32,7 @@ alloy-rpc-types-engine = "1.0.23"
 alloy-rpc-types-eth = "1.0.23"
 alloy-primitives = { version = "1.2.0", features = ["rand"] }
 alloy-serde = "1.0.23"
-alloy-eips = "1.0.23"
+alloy-eips = { version = "1.0.23", features = ["serde"] }
 alloy-json-rpc = "1.0.23"
 alloy-consensus = "1.0.23"
 alloy-rpc-types = "1.0.23"
