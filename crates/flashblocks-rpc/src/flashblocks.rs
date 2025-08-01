@@ -46,7 +46,7 @@ impl FlashblocksOverlay {
                             match msg {
                                 Ok(Message::Binary(bytes)) => match try_decode_message(&bytes) {
                                     Ok(payload) => {
-                                        info!("Received payload: {:?}", payload);
+                                        debug!("Received payload: {:?}", payload);
 
                                         let _ = sender
                                             .send(InternalMessage::NewPayload(payload))
