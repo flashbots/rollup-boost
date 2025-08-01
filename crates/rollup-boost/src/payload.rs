@@ -83,11 +83,7 @@ impl OpExecutionPayloadEnvelope {
     pub fn payload_attributes(&self) -> PayloadAttributes {
         match self {
             OpExecutionPayloadEnvelope::V3(payload) => PayloadAttributes {
-                timestamp: payload
-                    .execution_payload
-                    .payload_inner
-                    .payload_inner
-                    .timestamp,
+                timestamp: payload.execution_payload.payload_inner.timestamp(),
                 prev_randao: payload
                     .execution_payload
                     .payload_inner
@@ -98,16 +94,11 @@ impl OpExecutionPayloadEnvelope {
                     .payload_inner
                     .payload_inner
                     .fee_recipient,
-                withdrawals: Some(payload.execution_payload.payload_inner.withdrawals.clone()),
+                withdrawals: Some(payload.execution_payload.withdrawals().clone()),
                 parent_beacon_block_root: Some(payload.parent_beacon_block_root),
             },
             OpExecutionPayloadEnvelope::V4(payload) => PayloadAttributes {
-                timestamp: payload
-                    .execution_payload
-                    .payload_inner
-                    .payload_inner
-                    .payload_inner
-                    .timestamp,
+                timestamp: payload.execution_payload.payload_inner.timestamp(),
                 prev_randao: payload
                     .execution_payload
                     .payload_inner
@@ -124,8 +115,7 @@ impl OpExecutionPayloadEnvelope {
                     payload
                         .execution_payload
                         .payload_inner
-                        .payload_inner
-                        .withdrawals
+                        .withdrawals()
                         .clone(),
                 ),
                 parent_beacon_block_root: Some(payload.parent_beacon_block_root),

@@ -37,11 +37,11 @@ async fn no_traffic_to_unhealthy_builder_when_flag_disabled() -> eyre::Result<()
     });
 
     // Create test harness with:
-    // - allow_traffic_to_unhealthy_builder=false (key test parameter)
+    // - ignore_unhealthy_builders=true (key test parameter)
     // - short max_unsafe_interval=1 to make builder unhealthy quickly
     let harness = RollupBoostTestHarnessBuilder::new("no_traffic_unhealthy")
         .proxy_handler(handler)
-        .with_allow_traffic_to_unhealthy_builder(false)
+        .with_ignore_unhealthy_builders(true)
         .with_max_unsafe_interval(1)
         .build()
         .await?;
@@ -96,7 +96,7 @@ async fn no_traffic_to_unhealthy_builder_when_flag_disabled() -> eyre::Result<()
 
     let final_count = *counter.lock().unwrap();
     println!(
-        "Engine API calls to builder with allow_traffic_to_unhealthy_builder=false: {}",
+        "Engine API calls to builder with ignore_unhealthy_builders=true: {}",
         final_count
     );
 

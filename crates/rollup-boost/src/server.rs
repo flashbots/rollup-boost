@@ -50,8 +50,8 @@ pub struct RollupBoostServer<T: EngineApiExt> {
     pub builder_client: Arc<T>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
-    use_l2_client_for_state_root: bool,
-    allow_traffic_to_unhealthy_builder: bool,
+    external_state_root: bool,
+    ignore_unhealthy_builders: bool,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
     payload_to_fcu_request:
@@ -68,8 +68,8 @@ where
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
-        use_l2_client_for_state_root: bool,
-        allow_traffic_to_unhealthy_builder: bool,
+        external_state_root: bool,
+        ignore_unhealthy_builders: bool,
     ) -> Self {
         Self {
             l2_client: Arc::new(l2_client),
@@ -78,8 +78,8 @@ where
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
             probes,
-            use_l2_client_for_state_root,
-            allow_traffic_to_unhealthy_builder,
+            external_state_root,
+            ignore_unhealthy_builders,
             payload_to_fcu_request: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -130,12 +130,11 @@ where
             .remove_by_parent_hash(&parent_hash)
             .await;
 
-        let builder_healthy = matches!(self.probes.health(), Health::Healthy);
+        let skipping_builder =
+            self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy);
 
         // async call to builder to sync the builder node
-        if !self.execution_mode().is_disabled()
-            && (self.allow_traffic_to_unhealthy_builder || builder_healthy)
-        {
+        if !self.execution_mode().is_disabled() && !skipping_builder {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
@@ -196,9 +195,7 @@ where
                 return RpcResult::Ok(None);
             }
 
-            if !self.allow_traffic_to_unhealthy_builder
-                && !matches!(self.probes.health(), Health::Healthy)
-            {
+            if self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy) {
                 info!(message = "builder is unhealthy, skipping get_payload call to builder");
                 return RpcResult::Ok(None);
             }
@@ -209,7 +206,7 @@ where
 
             let payload = self.builder_client.get_payload(payload_id, version).await?;
 
-            if self.use_l2_client_for_state_root == false {
+            if !self.external_state_root {
                 let _ = self
                     .l2_client
                     .new_payload(NewPayload::from(payload.clone()))
@@ -433,7 +430,6 @@ where
         let l2_fut = self
             .l2_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
-        let builder_healthy = matches!(self.probes.health(), Health::Healthy);
 
         // If execution mode is disabled, return the l2 client response immediately
         if self.execution_mode().is_disabled() {
@@ -441,7 +437,9 @@ where
         }
 
         // If traffic to the unhealthy builder is not allowed and the builder is unhealthy,
-        if !self.allow_traffic_to_unhealthy_builder && !builder_healthy {
+        let skipping_builder =
+            self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy);
+        if skipping_builder {
             info!(message = "builder is unhealthy, skipping FCU to builder");
             return Ok(l2_fut.await?);
         }

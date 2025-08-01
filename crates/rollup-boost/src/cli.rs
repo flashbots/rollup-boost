@@ -95,12 +95,12 @@ pub struct RollupBoostArgs {
 
     /// Should we use the l2 client for computing state root
     #[arg(long, env, default_value = "false")]
-    pub use_l2_client_for_state_root: bool,
+    pub external_state_root: bool,
 
     /// Allow all engine API calls to builder even when marked as unhealthy
     /// This is default true assuming no builder CL set up
-    #[arg(long, env, default_value = "true")]
-    pub allow_traffic_to_unhealthy_builder: bool,
+    #[arg(long, env, default_value = "false")]
+    pub ignore_unhealthy_builders: bool,
 
     #[clap(flatten)]
     pub flashblocks: FlashblocksArgs,
@@ -169,8 +169,8 @@ impl RollupBoostArgs {
                 execution_mode.clone(),
                 self.block_selection_policy,
                 probes.clone(),
-                self.use_l2_client_for_state_root,
-                self.allow_traffic_to_unhealthy_builder,
+                self.external_state_root,
+                self.ignore_unhealthy_builders,
             );
 
             let health_handle = rollup_boost
@@ -186,8 +186,8 @@ impl RollupBoostArgs {
                 execution_mode.clone(),
                 self.block_selection_policy,
                 probes.clone(),
-                self.use_l2_client_for_state_root,
-                self.allow_traffic_to_unhealthy_builder,
+                self.external_state_root,
+                self.ignore_unhealthy_builders,
             );
 
             let health_handle = rollup_boost

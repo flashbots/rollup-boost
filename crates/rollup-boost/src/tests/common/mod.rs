@@ -231,8 +231,8 @@ pub struct RollupBoostTestHarnessBuilder {
     proxy_handler: Option<Arc<dyn BuilderProxyHandler>>,
     isthmus_block: Option<u64>,
     block_time: u64,
-    use_l2_client_for_state_root: bool,
-    allow_traffic_to_unhealthy_builder: Option<bool>,
+    external_state_root: bool,
+    ignore_unhealthy_builders: Option<bool>,
     max_unsafe_interval: Option<u64>,
 }
 
@@ -243,8 +243,8 @@ impl RollupBoostTestHarnessBuilder {
             proxy_handler: None,
             isthmus_block: None,
             block_time: 1,
-            use_l2_client_for_state_root: false,
-            allow_traffic_to_unhealthy_builder: None,
+            external_state_root: false,
+            ignore_unhealthy_builders: None,
             max_unsafe_interval: None,
         }
     }
@@ -297,12 +297,12 @@ impl RollupBoostTestHarnessBuilder {
     }
 
     pub fn with_l2_state_root_computation(mut self, enabled: bool) -> Self {
-        self.use_l2_client_for_state_root = enabled;
+        self.external_state_root = enabled;
         self
     }
 
-    pub fn with_allow_traffic_to_unhealthy_builder(mut self, enabled: bool) -> Self {
-        self.allow_traffic_to_unhealthy_builder = Some(enabled);
+    pub fn with_ignore_unhealthy_builders(mut self, enabled: bool) -> Self {
+        self.ignore_unhealthy_builders = Some(enabled);
         self
     }
 
@@ -384,9 +384,9 @@ impl RollupBoostTestHarnessBuilder {
         rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
         rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
-        rollup_boost.args.use_l2_client_for_state_root = self.use_l2_client_for_state_root;
-        if let Some(allow_traffic) = self.allow_traffic_to_unhealthy_builder {
-            rollup_boost.args.allow_traffic_to_unhealthy_builder = allow_traffic;
+        rollup_boost.args.external_state_root = self.external_state_root;
+        if let Some(allow_traffic) = self.ignore_unhealthy_builders {
+            rollup_boost.args.ignore_unhealthy_builders = allow_traffic;
         }
         if let Some(interval) = self.max_unsafe_interval {
             rollup_boost.args.max_unsafe_interval = interval;

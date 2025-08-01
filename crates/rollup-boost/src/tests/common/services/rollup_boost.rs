@@ -53,7 +53,6 @@ impl Default for RollupBoostConfig {
             "--log-level=trace",
             "--health-check-interval=1", // Set health check interval to 1 second for tests
             "--max-unsafe-interval=60",  // Increase max unsafe interval for tests
-            "--allow-traffic-to-unhealthy-builder", // Allow all engine API calls to unhealthy builder for tests
         ]);
 
         args.rpc_port = get_available_port();
