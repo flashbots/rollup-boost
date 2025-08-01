@@ -363,6 +363,8 @@ impl EngineApiExt for FlashblocksService {
     ) -> ClientResult<OpExecutionPayloadEnvelope> {
         // First try to get the best flashblocks payload from the builder if it exists
 
+        // We always send get_payload to ensure that builder knows when to stop build job
+        let builder_payload = self.client.get_payload(payload_id, version).await?;
         match self.get_best_payload(version, payload_id).await {
             Ok(payload) => {
                 info!(message = "Returning fb payload");
@@ -371,8 +373,7 @@ impl EngineApiExt for FlashblocksService {
             Err(e) => {
                 error!(message = "Error getting fb best payload, falling back on client", error = %e);
                 info!(message = "Falling back to get_payload on client", payload_id = %payload_id);
-                let result = self.client.get_payload(payload_id, version).await?;
-                Ok(result)
+                Ok(builder_payload)
             }
         }
     }
