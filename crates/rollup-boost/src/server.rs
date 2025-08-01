@@ -130,11 +130,8 @@ where
             .remove_by_parent_hash(&parent_hash)
             .await;
 
-        let skipping_builder =
-            self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy);
-
         // async call to builder to sync the builder node
-        if !self.execution_mode().is_disabled() && !skipping_builder {
+        if !self.execution_mode().is_disabled() && !self.should_skip_unhealthy_builder() {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
@@ -195,7 +192,7 @@ where
                 return RpcResult::Ok(None);
             }
 
-            if self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy) {
+            if self.should_skip_unhealthy_builder() {
                 info!(message = "builder is unhealthy, skipping get_payload call to builder");
                 return RpcResult::Ok(None);
             }
@@ -344,6 +341,10 @@ where
         );
         Ok(payload)
     }
+
+    fn should_skip_unhealthy_builder(&self) -> bool {
+        self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy)
+    }
 }
 
 impl<T> TryInto<RpcModule<()>> for RollupBoostServer<T>
@@ -437,9 +438,7 @@ where
         }
 
         // If traffic to the unhealthy builder is not allowed and the builder is unhealthy,
-        let skipping_builder =
-            self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy);
-        if skipping_builder {
+        if self.should_skip_unhealthy_builder() {
             info!(message = "builder is unhealthy, skipping FCU to builder");
             return Ok(l2_fut.await?);
         }
