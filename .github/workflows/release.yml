@@ -120,7 +120,7 @@ jobs:
             type=sha
             type=pep440,pattern={{version}}
             type=pep440,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(env.RELEASE_VERSION, '-') }}
+            type=raw,value=latest,enable=${{ !contains(env.RELEASE_VERSION, '-rc') }}
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
