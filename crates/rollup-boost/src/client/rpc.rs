@@ -117,6 +117,7 @@ impl RpcClient {
         auth_rpc: Uri,
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
+        max_concurrent_requests: Option<usize>,
         payload_source: PayloadSource,
     ) -> Result<Self, RpcClientError> {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
@@ -124,11 +125,16 @@ impl RpcClient {
         headers.insert("User-Agent", version.parse().unwrap());
 
         let auth_layer = AuthLayer::new(auth_rpc_jwt_secret);
-        let auth_client = HttpClientBuilder::new()
+        let mut client_builder = HttpClientBuilder::new()
             .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
             .set_headers(headers)
-            .request_timeout(Duration::from_millis(timeout))
-            .build(auth_rpc.to_string())?;
+            .request_timeout(Duration::from_millis(timeout));
+
+        if let Some(max_concurrent_requests) = max_concurrent_requests {
+            client_builder = client_builder.max_concurrent_requests(max_concurrent_requests);
+        }
+
+        let auth_client = client_builder.build(auth_rpc.to_string())?;
 
         Ok(Self {
             auth_client,
@@ -398,6 +404,10 @@ macro_rules! define_rpc_args {
                     /// Timeout for http calls in milliseconds
                     #[arg(long, env, default_value_t = 1000)]
                     pub [<$prefix _timeout>]: u64,
+
+                    /// Maximum number of concurrent http requests
+                    #[arg(long, env)]
+                    pub [<$prefix _max_concurrent_requests>]: Option<usize>,
                 }
             }
         )*
@@ -457,7 +467,7 @@ pub mod tests {
         let port = get_available_port();
         let secret = JwtSecret::from_hex(SECRET).unwrap();
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, port)).unwrap();
-        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
+        let client = RpcClient::new(auth_rpc, secret, 1000, None, PayloadSource::L2).unwrap();
         let response = send_request(client.auth_client, port).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");

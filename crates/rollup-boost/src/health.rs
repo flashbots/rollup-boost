@@ -272,6 +272,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
+            None,
             PayloadSource::Builder,
         )?);
 
@@ -303,6 +304,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
+            None,
             PayloadSource::Builder,
         )?);
 
@@ -335,6 +337,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
+            None,
             PayloadSource::Builder,
         )?);
 
@@ -367,6 +370,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
+            None,
             PayloadSource::Builder,
         )?);
 
@@ -392,6 +396,7 @@ mod tests {
             "http://127.0.0.1:6000".parse::<Uri>()?,
             JwtSecret::random(),
             100,
+            None,
             PayloadSource::Builder,
         )?);
 

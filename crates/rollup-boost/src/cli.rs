@@ -117,6 +117,7 @@ impl RollupBoostArgs {
             l2_client_args.l2_url.clone(),
             l2_auth_jwt,
             l2_client_args.l2_timeout,
+            l2_client_args.l2_max_concurrent_requests,
             PayloadSource::L2,
         )?;
 
@@ -133,6 +134,7 @@ impl RollupBoostArgs {
             builder_args.builder_url.clone(),
             builder_auth_jwt,
             builder_args.builder_timeout,
+            builder_args.builder_max_concurrent_requests,
             PayloadSource::Builder,
         )?;
 
