@@ -155,11 +155,29 @@ impl RpcClient {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
-        let res = self
-            .auth_client
-            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-            .await
-            .set_code()?;
+
+        // Retry FCU if the response is SYNCING
+        let max_retries = 3;
+        let mut count = 0;
+        let res = loop {
+            let res = self
+                .auth_client
+                .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+                .await
+                .set_code()?;
+
+            if !res.is_syncing() {
+                break res;
+            } else {
+                count += 1;
+                if count >= max_retries {
+                    // Just return the response even if it's SYNCING for now,
+                    // we're just trying to reduce the likelihood of it
+                    break res;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        };
 
         if let Some(payload_id) = res.payload_id {
             tracing::Span::current().record("payload_id", payload_id.to_string());
