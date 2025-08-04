@@ -366,7 +366,6 @@ impl EngineApiExt for FlashblocksService {
         match self.get_best_payload(version, payload_id).await {
             Ok(payload) => {
                 info!(message = "Returning fb payload");
-                info!(message = "Sending getPayload to build to stop building process");
                 // This will finalise block building in builder.
                 let client = self.client.clone();
                 tokio::spawn(async move {
