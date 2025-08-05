@@ -410,6 +410,7 @@ mod tests {
             jwt_secret,
             2000,
             PayloadSource::Builder,
+            None,
         )?;
 
         let service =
@@ -439,6 +440,7 @@ mod tests {
             jwt_secret,
             2000,
             PayloadSource::Builder,
+            None,
         )?;
 
         let service =

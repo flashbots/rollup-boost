@@ -118,13 +118,22 @@ impl RpcClient {
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
         payload_source: PayloadSource,
+        max_concurrent_requests: Option<usize>,
     ) -> Result<Self, RpcClientError> {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
         let mut headers = HeaderMap::new();
         headers.insert("User-Agent", version.parse().unwrap());
 
         let auth_layer = AuthLayer::new(auth_rpc_jwt_secret);
-        let auth_client = HttpClientBuilder::new()
+        let client = match max_concurrent_requests {
+            Some(max_concurrent_requests) => {
+                HttpClientBuilder::new().max_concurrent_requests(max_concurrent_requests)
+            },
+            None => {
+                HttpClientBuilder::new()
+            }
+        };
+        let auth_client = client
             .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
             .set_headers(headers)
             .request_timeout(Duration::from_millis(timeout))

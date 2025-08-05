@@ -47,6 +47,8 @@ pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 pub struct RollupBoostServer<T: EngineApiExt> {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<T>,
+    pub l2_fcu_client: Arc<RpcClient>,
+    pub builder_fcu_client: Arc<RpcClient>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     block_selection_policy: Option<BlockSelectionPolicy>,
     execution_mode: Arc<Mutex<ExecutionMode>>,
@@ -60,6 +62,8 @@ where
     pub fn new(
         l2_client: RpcClient,
         builder_client: Arc<T>,
+        l2_fcu_client: RpcClient,
+        builder_fcu_client: RpcClient,
         initial_execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
@@ -67,6 +71,8 @@ where
         Self {
             l2_client: Arc::new(l2_client),
             builder_client,
+            l2_fcu_client: Arc::new(l2_fcu_client),
+            builder_fcu_client: Arc::new(builder_fcu_client),
             block_selection_policy,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
             execution_mode: initial_execution_mode,
@@ -352,6 +358,10 @@ where
             .l2_client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
+        let l2_fcu_fut = self
+            .l2_fcu_client
+            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
+        
         // If execution mode is disabled, return the l2 client response immediately
         if self.execution_mode().is_disabled() {
             return Ok(l2_fut.await?);
@@ -415,16 +425,16 @@ where
             // If the FCU does not contain payload attributes
             // forward the fcu to the builder to keep it synced and immediately return the l2
             // response without awaiting the builder
-            let builder_client = self.builder_client.clone();
+            let builder_fcu_client = self.builder_fcu_client.clone();
             tokio::spawn(async move {
                 // It is not critical to wait for the builder response here
                 // During moments of high load, Op-node can send hundreds of FCU requests
                 // and we want to ensure that we don't block the main thread in those scenarios
-                builder_client
+                builder_fcu_client
                     .fork_choice_updated_v3(fork_choice_state, payload_attributes)
                     .await
             });
-            return Ok(l2_fut.await?);
+            return Ok(l2_fcu_fut.await?);
         }
     }
 
@@ -654,6 +664,8 @@ pub mod tests {
             let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
             let l2_client =
                 RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
+            let l2_fcu_client =
+                RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
             let builder_client = Arc::new(
@@ -665,6 +677,15 @@ pub mod tests {
                 )
                 .unwrap(),
             );
+            let builder_fcu_client = Arc::new(
+                RpcClient::new(
+                    builder_auth_rpc.clone(),
+                    jwt_secret,
+                    2000,
+                    PayloadSource::Builder,
+                )
+                    .unwrap(),
+            );
 
             let (probe_layer, probes) = ProbeLayer::new();
             let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
@@ -672,6 +693,8 @@ pub mod tests {
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
+                l2_fcu_client,
+                builder_fcu_client,
                 execution_mode.clone(),
                 None,
                 probes.clone(),
