@@ -408,6 +408,10 @@ macro_rules! define_rpc_args {
                     /// Maximum number of concurrent http requests
                     #[arg(long, env)]
                     pub [<$prefix _max_concurrent_requests>]: Option<usize>,
+
+                    /// Maximum number of concurrent forkChoiceUpdate requests
+                    #[arg(long, env)]
+                    pub [<$prefix _max_concurrent_fcu_requests>]: Option<usize>,
                 }
             }
         )*
