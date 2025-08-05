@@ -12,35 +12,19 @@ pub struct FlashblocksArgs {
     pub flashblocks: bool,
 
     /// Flashblocks Builder WebSocket URL
-    #[arg(
-        long,
-        env,
-        default_value = "ws://127.0.0.1:1111"
-    )]
+    #[arg(long, env, default_value = "ws://127.0.0.1:1111")]
     pub flashblocks_builder_url: Url,
 
     /// Flashblocks WebSocket host for outbound connections
-    #[arg(
-        long,
-        env,
-        default_value = "127.0.0.1"
-    )]
+    #[arg(long, env, default_value = "127.0.0.1")]
     pub flashblocks_host: String,
 
     /// Flashblocks WebSocket port for outbound connections
-    #[arg(
-        long,
-        env,
-        default_value = "1112"
-    )]
+    #[arg(long, env, default_value = "1112")]
     pub flashblocks_port: u16,
 
     /// Time used for timeout if builder disconnected
-    #[arg(
-        long,
-        env,
-        default_value = "5000"
-    )]
+    #[arg(long, env, default_value = "5000")]
     pub flashblock_builder_ws_reconnect_ms: u64,
 
     #[arg(
@@ -51,7 +35,8 @@ pub struct FlashblocksArgs {
     )]
     pub flashblocks_authorizer_sk: SigningKey,
 
-    #[arg(long, 
+    #[arg(
+        long,
         env = "FLASHBLOCKS_BUILDER_VK",
         value_parser = parse_vk,
         required = false,
@@ -60,8 +45,7 @@ pub struct FlashblocksArgs {
 }
 
 pub fn parse_sk(s: &str) -> eyre::Result<SigningKey> {
-    let bytes =
-        <[u8; 32]>::from_hex(s.trim())?;
+    let bytes = <[u8; 32]>::from_hex(s.trim())?;
     Ok(SigningKey::from_bytes(&bytes))
 }
 
