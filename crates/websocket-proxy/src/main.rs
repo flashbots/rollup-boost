@@ -18,10 +18,10 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use subscriber::WebsocketSubscriber;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, trace, warn, Level};
+use tracing::{Level, error, info, trace, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]

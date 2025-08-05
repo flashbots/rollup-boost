@@ -1,8 +1,8 @@
 use crate::client::ClientConnection;
 use crate::metrics::Metrics;
 use std::sync::Arc;
-use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
+use tokio::sync::broadcast::error::RecvError;
 use tracing::{info, trace, warn};
 
 #[derive(Clone)]

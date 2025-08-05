@@ -178,6 +178,10 @@ impl FlashblocksHandle {
 
         Self { ctx, state }
     }
+
+    pub fn flashblocks_tx(&self) -> broadcast::Sender<FlashblocksPayloadV1> {
+        self.ctx.flashblock_tx.clone()
+    }
 }
 
 /// Main protocol handler for the flashblocks P2P protocol.

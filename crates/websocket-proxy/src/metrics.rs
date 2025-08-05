@@ -1,4 +1,4 @@
-use metrics::{counter, Counter, Gauge};
+use metrics::{Counter, Gauge, counter};
 use metrics_derive::Metrics;
 #[derive(Metrics)]
 #[metrics(scope = "websocket_proxy")]

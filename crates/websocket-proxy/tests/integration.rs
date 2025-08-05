@@ -1,6 +1,6 @@
 use futures::StreamExt;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};

@@ -1,6 +1,6 @@
 use crate::rate_limit::Ticket;
-use axum::extract::ws::WebSocket;
 use axum::Error;
+use axum::extract::ws::WebSocket;
 use std::net::IpAddr;
 
 pub struct ClientConnection {

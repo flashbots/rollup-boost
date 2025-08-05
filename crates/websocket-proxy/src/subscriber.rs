@@ -1,6 +1,6 @@
 use crate::metrics::Metrics;
 use axum::http::Uri;
-use backoff::{backoff::Backoff, ExponentialBackoff};
+use backoff::{ExponentialBackoff, backoff::Backoff};
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -194,7 +194,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::broadcast;
-    use tokio::time::{sleep, timeout, Duration};
+    use tokio::time::{Duration, sleep, timeout};
     use tokio_tungstenite::{accept_async, tungstenite::Message};
 
     struct MockServer {
