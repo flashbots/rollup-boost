@@ -120,13 +120,23 @@ where
             .remove_by_parent_hash(&parent_hash)
             .await;
 
-        // async call to builder to sync the builder node
-        if !self.execution_mode().is_disabled() {
-            let builder = self.builder_client.clone();
-            let new_payload_clone = new_payload.clone();
-            tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
-        }
-        Ok(self.l2_client.new_payload(new_payload).await?)
+        // Call newPayload on both the builder and l2 client and wait for both
+        // to finish before returning the result from the l2 client.
+        let result = if !self.execution_mode().is_disabled() {
+            let (l2_result, builder_result) = tokio::join!(
+                self.l2_client.new_payload(new_payload.clone()),
+                self.builder_client.new_payload(new_payload)
+            );
+
+            // Don't fail the call if the builder newPayload call fails
+            let _ = builder_result.inspect_err(|e| error!("Builder new_payload failed: {e:?}"));
+
+            l2_result
+        } else {
+            self.l2_client.new_payload(new_payload).await
+        }?;
+
+        Ok(result)
     }
 
     async fn get_payload(
