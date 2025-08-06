@@ -109,6 +109,17 @@ pub struct RpcClient {
     auth_rpc: Uri,
     /// The source of the payload
     payload_source: PayloadSource,
+    /// Retry configuration for forkChoiceUpdated
+    fcu_retry_config: Option<RetryConfig>,
+}
+
+/// Configuration for retry strategy
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetryConfig {
+    /// Maximum number of retry attempts
+    pub max_attempts: u32,
+    /// Delay between retries in milliseconds
+    pub delay_ms: u64,
 }
 
 impl RpcClient {
@@ -118,6 +129,7 @@ impl RpcClient {
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
         payload_source: PayloadSource,
+        fcu_retry_config: Option<RetryConfig>,
     ) -> Result<Self, RpcClientError> {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
         let mut headers = HeaderMap::new();
@@ -134,6 +146,7 @@ impl RpcClient {
             auth_client,
             auth_rpc,
             payload_source,
+            fcu_retry_config,
         })
     }
 
@@ -157,26 +170,32 @@ impl RpcClient {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
 
         // Retry FCU if the response is SYNCING
-        let max_retries = 3;
-        let mut count = 0;
-        let res = loop {
-            let res = self
-                .auth_client
+        let res = if let Some(retry_config) = &self.fcu_retry_config {
+            let mut count = 0;
+            loop {
+                let res = self
+                    .auth_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+                    .await
+                    .set_code()?;
+
+                if !res.is_syncing() {
+                    break res;
+                } else {
+                    count += 1;
+                    if count >= retry_config.max_attempts {
+                        // Just return the response even if it's SYNCING for now,
+                        // we're just trying to reduce the likelihood of it
+                        break res;
+                    }
+                    tokio::time::sleep(Duration::from_millis(retry_config.delay_ms)).await;
+                }
+            }
+        } else {
+            self.auth_client
                 .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
                 .await
-                .set_code()?;
-
-            if !res.is_syncing() {
-                break res;
-            } else {
-                count += 1;
-                if count >= max_retries {
-                    // Just return the response even if it's SYNCING for now,
-                    // we're just trying to reduce the likelihood of it
-                    break res;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
+                .set_code()?
         };
 
         if let Some(payload_id) = res.payload_id {
@@ -416,6 +435,26 @@ macro_rules! define_rpc_args {
                     /// Timeout for http calls in milliseconds
                     #[arg(long, env, default_value_t = 1000)]
                     pub [<$prefix _timeout>]: u64,
+
+                    /// Optional retry max attempts for forkChoiceUpdate
+                    #[arg(long, env)]
+                    [<$prefix _fcu_retry_max_attempts>]: Option<u32>,
+
+                    /// Optional retry delay ms for forkChoiceUpdate
+                    #[arg(long, env)]
+                    [<$prefix _fcu_retry_delay_ms>]: Option<u64>,
+                }
+
+                impl $name {
+                    pub fn retry_config(&self) -> Option<RetryConfig> {
+                        match (self.[<$prefix _fcu_retry_max_attempts>], self.[<$prefix _fcu_retry_delay_ms>]) {
+                            (Some(max_attempts), Some(delay_ms)) => Some(RetryConfig {
+                                max_attempts,
+                                delay_ms,
+                            }),
+                            _ => None,
+                        }
+                    }
                 }
             }
         )*
@@ -474,8 +513,8 @@ pub mod tests {
     async fn valid_jwt() {
         let port = get_available_port();
         let secret = JwtSecret::from_hex(SECRET).unwrap();
-        let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, port)).unwrap();
-        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
+        let auth_rpc = Uri::from_str(&format!("http://{AUTH_ADDR}:{port}")).unwrap();
+        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2, None).unwrap();
         let response = send_request(client.auth_client, port).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");

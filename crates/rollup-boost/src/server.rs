@@ -652,8 +652,14 @@ pub mod tests {
             let (builder_server, builder_server_addr) = spawn_server(builder_mock.clone()).await;
 
             let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-            let l2_client =
-                RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
+            let l2_client = RpcClient::new(
+                l2_auth_rpc.clone(),
+                jwt_secret,
+                2000,
+                PayloadSource::L2,
+                None,
+            )
+            .unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
             let builder_client = Arc::new(
@@ -662,6 +668,7 @@ pub mod tests {
                     jwt_secret,
                     2000,
                     PayloadSource::Builder,
+                    None,
                 )
                 .unwrap(),
             );
