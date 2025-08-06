@@ -162,11 +162,8 @@ pub struct FlashblocksHandle {
 }
 
 impl FlashblocksHandle {
-    pub fn new(
-        authorizer_vk: VerifyingKey,
-        builder_sk: SigningKey,
-        flashblock_tx: broadcast::Sender<FlashblocksPayloadV1>,
-    ) -> Self {
+    pub fn new(authorizer_vk: VerifyingKey, builder_sk: SigningKey) -> Self {
+        let flashblock_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
         let peer_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
         let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
         let ctx = FlashblocksP2PCtx {

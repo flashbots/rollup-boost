@@ -7,9 +7,8 @@ use rollup_boost::{
     FlashblocksPayloadV1,
 };
 use std::time::Duration;
-use tokio::{sync::broadcast, task};
+use tokio::task;
 
-const CHANNEL_CAP: usize = 16;
 const DUMMY_TIMESTAMP: u64 = 42;
 
 /// Helper: deterministic ed25519 key made of the given byte.
@@ -32,23 +31,17 @@ fn payload(payload_id: reth::payload::PayloadId, idx: u64) -> FlashblocksPayload
 }
 
 /// Build a fresh handle plus its broadcast receiver.
-fn fresh_handle() -> (FlashblocksHandle, broadcast::Receiver<FlashblocksPayloadV1>) {
+fn fresh_handle() -> FlashblocksHandle {
     // authorizer + builder keys
     let auth_sk = signing_key(1);
     let builder_sk = signing_key(2);
 
-    // channel for ordered flashblocks
-    let (tx, rx) = broadcast::channel(CHANNEL_CAP);
-
-    (
-        FlashblocksHandle::new(auth_sk.verifying_key(), builder_sk, tx),
-        rx,
-    )
+    FlashblocksHandle::new(auth_sk.verifying_key(), builder_sk)
 }
 
 #[tokio::test]
 async fn publish_without_clearance_is_rejected() {
-    let (handle, _rx) = fresh_handle();
+    let handle = fresh_handle();
 
     let payload_id = reth::payload::PayloadId::new([0; 8]);
     let auth = Authorization::new(
@@ -70,7 +63,7 @@ async fn publish_without_clearance_is_rejected() {
 
 #[tokio::test]
 async fn expired_authorization_is_rejected() {
-    let (handle, _rx) = fresh_handle();
+    let handle = fresh_handle();
 
     // Step 1: obtain clearance with auth_1
     let payload_id = reth::payload::PayloadId::new([1; 8]);
@@ -101,7 +94,7 @@ async fn expired_authorization_is_rejected() {
 
 #[tokio::test]
 async fn flashblock_stream_is_ordered() {
-    let (handle, mut rx) = fresh_handle();
+    let handle = fresh_handle();
 
     // clearance
     let payload_id = reth::payload::PayloadId::new([2; 8]);
@@ -120,16 +113,18 @@ async fn flashblock_stream_is_ordered() {
         handle.publish_new(signed).unwrap();
     }
 
+    let mut flashblock_stream = handle.flashblock_stream();
+
     // Expect to receive 0, then 1 over the ordered broadcast.
-    let first = rx.recv().await.unwrap();
-    let second = rx.recv().await.unwrap();
+    let first = flashblock_stream.next().await.unwrap();
+    let second = flashblock_stream.next().await.unwrap();
     assert_eq!(first.index, 0);
     assert_eq!(second.index, 1);
 }
 
 #[tokio::test]
 async fn stop_and_restart_updates_state() {
-    let (handle, _rx) = fresh_handle();
+    let handle = fresh_handle();
 
     // 1) start publishing
     let payload_id_0 = reth::payload::PayloadId::new([3; 8]);
@@ -170,7 +165,7 @@ async fn stop_and_restart_updates_state() {
 #[tokio::test]
 async fn stop_and_restart_with_active_publishers() {
     let timestamp = 1000;
-    let (handle, _) = fresh_handle();
+    let handle = fresh_handle();
 
     // Pretend we already know about another publisher.
     let other_vk = signing_key(99).verifying_key();
@@ -217,7 +212,7 @@ async fn stop_and_restart_with_active_publishers() {
 #[tokio::test]
 async fn flashblock_stream_buffers_and_live() {
     let timestamp = 1000;
-    let (handle, _rx) = fresh_handle();
+    let handle = fresh_handle();
     let pid = PayloadId::new([7; 8]);
     let auth = Authorization::new(
         pid,
@@ -249,7 +244,7 @@ async fn flashblock_stream_buffers_and_live() {
 
 #[tokio::test]
 async fn await_clearance_unblocks_on_publish() {
-    let (handle, _rx) = fresh_handle();
+    let handle = fresh_handle();
 
     let waiter = {
         let h = handle.clone();

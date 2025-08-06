@@ -6,6 +6,7 @@ license = "MIT"
 
 [dependencies]
 rollup-boost.workspace = true
+flashblocks-p2p.workspace = true
 
 reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }

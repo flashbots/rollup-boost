@@ -28,7 +28,6 @@ use rollup_boost::{
     FlashblocksPayloadV1,
 };
 use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
-use tokio::sync::broadcast;
 use tracing::{Dispatch, info};
 
 type Network = NetworkHandle<
@@ -41,7 +40,6 @@ type Network = NetworkHandle<
 
 pub struct NodeContext {
     p2p_handle: FlashblocksHandle,
-    _flashblocks_tx: broadcast::Sender<FlashblocksPayloadV1>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
@@ -75,8 +73,6 @@ async fn setup_node(
     builder_sk: SigningKey,
     peers: Vec<(PeerId, SocketAddr)>,
 ) -> eyre::Result<NodeContext> {
-    let (inbound_tx, inbound_rx) = broadcast::channel(100);
-
     let genesis: Genesis = serde_json::from_str(include_str!("assets/genesis.json")).unwrap();
     let chain_spec = Arc::new(
         OpChainSpecBuilder::base_mainnet()
@@ -101,6 +97,9 @@ async fn setup_node(
 
     let node = OpNode::new(RollupArgs::default());
 
+    let p2p_handle = FlashblocksHandle::new(authorizer_sk.verifying_key(), builder_sk);
+    let p2p_handle_clone = p2p_handle.clone();
+
     let NodeHandle {
         node,
         node_exit_future,
@@ -112,7 +111,7 @@ async fn setup_node(
         .extend_rpc_modules(move |ctx| {
             // We are not going to use the websocket connection to send payloads so we use
             // a dummy url.
-            let flashblocks_overlay = FlashblocksOverlay::new(chain_spec, inbound_rx);
+            let flashblocks_overlay = FlashblocksOverlay::new(p2p_handle_clone, chain_spec);
             flashblocks_overlay.clone().start()?;
 
             let eth_api = ctx.registry.eth_api().clone();
@@ -124,12 +123,6 @@ async fn setup_node(
         })
         .launch()
         .await?;
-
-    let p2p_handle = FlashblocksHandle::new(
-        authorizer_sk.verifying_key(),
-        builder_sk,
-        inbound_tx.clone(),
-    );
 
     let p2p_protocol = FlashblocksP2PProtocol {
         network: node.network.clone(),
@@ -154,7 +147,6 @@ async fn setup_node(
 
     Ok(NodeContext {
         p2p_handle,
-        _flashblocks_tx: inbound_tx,
         local_node_record,
         http_api_addr,
         _node_exit_future: node_exit_future,

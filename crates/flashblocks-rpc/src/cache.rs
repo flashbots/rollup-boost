@@ -33,7 +33,7 @@ pub struct Metadata {
     pub block_number: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FlashblocksCache {
     inner: Arc<Mutex<FlashblocksCacheInner>>,
 }
@@ -66,6 +66,7 @@ impl FlashblocksCache {
     }
 }
 
+#[derive(Debug, Clone)]
 struct FlashblocksCacheInner {
     chain_spec: Arc<OpChainSpec>,
     builder: FlashblockBuilder,

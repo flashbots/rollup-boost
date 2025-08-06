@@ -1,48 +1,36 @@
 use crate::{FlashblocksApi, cache::FlashblocksCache};
 use alloy_primitives::{Address, TxHash, U256};
+use flashblocks_p2p::protocol::handler::FlashblocksHandle;
+use futures_util::StreamExt as _;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
 use rollup_boost::FlashblocksPayloadV1;
 use std::{io::Read, sync::Arc};
-use tokio::sync::broadcast;
 use tracing::error;
 
+#[derive(Debug, Clone)]
 pub struct FlashblocksOverlay {
-    events: broadcast::Receiver<FlashblocksPayloadV1>,
+    flashblocks_handle: FlashblocksHandle,
     cache: FlashblocksCache,
 }
 
-impl Clone for FlashblocksOverlay {
-    fn clone(&self) -> Self {
-        Self {
-            events: self.events.resubscribe(),
-            cache: self.cache.clone(),
-        }
-    }
-}
-
 impl FlashblocksOverlay {
-    pub fn new(
-        chain_spec: Arc<OpChainSpec>,
-        events: broadcast::Receiver<FlashblocksPayloadV1>,
-    ) -> Self {
+    pub fn new(flashblocks_handle: FlashblocksHandle, chain_spec: Arc<OpChainSpec>) -> Self {
         Self {
-            events,
+            flashblocks_handle,
             cache: FlashblocksCache::new(chain_spec),
         }
     }
 
-    pub fn start(mut self) -> eyre::Result<()> {
+    pub fn start(self) -> eyre::Result<()> {
         let cache_cloned = self.cache.clone();
-        // let overlay = FlashblocksOverlay {
-        //     cache: self.cache.clone(),
-        // };
         tokio::spawn(async move {
+            let mut stream = self.flashblocks_handle.flashblock_stream();
             loop {
                 // TODO: handle this error
-                let payload = self.events.recv().await.unwrap();
+                let payload = stream.next().await.unwrap();
                 if let Err(e) = cache_cloned.process_payload(payload) {
                     error!("failed to process payload: {}", e);
                 }

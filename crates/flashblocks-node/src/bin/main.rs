@@ -7,7 +7,6 @@ use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverla
 use reth_ethereum::network::{NetworkProtocols, protocol::IntoRlpxSubProtocol};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
-use tokio::sync::broadcast;
 use tracing::info;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -25,9 +24,11 @@ pub fn main() {
         Cli::<OpChainSpecParser, FlashblocksRollupArgs>::parse().run(async move |builder, args| {
             let rollup_args = args.rollup_args;
             let chain_spec = builder.config().chain.clone();
-            let (inbound_tx, inbound_rx) = broadcast::channel(100);
+            let flashblocks_handle =
+                FlashblocksHandle::new(VerifyingKey::default(), SigningKey::from_bytes(&[0u8; 32]));
 
-            let flashblocks_overlay = FlashblocksOverlay::new(chain_spec, inbound_rx);
+            let flashblocks_overlay =
+                FlashblocksOverlay::new(flashblocks_handle.clone(), chain_spec);
             flashblocks_overlay.clone().start()?;
 
             info!(target: "reth::cli", "Launching Flashblocks RPC overlay node");
@@ -44,12 +45,6 @@ pub fn main() {
                 })
                 .launch_with_debug_capabilities()
                 .await?;
-
-            let flashblocks_handle = FlashblocksHandle::new(
-                VerifyingKey::default(),
-                SigningKey::from_bytes(&[0u8; 32]),
-                inbound_tx,
-            );
 
             let flashblocks_p2p_protocol =
                 FlashblocksP2PProtocol::new(handle.node.network.clone(), flashblocks_handle);
