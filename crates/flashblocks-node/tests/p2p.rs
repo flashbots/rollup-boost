@@ -5,7 +5,7 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::SigningKey;
-use flashblocks_p2p::protocol::handler::{FlashblocksHandle, FlashblocksP2PProtocol};
+use flashblocks_p2p::protocol::handler::{FlashblocksHandle, FlashblocksP2PProtocol, PeerMsg};
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, Metadata};
 use op_alloy_consensus::{OpPooledTransaction, OpTxEnvelope};
 use reth_eth_wire::BasicNetworkPrimitives;
@@ -24,8 +24,8 @@ use reth_provider::providers::BlockchainProvider;
 use reth_tasks::{TaskExecutor, TaskManager};
 use reth_tracing::tracing_subscriber::{self, util::SubscriberInitExt};
 use rollup_boost::{
-    Authorization, AuthorizedPayload, ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1,
-    FlashblocksPayloadV1,
+    Authorization, Authorized, AuthorizedMsg, AuthorizedPayload, ExecutionPayloadBaseV1,
+    ExecutionPayloadFlashblockDeltaV1, FlashblocksP2PMsg, FlashblocksPayloadV1, StartPublish,
 };
 use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
 use tracing::{Dispatch, info};
@@ -44,7 +44,7 @@ pub struct NodeContext {
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
     _node: Box<dyn Any + Sync + Send>,
-    _network_handle: Network,
+    network_handle: Network,
 }
 
 impl NodeContext {
@@ -151,7 +151,7 @@ async fn setup_node(
         http_api_addr,
         _node_exit_future: node_exit_future,
         _node: Box::new(node),
-        _network_handle: network_handle,
+        network_handle,
     })
 }
 
@@ -257,14 +257,14 @@ async fn setup_nodes(n: u8) -> eyre::Result<(Vec<NodeContext>, SigningKey)> {
         nodes.push(node);
     }
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(6000)).await;
 
     Ok((nodes, authorizer))
 }
 
 #[tokio::test]
 async fn test_double_failover() -> eyre::Result<()> {
-    let _ = init_tracing("warn,flashblocks=trace");
+    let _tracing = init_tracing("warn,flashblocks=trace");
 
     let (nodes, authorizer) = setup_nodes(3).await?;
 
@@ -351,7 +351,7 @@ async fn test_double_failover() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_force_race_condition() -> eyre::Result<()> {
-    let _ = init_tracing("warn,flashblocks=trace");
+    let _tracing = init_tracing("warn,flashblocks=trace");
 
     let (nodes, authorizer) = setup_nodes(3).await?;
 
@@ -490,7 +490,7 @@ async fn test_force_race_condition() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_get_block_by_number_pending() -> eyre::Result<()> {
-    let _ = init_tracing("warn,flashblocks=trace");
+    let _tracing = init_tracing("warn,flashblocks=trace");
 
     let (nodes, authorizer) = setup_nodes(1).await?;
 
@@ -558,6 +558,62 @@ async fn test_get_block_by_number_pending() -> eyre::Result<()> {
 
     assert_eq!(block.number(), 0);
     assert_eq!(block.transactions.hashes().len(), 2);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_peer_reputation() -> eyre::Result<()> {
+    let _tracing = init_tracing("warn,flashblocks=trace");
+
+    let (nodes, _authorizer) = setup_nodes(2).await?;
+
+    let mut publish_flashblocks = nodes[0].p2p_handle.ctx.flashblock_tx.subscribe();
+    tokio::spawn(async move {
+        while let Ok(payload) = publish_flashblocks.recv().await {
+            println!("\n////////////////////////////////////////////////////////////////////\n");
+            println!(
+                "Received flashblock, payload_id: {}, index: {}",
+                payload.payload_id, payload.index
+            );
+            println!("\n////////////////////////////////////////////////////////////////////\n");
+        }
+    });
+
+    let invalid_authorizer = SigningKey::from_bytes(&[99; 32]);
+
+    let payload_0 = base_payload(0, PayloadId::new([0; 8]), 0);
+    info!("Sending bad authorization");
+    let authorization = Authorization::new(
+        payload_0.payload_id,
+        0,
+        &invalid_authorizer,
+        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+
+    let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
+    let authorized_payload = Authorized::new(
+        &nodes[0].p2p_handle.ctx.builder_sk,
+        authorization,
+        authorized_msg,
+    );
+    let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
+    let peer_msg = PeerMsg::StartPublishing(p2p_msg.encode());
+
+    let peers = nodes[1].network_handle.get_all_peers().await?;
+    let peer_0 = &peers[0].remote_id;
+
+    for _ in 0..100 {
+        nodes[0].p2p_handle.ctx.peer_tx.send(peer_msg.clone()).ok();
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        let rep_0 = nodes[1].network_handle.reputation_by_id(*peer_0).await?;
+        if let Some(rep) = rep_0 {
+            assert!(rep < 0, "Peer reputation should be negative");
+        }
+    }
+
+    // Assert that the peer is banned
+    assert!(nodes[1].network_handle.get_all_peers().await?.is_empty());
 
     Ok(())
 }
