@@ -155,7 +155,7 @@ async fn setup_node(
     })
 }
 
-fn payload_base(block_number: u64, payload_id: PayloadId, index: u64) -> FlashblocksPayloadV1 {
+fn base_payload(block_number: u64, payload_id: PayloadId, index: u64) -> FlashblocksPayloadV1 {
     FlashblocksPayloadV1 {
         payload_id,
         index,
@@ -188,7 +188,7 @@ const TX1_HASH: TxHash =
 const TX2_HASH: TxHash =
     b256!("0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8");
 
-fn payload_next(payload_id: PayloadId, index: u64) -> FlashblocksPayloadV1 {
+fn next_payload(payload_id: PayloadId, index: u64) -> FlashblocksPayloadV1 {
     // Create second payload (index 1) with transactions
     // tx1 hash: 0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548 (deposit transaction)
     // tx2 hash: 0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8
@@ -245,53 +245,6 @@ fn payload_next(payload_id: PayloadId, index: u64) -> FlashblocksPayloadV1 {
     }
 }
 
-// #[tokio::test]
-// async fn test_get_block_by_number_pending() -> eyre::Result<()> {
-//     reth_tracing::init_test_tracing();
-//     let node = setup_node(None).await?;
-//     let provider = node.provider().await?;
-//
-//     let latest_block = provider
-//         .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
-//         .await?
-//         .expect("latest block expected");
-//     assert_eq!(latest_block.number(), 0);
-//
-//     // Querying pending block when it does not exists yet
-//     let pending_block = provider
-//         .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
-//         .await?;
-//     assert_eq!(pending_block.is_none(), true);
-//
-//     let base_payload = create_first_payload();
-//     node.sender.send(base_payload.clone())?;
-//     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-//
-//     // Query pending block after sending the base payload with an empty delta
-//     let pending_block = provider
-//         .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
-//         .await?
-//         .expect("pending block expected");
-//
-//     assert_eq!(pending_block.number(), 1);
-//     assert_eq!(pending_block.transactions.hashes().len(), 0);
-//
-//     let second_payload = create_second_payload();
-//     node.sender.send(second_payload.clone())?;
-//     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-//
-//     // Query pending block after sending the second payload with two transactions
-//     let block = provider
-//         .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
-//         .await?
-//         .expect("pending block expected");
-//
-//     assert_eq!(block.number(), 1);
-//     assert_eq!(block.transactions.hashes().len(), 2);
-//
-//     Ok(())
-// }
-//
 async fn setup_nodes(n: u8) -> eyre::Result<(Vec<NodeContext>, SigningKey)> {
     let mut nodes = Vec::new();
     let mut peers = Vec::new();
@@ -346,7 +299,7 @@ async fn test_double_failover() -> eyre::Result<()> {
         .await?;
     assert!(pending_block.is_none());
 
-    let payload_0 = payload_base(0, PayloadId::new([0; 8]), 0);
+    let payload_0 = base_payload(0, PayloadId::new([0; 8]), 0);
     let authorization_0 = Authorization::new(
         payload_0.payload_id,
         0,
@@ -360,7 +313,7 @@ async fn test_double_failover() -> eyre::Result<()> {
     nodes[0].p2p_handle.publish_new(authorized_0).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    let payload_1 = payload_next(payload_0.payload_id, 1);
+    let payload_1 = next_payload(payload_0.payload_id, 1);
     let authorization_1 = Authorization::new(
         payload_1.payload_id,
         0,
@@ -378,7 +331,7 @@ async fn test_double_failover() -> eyre::Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Send a new block, this time from node 1
-    let payload_2 = payload_next(payload_0.payload_id, 2);
+    let payload_2 = next_payload(payload_0.payload_id, 2);
     let msg = payload_2.clone();
     let authorization_2 = Authorization::new(
         payload_2.payload_id,
@@ -433,7 +386,7 @@ async fn test_force_race_condition() -> eyre::Result<()> {
         .await?;
     assert!(pending_block.is_none());
 
-    let payload_0 = payload_base(0, PayloadId::new([0; 8]), 0);
+    let payload_0 = base_payload(0, PayloadId::new([0; 8]), 0);
     info!("Sending payload 0, index 0");
     let authorization = Authorization::new(
         payload_0.payload_id,
@@ -466,7 +419,7 @@ async fn test_force_race_condition() -> eyre::Result<()> {
     assert_eq!(pending_block.transactions.hashes().len(), 0);
 
     info!("Sending payload 0, index 1");
-    let payload_1 = payload_next(payload_0.payload_id, 1);
+    let payload_1 = next_payload(payload_0.payload_id, 1);
     let authorization = Authorization::new(
         payload_1.payload_id,
         0,
@@ -496,7 +449,7 @@ async fn test_force_race_condition() -> eyre::Result<()> {
     assert_eq!(block.transactions.hashes().len(), 2);
 
     // Send a new block, this time from node 1
-    let payload_2 = payload_base(1, PayloadId::new([1; 8]), 0);
+    let payload_2 = base_payload(1, PayloadId::new([1; 8]), 0);
     info!("Sending payload 1, index 0");
     let authorization_1 = Authorization::new(
         payload_2.payload_id,
@@ -538,42 +491,76 @@ async fn test_force_race_condition() -> eyre::Result<()> {
     Ok(())
 }
 
-// #[tokio::test]
-// async fn test_get_balance_pending() -> eyre::Result<()> {
-//     reth_tracing::init_test_tracing();
-//     let node = setup_node(None).await?;
-//     let provider = node.provider().await?;
-//
-//     node.send_test_payloads().await?;
-//
-//     let balance = provider.get_balance(TEST_ADDRESS).await?;
-//     assert_eq!(balance, U256::ZERO);
-//
-//     let pending_balance = provider.get_balance(TEST_ADDRESS).pending().await?;
-//     assert_eq!(pending_balance, U256::from(PENDING_BALANCE));
-//
-//     Ok(())
-// }
-//
-// #[tokio::test]
-// async fn test_get_transaction_receipt_pending() -> eyre::Result<()> {
-//     reth_tracing::init_test_tracing();
-//     let node = setup_node(None).await?;
-//     let provider = node.provider().await?;
-//
-//     let receipt = provider.get_transaction_receipt(TX1_HASH).await?;
-//     assert_eq!(receipt.is_none(), true);
-//
-//     node.send_test_payloads().await?;
-//
-//     let receipt = provider
-//         .get_transaction_receipt(TX1_HASH)
-//         .await?
-//         .expect("receipt expected");
-//     assert_eq!(receipt.gas_used, 21000);
-//
-//     // TODO: Add a new payload and validate that the receipts from the previous payload
-//     // are not returned.
-//
-//     Ok(())
-// }
+#[tokio::test]
+async fn test_get_block_by_number_pending() -> eyre::Result<()> {
+    let _ = init_tracing("warn,flashblocks=trace");
+
+    let (nodes, authorizer) = setup_nodes(1).await?;
+
+    let provider = nodes[0].provider().await?;
+
+    let latest_block = provider
+        .get_block_by_number(alloy_eips::BlockNumberOrTag::Latest)
+        .await?
+        .expect("latest block expected");
+    assert_eq!(latest_block.number(), 0);
+
+    // Querying pending block when it does not exists yet
+    let pending_block = provider
+        .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
+        .await?;
+    assert!(pending_block.is_none());
+
+    let payload_id = PayloadId::new([0; 8]);
+    let base_payload = base_payload(0, payload_id, 0);
+    let authorization = Authorization::new(
+        base_payload.payload_id,
+        0,
+        &authorizer,
+        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+    let authorized = AuthorizedPayload::new(
+        &nodes[0].p2p_handle.ctx.builder_sk,
+        authorization,
+        base_payload,
+    );
+    nodes[0].p2p_handle.start_publishing(authorization);
+    nodes[0].p2p_handle.publish_new(authorized).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Query pending block after sending the base payload with an empty delta
+    let pending_block = provider
+        .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
+        .await?
+        .expect("pending block expected");
+
+    assert_eq!(pending_block.number(), 0);
+    assert_eq!(pending_block.transactions.hashes().len(), 0);
+
+    let next_payload = next_payload(payload_id, 1);
+    let authorization = Authorization::new(
+        next_payload.payload_id,
+        0,
+        &authorizer,
+        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+    );
+    let authorized = AuthorizedPayload::new(
+        &nodes[0].p2p_handle.ctx.builder_sk,
+        authorization,
+        next_payload,
+    );
+    nodes[0].p2p_handle.start_publishing(authorization);
+    nodes[0].p2p_handle.publish_new(authorized).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Query pending block after sending the second payload with two transactions
+    let block = provider
+        .get_block_by_number(alloy_eips::BlockNumberOrTag::Pending)
+        .await?
+        .expect("pending block expected");
+
+    assert_eq!(block.number(), 0);
+    assert_eq!(block.transactions.hashes().len(), 2);
+
+    Ok(())
+}
