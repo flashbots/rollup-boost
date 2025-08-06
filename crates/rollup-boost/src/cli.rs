@@ -117,6 +117,15 @@ impl RollupBoostArgs {
             l2_client_args.l2_url.clone(),
             l2_auth_jwt,
             l2_client_args.l2_timeout,
+            l2_client_args.l2_max_concurrent_requests,
+            PayloadSource::L2,
+        )?;
+
+        let l2_fcu_client = RpcClient::new(
+            l2_client_args.l2_url.clone(),
+            l2_auth_jwt,
+            l2_client_args.l2_timeout,
+            l2_client_args.l2_max_concurrent_fcu_requests,
             PayloadSource::L2,
         )?;
 
@@ -133,6 +142,15 @@ impl RollupBoostArgs {
             builder_args.builder_url.clone(),
             builder_auth_jwt,
             builder_args.builder_timeout,
+            builder_args.builder_max_concurrent_requests,
+            PayloadSource::Builder,
+        )?;
+
+        let builder_fcu_client = RpcClient::new(
+            builder_args.builder_url.clone(),
+            builder_auth_jwt,
+            builder_args.builder_timeout,
+            builder_args.builder_max_concurrent_fcu_requests,
             PayloadSource::Builder,
         )?;
 
@@ -157,6 +175,8 @@ impl RollupBoostArgs {
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 builder_client,
+                l2_fcu_client,
+                builder_fcu_client,
                 execution_mode.clone(),
                 self.block_selection_policy,
                 probes.clone(),
@@ -172,6 +192,8 @@ impl RollupBoostArgs {
             let rollup_boost = RollupBoostServer::new(
                 l2_client,
                 Arc::new(builder_client),
+                l2_fcu_client,
+                builder_fcu_client,
                 execution_mode.clone(),
                 self.block_selection_policy,
                 probes.clone(),

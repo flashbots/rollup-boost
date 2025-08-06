@@ -419,6 +419,7 @@ mod tests {
             builder_auth_rpc.clone(),
             jwt_secret,
             2000,
+            None,
             PayloadSource::Builder,
         )?;
 
@@ -448,6 +449,7 @@ mod tests {
             builder_auth_rpc.clone(),
             jwt_secret,
             2000,
+            None,
             PayloadSource::Builder,
         )?;
 
