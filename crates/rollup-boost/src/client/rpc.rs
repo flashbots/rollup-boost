@@ -6,7 +6,7 @@ use crate::version::{CARGO_PKG_VERSION, VERGEN_GIT_SHA};
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret, PayloadId,
-    PayloadStatus,
+    PayloadStatus, PayloadStatusEnum,
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use clap::{Parser, arg};
@@ -171,26 +171,26 @@ impl RpcClient {
 
         // Retry FCU if the response is SYNCING
         let res = if let Some(retry_config) = &self.fcu_retry_config {
-            let mut count = 0;
-            loop {
-                let res = self
+            // Initialize a dummy result because we can't break out of a
+            // for-loop with a value
+            let mut res =
+                ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Syncing));
+            for _ in 0..retry_config.max_attempts {
+                res = self
                     .auth_client
                     .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
                     .await
                     .set_code()?;
 
                 if !res.is_syncing() {
-                    break res;
-                } else {
-                    count += 1;
-                    if count >= retry_config.max_attempts {
-                        // Just return the response even if it's SYNCING for now,
-                        // we're just trying to reduce the likelihood of it
-                        break res;
-                    }
-                    tokio::time::sleep(Duration::from_millis(retry_config.delay_ms)).await;
+                    break;
                 }
+
+                tokio::time::sleep(Duration::from_millis(retry_config.delay_ms)).await;
+                // Just return the response even if it's SYNCING for now, we're
+                // just trying to reduce the likelihood of it with these retries
             }
+            res
         } else {
             self.auth_client
                 .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
