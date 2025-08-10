@@ -24,39 +24,46 @@ sha2 = { version = "0.10", default-features = false }
 parking_lot = "0.12"
 
 # Reth deps
-reth-optimism-payload-builder = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-ethereum = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-eth-wire = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-network = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-network-peers = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-node-api = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-node-builder = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-provider = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-transaction-pool = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-rpc-layer = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c" }
-reth-op = { git = "https://github.com/0xOsiris/reth", rev = "1bb4f2c", features = [
+reth-optimism-payload-builder = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-ethereum = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-eth-wire = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-network = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-network-peers = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-node-api = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-node-builder = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-provider = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-transaction-pool = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-rpc-layer = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c" }
+reth-op = { git = "https://github.com/0xOsiris/reth", rev = "b8e439c", features = [
     "full",
     "alloy-compat",
 ] }
 
 # Alloy libraries
-alloy-rpc-types-engine = "1"
-alloy-rpc-types-eth = "1"
-alloy-primitives = { version = "1", features = ["rand"] }
-alloy-serde = "1"
-alloy-eips = "1"
-alloy-json-rpc = "1"
-alloy-consensus = "1"
-alloy-rpc-types = "1"
-alloy-genesis = "1"
-alloy-rpc-client = "1"
-alloy-rlp = "0.3"
-alloy-provider = "1"
-op-alloy-network = "0.18"
-op-alloy-rpc-types-engine = { version = "0.18", features = ["serde"] }
-op-alloy-consensus = { version = "0.18", features = ["alloy-compat"] }
-op-alloy-rpc-types = "0.18"
+alloy-rpc-types-engine = "1.0.23"
+alloy-rpc-types-eth = "1.0.23"
+alloy-primitives = { version = "1.3.0", features = ["rand"] }
+alloy-serde = "1.0.23"
+alloy-eips = "1.0.23"
+alloy-json-rpc = "1.0.23"
+alloy-consensus = "1.0.23"
+alloy-rpc-types = "1.0.23"
+alloy-genesis = "1.0.23"
+alloy-rpc-client = "1.0.23"
+alloy-rlp = "0.3.10"
+alloy-provider = "1.0.23"
+op-alloy-network = "0.18.13"
+op-alloy-rpc-types-engine = { version = "0.18.13", features = ["serde"] }
+op-alloy-consensus = { version = "0.18.13", features = ["alloy-compat"] }
+op-alloy-rpc-types = "0.18.13"
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
+
+[patch.crates-io]
+jsonrpsee = { git = "https://github.com/0xOsiris/jsonrpsee", rev = "cb9a22f" }
+jsonrpsee-core = { git = "https://github.com/0xOsiris/jsonrpsee", rev = "cb9a22f" }
+jsonrpsee-server = { git = "https://github.com/0xOsiris/jsonrpsee", rev = "cb9a22f" }
+jsonrpsee-types = { git = "https://github.com/0xOsiris/jsonrpsee", rev = "cb9a22f" }
+jsonrpsee-http-client = { git = "https://github.com/0xOsiris/jsonrpsee", rev = "cb9a22f" }
