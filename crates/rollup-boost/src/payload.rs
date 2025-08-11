@@ -147,28 +147,28 @@ impl PayloadVersion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PayloadSource {
-    L2,
+pub enum ExecutionClient {
+    Sequencer,
     Builder,
 }
 
-impl std::fmt::Display for PayloadSource {
+impl std::fmt::Display for ExecutionClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PayloadSource::L2 => write!(f, "l2"),
-            PayloadSource::Builder => write!(f, "builder"),
+            ExecutionClient::Sequencer => write!(f, "sequencer"),
+            ExecutionClient::Builder => write!(f, "builder"),
         }
     }
 }
 
 #[allow(dead_code)]
-impl PayloadSource {
+impl ExecutionClient {
     pub fn is_builder(&self) -> bool {
-        matches!(self, PayloadSource::Builder)
+        matches!(self, ExecutionClient::Builder)
     }
 
     pub fn is_l2(&self) -> bool {
-        matches!(self, PayloadSource::L2)
+        matches!(self, ExecutionClient::Sequencer)
     }
 }
 

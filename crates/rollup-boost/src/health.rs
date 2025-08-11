@@ -140,7 +140,7 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
-    use crate::{Probes, payload::PayloadSource};
+    use crate::{Probes, payload::ExecutionClient};
 
     pub struct MockHttpServer {
         addr: SocketAddr,
@@ -272,7 +272,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?);
 
         let health_handle = HealthHandle {
@@ -303,7 +303,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?);
 
         let health_handle = HealthHandle {
@@ -335,7 +335,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?);
 
         let health_handle = HealthHandle {
@@ -367,7 +367,7 @@ mod tests {
             format!("http://{}", builder.addr).parse::<Uri>()?,
             JwtSecret::random(),
             100,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?);
 
         let health_handle = HealthHandle {
@@ -392,7 +392,7 @@ mod tests {
             "http://127.0.0.1:6000".parse::<Uri>()?,
             JwtSecret::random(),
             100,
-            PayloadSource::Builder,
+            ExecutionClient::Builder,
         )?);
 
         let health_handle = HealthHandle {
