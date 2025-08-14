@@ -124,7 +124,9 @@ fn try_decode_message(bytes: &[u8]) -> eyre::Result<FlashblocksPayloadV1> {
 }
 
 fn try_parse_message(bytes: &[u8]) -> eyre::Result<String> {
-    if let Ok(text) = String::from_utf8(bytes.to_vec()) && text.trim_start().starts_with("{") {
+    if let Ok(text) = String::from_utf8(bytes.to_vec())
+        && text.trim_start().starts_with("{")
+    {
         return Ok(text);
     }
 
