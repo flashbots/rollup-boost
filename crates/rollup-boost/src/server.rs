@@ -289,7 +289,7 @@ where
 pub trait FlashblocksEngineApi {
     /// When flashblocks is enabled
     /// we add an additional parameter `authorization` to the FCU
-    #[method(name = "engine_forkchoiceUpdatedV3")]
+    #[method(name = "flashblocks_forkchoiceUpdatedV3")]
     async fn flashblocks_fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
