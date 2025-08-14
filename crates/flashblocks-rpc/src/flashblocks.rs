@@ -46,7 +46,7 @@ impl FlashblocksOverlay {
                             match msg {
                                 Ok(Message::Binary(bytes)) => match try_decode_message(&bytes) {
                                     Ok(payload) => {
-                                        info!("Received payload: {:?}", payload);
+                                        debug!("Received payload: {:?}", payload);
 
                                         let _ = sender
                                             .send(InternalMessage::NewPayload(payload))
@@ -124,10 +124,10 @@ fn try_decode_message(bytes: &[u8]) -> eyre::Result<FlashblocksPayloadV1> {
 }
 
 fn try_parse_message(bytes: &[u8]) -> eyre::Result<String> {
-    if let Ok(text) = String::from_utf8(bytes.to_vec()) {
-        if text.trim_start().starts_with("{") {
-            return Ok(text);
-        }
+    if let Ok(text) = String::from_utf8(bytes.to_vec())
+        && text.trim_start().starts_with("{")
+    {
+        return Ok(text);
     }
 
     let mut decompressor = brotli::Decompressor::new(bytes, 4096);
