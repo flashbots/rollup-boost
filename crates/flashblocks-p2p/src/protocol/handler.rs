@@ -266,6 +266,10 @@ impl FlashblocksHandle {
         self.state.lock().publishing_status.borrow().clone()
     }
 
+    /// Awaits clearance to publish flashblocks.
+    ///
+    /// # Note
+    /// This is never guaranteed to return.
     pub async fn await_clearance(&self) {
         let mut status = self.state.lock().publishing_status.subscribe();
         // Safe to unwrap becuase self holds a sender.
