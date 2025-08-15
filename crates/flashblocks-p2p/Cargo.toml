@@ -6,6 +6,7 @@ license = "MIT"
 
 [dependencies]
 reth.workspace = true
+reth-optimism-primitives.workspace = true
 reth-ethereum = { workspace = true, features = ["node", "network", "cli"] }
 reth-eth-wire = { workspace = true }
 reth-network = { workspace = true }

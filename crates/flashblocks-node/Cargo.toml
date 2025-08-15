@@ -9,26 +9,25 @@ rollup-boost.workspace = true
 flashblocks-p2p.workspace = true
 flashblocks-rpc.workspace = true
 
-reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc", features = [
     "test-utils",
 ] }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-tasks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-node-core = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-tracing = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-tasks = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-node-core = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-db = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
 
 reth-ethereum = { workspace = true, features = ["node", "network", "cli"] }
 reth-eth-wire = { workspace = true }

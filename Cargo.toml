@@ -28,29 +28,35 @@ tokio-stream = "0.1.17"
 eyre = "0.6.12"
 url = "2.2.0"
 sha2 = { version = "0.10", default-features = false }
+arbitrary = { version = "=1.4.2", features = ["derive"] }
 
 # Reth deps
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
 # Issue with reth feature compatibility. Include this in all crates for temp fix.
-reth-op = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
+reth-op = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc", features = [
     "full",
     "alloy-compat",
 ] }
-reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-network-peers = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.5.1" }
+reth = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-network-peers = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc", features = [
+    "serde",
+    "arbitrary",
+    "reth-codec",
+] }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "6daf5fc" }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.13"
 alloy-rpc-types-eth = "1.0.13"
-alloy-primitives = { version = "1.2.0", features = ["rand"] }
+alloy-primitives = { version = "1.3.0", features = ["rand", "arbitrary"] }
 alloy-serde = "1.0.13"
 alloy-eips = "1.0.13"
 alloy-json-rpc = "1.0.13"
