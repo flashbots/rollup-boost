@@ -9,6 +9,9 @@ members = [
     "crates/flashblocks-node",
 ]
 
+[patch.crates-io]
+alloy-primitives = { git = "https://github.com/alloy-rs/core", rev = "8c5713c" }
+
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
 flashblocks-p2p = { path = "crates/flashblocks-p2p" }
@@ -69,7 +72,7 @@ alloy-provider = "1.0.13"
 op-alloy-network = "0.18.7"
 op-alloy-rpc-types-engine = "0.18.7"
 op-alloy-consensus = "0.18.7"
-op-alloy-rpc-types = "0.18.7"
+op-alloy-rpc-types = "=0.18.14"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["redis"] }

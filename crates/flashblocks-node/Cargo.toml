@@ -16,6 +16,7 @@ reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", rev = "
 reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
 reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
 reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
 reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
 reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
 reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
