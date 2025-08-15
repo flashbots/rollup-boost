@@ -13,7 +13,8 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
+    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, FlashblocksKeys, ProxyLayer,
+    RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
@@ -119,7 +120,6 @@ impl RollupBoostArgs {
             l2_client_args.l2_timeout,
             PayloadSource::L2,
             None,
-            None,
         )?;
 
         let builder_args = self.builder;
@@ -131,17 +131,17 @@ impl RollupBoostArgs {
             bail!("Missing Builder JWT secret");
         };
 
+        let flashblocks_keys = self.flashblocks.as_ref().map(|fb| FlashblocksKeys {
+            authorization_sk: fb.flashblocks_authorizer_sk.clone(),
+            builder_pk: fb.flashblocks_builder_vk.clone(),
+        });
+
         let builder_client = RpcClient::new(
             builder_args.builder_url.clone(),
             builder_auth_jwt,
             builder_args.builder_timeout,
             PayloadSource::Builder,
-            self.flashblocks
-                .as_ref()
-                .map(|fb| fb.flashblocks_authorizer_sk.clone()),
-            self.flashblocks
-                .as_ref()
-                .map(|fb| fb.flashblocks_builder_vk.clone()),
+            flashblocks_keys,
         )?;
 
         let (probe_layer, probes) = ProbeLayer::new();

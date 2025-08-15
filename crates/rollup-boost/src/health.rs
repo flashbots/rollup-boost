@@ -274,7 +274,6 @@ mod tests {
             100,
             PayloadSource::Builder,
             None,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -306,7 +305,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
             None,
         )?);
 
@@ -341,7 +339,6 @@ mod tests {
             100,
             PayloadSource::Builder,
             None,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -375,7 +372,6 @@ mod tests {
             100,
             PayloadSource::Builder,
             None,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -401,7 +397,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
             None,
         )?);
 

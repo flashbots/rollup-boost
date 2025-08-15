@@ -99,6 +99,14 @@ impl From<RpcClientError> for ErrorObjectOwned {
     }
 }
 
+#[derive(Clone)]
+pub struct FlashblocksKeys {
+    /// Flashblocks Authorization Secret
+    pub authorization_sk: SigningKey,
+    /// Flashblocks builder vk
+    pub builder_pk: VerifyingKey,
+}
+
 /// Client interface for interacting with execution layer node's Engine API.
 ///
 /// - **Engine API** calls are faciliated via the `auth_client` (requires JWT authentication).
@@ -111,10 +119,10 @@ pub struct RpcClient {
     auth_rpc: Uri,
     /// The source of the payload
     payload_source: PayloadSource,
-    /// Flashblocks Authorization Secret
-    flashblocks_authorization_sk: Option<SigningKey>,
-    /// Flashblocks Authorization Secret
-    flashblocks_builder_pk: Option<VerifyingKey>,
+    /// Flashblocks keys
+    ///
+    /// `None` if flashblocks are disabled
+    flashblocks_keys: Option<FlashblocksKeys>,
 }
 
 impl RpcClient {
@@ -124,8 +132,7 @@ impl RpcClient {
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
         payload_source: PayloadSource,
-        flashblocks_authorization_sk: Option<SigningKey>,
-        flashblocks_builder_pk: Option<VerifyingKey>,
+        flashblocks_keys: Option<FlashblocksKeys>,
     ) -> Result<Self, RpcClientError> {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
         let mut headers = HeaderMap::new();
@@ -142,8 +149,7 @@ impl RpcClient {
             auth_client,
             auth_rpc,
             payload_source,
-            flashblocks_authorization_sk,
-            flashblocks_builder_pk,
+            flashblocks_keys,
         })
     }
 
@@ -165,18 +171,14 @@ impl RpcClient {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
-        let res = match (
-            &payload_attributes,
-            &self.flashblocks_authorization_sk,
-            &self.flashblocks_builder_pk,
-        ) {
-            (Some(attrs), Some(sk), Some(pk)) => {
+        let res = match (&payload_attributes, &self.flashblocks_keys) {
+            (Some(attrs), Some(flashblocks)) => {
                 let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attrs, 3);
                 let authorization = Authorization::new(
                     payload_id,
                     attrs.payload_attributes.timestamp,
-                    sk,
-                    pk.clone(),
+                    &flashblocks.authorization_sk,
+                    flashblocks.builder_pk.clone(),
                 );
                 self.auth_client
                     .flashblocks_fork_choice_updated_v3(
@@ -488,7 +490,7 @@ pub mod tests {
         let port = get_available_port();
         let secret = JwtSecret::from_hex(SECRET).unwrap();
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, port)).unwrap();
-        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2, None, None).unwrap();
+        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2, None).unwrap();
         let response = send_request(client.auth_client, port).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");

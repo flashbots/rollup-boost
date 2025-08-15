@@ -671,7 +671,6 @@ pub mod tests {
                 2000,
                 PayloadSource::L2,
                 None,
-                None,
             )
             .unwrap();
 
@@ -682,7 +681,6 @@ pub mod tests {
                     jwt_secret,
                     2000,
                     PayloadSource::Builder,
-                    None,
                     None,
                 )
                 .unwrap(),
