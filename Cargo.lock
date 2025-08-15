@@ -8720,7 +8720,7 @@ dependencies = [
  "reth-rpc-builder",
  "reth-rpc-engine-api",
  "reth-rpc-eth-types",
- "reth-rpc-layer 1.5.1",
+ "reth-rpc-layer",
  "reth-stages",
  "reth-static-file",
  "reth-tasks",
@@ -9662,7 +9662,7 @@ dependencies = [
  "reth-rpc-api",
  "reth-rpc-eth-api",
  "reth-rpc-eth-types",
- "reth-rpc-layer 1.5.1",
+ "reth-rpc-layer",
  "reth-rpc-server-types",
  "reth-storage-api",
  "reth-tasks",
@@ -9813,20 +9813,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
- "tracing",
-]
-
-[[package]]
-name = "reth-rpc-layer"
-version = "1.4.7"
-source = "git+https://github.com/paradigmxyz/reth.git?tag=v1.4.7#dc7cb6e6670b0da294a0e5010e02855f5aaf6b49"
-dependencies = [
- "alloy-rpc-types-engine",
- "http",
- "jsonrpsee-http-client 0.25.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project",
- "tower 0.5.2",
- "tower-http",
  "tracing",
 ]
 
@@ -10589,7 +10575,7 @@ dependencies = [
  "rand 0.9.1",
  "reqwest",
  "reth-optimism-payload-builder",
- "reth-rpc-layer 1.4.7",
+ "reth-rpc-layer",
  "rustls",
  "serde",
  "serde_json",

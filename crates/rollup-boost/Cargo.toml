@@ -19,6 +19,7 @@ url.workspace = true
 sha2.workspace = true
 
 reth-optimism-payload-builder.workspace = true
+reth-rpc-layer.workspace = true
 op-alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
@@ -81,7 +82,6 @@ anyhow = "1.0"
 assert_cmd = "2.0.10"
 predicates = "3.1.2"
 tokio-util = { version = "0.7.13" }
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.4.7" }
 ctor = "0.4.1"
 reqwest = "0.12.15"
 
