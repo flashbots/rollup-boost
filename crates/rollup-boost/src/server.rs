@@ -518,6 +518,7 @@ where
                     .await
             });
             let l2_response = l2_fut.await?;
+            #[allow(clippy::collapsible_if)]
             if let Some(payload_id) = l2_response.payload_id {
                 if self.external_state_root {
                     self.payload_to_fcu_request
