@@ -153,7 +153,7 @@ async fn broadcast_loop(
 ) {
     let mut term = term;
     let mut blocks = blocks;
-    let mut stream = stream;
+    let stream = stream;
     let Ok(peer_addr) = stream.get_ref().peer_addr() else {
         return;
     };
