@@ -113,10 +113,11 @@ where
         debug!("get_balance: {:?}, {:?}", address, block_number);
 
         let block_id = block_number.unwrap_or_default();
-        if block_id.is_pending()
-            && let Some(balance) = self.flashblocks_api.get_balance(address).await
-        {
-            return Ok(balance);
+        if block_id.is_pending() {
+            match self.flashblocks_api.get_balance(address).await {
+                Some(balance) => return Ok(balance),
+                None => {}
+            }
         }
         EthState::balance(&self.eth_api, address, block_number)
             .await

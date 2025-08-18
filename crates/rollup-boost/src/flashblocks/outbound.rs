@@ -6,7 +6,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
     task::{Context, Poll},
 };
-use futures::{Sink, SinkExt};
+use futures::{Sink, SinkExt, StreamExt};
 use std::{io, net::TcpListener, sync::Arc};
 use tokio::{
     net::TcpStream,
@@ -157,6 +157,7 @@ async fn broadcast_loop(
     let Ok(peer_addr) = stream.get_ref().peer_addr() else {
         return;
     };
+    let (mut sink, mut stream_read) = stream.split();
 
     loop {
         tokio::select! {
@@ -168,6 +169,34 @@ async fn broadcast_loop(
                 }
             }
 
+            // Handle incoming WebSocket messages (including pings)
+            msg = stream_read.next() => {
+                match msg {
+                    Some(Ok(Message::Ping(payload))) => {
+                        // Respond to ping with pong
+                        if let Err(e) = sink.send(Message::Pong(payload)).await {
+                            tracing::debug!("Failed to send pong to {peer_addr}: {e}");
+                            break;
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) => {
+                        tracing::debug!("Client {peer_addr} closed connection");
+                        break;
+                    }
+                    Some(Err(e)) => {
+                        tracing::debug!("WebSocket error from {peer_addr}: {e}");
+                        break;
+                    }
+                    None => {
+                        tracing::debug!("WebSocket stream ended for {peer_addr}");
+                        break;
+                    }
+                    _ => {
+                        // Ignore other message types (Text, Binary, Pong)
+                    }
+                }
+            }
+
             // Receive payloads from the broadcast channel
             payload = blocks.recv() => match payload {
                 Ok(payload) => {
@@ -175,8 +204,8 @@ async fn broadcast_loop(
                     // For this example, we just increment the sent counter.
                     sent.fetch_add(1, Ordering::Relaxed);
 
-                    tracing::info!("Broadcasted payload: {:?}", payload);
-                    if let Err(e) = stream.send(Message::Text(payload)).await {
+                    tracing::debug!("Broadcasted payload: {:?}", payload);
+                    if let Err(e) = sink.send(Message::Text(payload)).await {
                         tracing::debug!("Closing flashblocks subscription for {peer_addr}: {e}");
                         break; // Exit the loop if sending fails
                     }
