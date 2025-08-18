@@ -464,10 +464,6 @@ where
                             span.id(),
                         )
                         .await;
-
-                    self.payload_to_fcu_request
-                        .lock()
-                        .insert(payload_id, (fork_choice_state, payload_attributes));
                 }
 
                 // We always return the value from the l2 client
@@ -498,9 +494,11 @@ where
                         )
                         .await;
 
-                    self.payload_to_fcu_request
-                        .lock()
-                        .insert(payload_id, (fork_choice_state, payload_attributes));
+                    if self.external_state_root {
+                        self.payload_to_fcu_request
+                            .lock()
+                            .insert(payload_id, (fork_choice_state, payload_attributes));
+                    }
                 }
 
                 return Ok(l2_response);
@@ -521,9 +519,11 @@ where
             });
             let l2_response = l2_fut.await?;
             if let Some(payload_id) = l2_response.payload_id {
-                self.payload_to_fcu_request
-                    .lock()
-                    .insert(payload_id, (fork_choice_state, payload_attributes));
+                if self.external_state_root {
+                    self.payload_to_fcu_request
+                        .lock()
+                        .insert(payload_id, (fork_choice_state, payload_attributes));
+                }
             }
 
             return Ok(l2_response);
