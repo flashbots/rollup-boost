@@ -1,7 +1,5 @@
 # Architecture Overview
 
-![Rollup Boost OP Conductor](../assets/rollup-boost-op-conductor.png)
-
 Rollup Boost modifies the workflow of the Engine API to enable block building and flashblocks. It uses the JWT token in the Engine API as authentication for the builder and multiplexes the RPC calls to the builder to source external blocks.
 
 ## Core System Workflow
@@ -20,8 +18,6 @@ Rollup Boost modifies the workflow of the Engine API to enable block building an
    - `rollup-boost` just relays the calls to proposer `op-geth`.
    - Note that since we already called `engine_newPayload` on the proposer `op-geth` in the previous step, the block should be cached and add minimal latency.
    - The builder `op-node` will receive blocks via p2p gossip and keep the builder node in sync via the engine api.
-
-![OP Stack High Availability](../assets/op-stack-ha.png)
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#f4f4f4', 'primaryColor': '#2c3e50', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#34495e', 'lineColor': '#34495e', 'secondaryColor': '#ecf0f1', 'tertiaryColor': '#bdc3c7'}}}%%

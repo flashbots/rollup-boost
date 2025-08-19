@@ -165,7 +165,7 @@ Retrieves the current execution mode.
 
 ### Metrics
 
-To enable metrics, you can set the `--metrics` flag. This will start a metrics server which will run on port 9090 by default. To see the list of metrics, you can checkout [metrics.rs](../src/metrics.rs) and ping the metrics endpoint:
+To enable metrics, you can set the `--metrics` flag. This will start a metrics server which will run on port 9090 by default. To see the list of metrics, you can checkout metrics.rs and ping the metrics endpoint:
 
 ```
 curl http://localhost:9090/metrics
