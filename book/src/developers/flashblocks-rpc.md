@@ -190,7 +190,7 @@ The Flashblocks RPC implementation follows this data flow:
 
 Flashblocks payloads contain the following information:
 
-```rust
+```rust,ignore
 pub struct FlashblocksPayloadV1 {
     pub version: PayloadVersion,
     pub execution_payload: OpExecutionPayloadEnvelope,

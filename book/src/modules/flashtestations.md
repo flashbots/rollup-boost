@@ -4,39 +4,39 @@ Flashtestations is a rollup-boost module that provides onchain TEE (Trusted Exec
 
 ## Architecture
 
-```
-┌─────────────────────────┐                  ┌─────────────────────┐
-│ TDX VM                  │                  │ Onchain Verifier    │
-│                         │  Attestation     │                     │
-│ ┌─────────────────┐     │  Quote           │ ┌─────────────────┐ │
-│ │ TEE Workload    │     │ ───────────────► │ │ DCAP Attestation│ │
-│ │                 │     │                  │ │ Verifier        │ │
-│ │ (measurements)  │     │                  │ │                 │ │
-│ └─────────────────┘     │                  │ └────────┬────────┘ │
-│                         │                  │          │          │
-└─────────────────────────┘                  │          ▼          │
-                                             │ ┌─────────────────┐ │
-┌─────────────────────────┐                  │ │ Intel           │ │
-│ Consumer Contract       │                  │ │ Endorsements    │ │
-│                         │                  │ │                 │ │
-│ ┌─────────────────┐     │                  │ └────────┬────────┘ │
-│ │ Operation       │     │                  │          │          │
-│ │ Authorization   │     │                  │          ▼          │
-│ └─────────────────┘     │                  │ ┌─────────────────┐ │
-│         │               │                  │ │ Registration    │ │
-└─────────┼───────────────┘                  │ │ Logic           │ │
-          │                                  │ └────────┬────────┘ │
-          │                                  └──────────┼──────────┘
-          │                                             │
-┌─────────▼──────────────┐                              ▼
-│ Policy                 │                  ┌───────────────────────────┐
-│                        │  isValid         │ Flashtestation Registry   │
-│ ┌─────────────────────┐│  Query           │                           │
-│ │ allowedWorkloadIds[]││ ◄───────────────►│ {teeAddress: registration}│
-│ │ {registration:      ││                  │   map                     │
-│ │   workloadId} map   ││                  │                           │
-│ └─────────────────────┘│                  └───────────────────────────┘
-└────────────────────────┘
+```text
++-------------------------+                  +---------------------+
+| TDX VM                  |                  | Onchain Verifier    |
+|                         |  Attestation     |                     |
+| +-----------------+     |  Quote           | +-----------------+ |
+| | TEE Workload    |     | ---------------> | | DCAP Attestation| |
+| |                 |     |                  | | Verifier        | |
+| | (measurements)  |     |                  | |                 | |
+| +-----------------+     |                  | +--------+--------+ |
+|                         |                  |          |          |
++-------------------------+                  |          v          |
+                                             | +-----------------+ |
++-------------------------+                  | | Intel           | |
+| Consumer Contract       |                  | | Endorsements    | |
+|                         |                  | |                 | |
+| +-----------------+     |                  | +--------+--------+ |
+| | Operation       |     |                  |          |          |
+| | Authorization   |     |                  |          v          |
+| +-----------------+     |                  | +-----------------+ |
+|         |               |                  | | Registration    | |
++---------+---------------+                  | | Logic           | |
+          |                                  | +--------+--------+ |
+          |                                  +----------+----------+
+          |                                             |
++---------+---------------+                             v
+| Policy                  |                  +---------------------------+
+|                         |  isValid         | Flashtestation Registry   |
+| +---------------------+ |  Query           |                           |
+| | allowedWorkloadIds[]| | <--------------> | {teeAddress: registration}|
+| | {registration:      | |                  |   map                     |
+| |   workloadId} map   | |                  |                           |
+| +---------------------+ |                  +---------------------------+
++-------------------------+
 ```
 
 ### Core Components
