@@ -6,10 +6,14 @@ To run rollup boost with a regular sequencer setup, change the `--l2` flag in th
 
 To configure rollup-boost, set the l2 url to the url of the proposer auth rpc endpoint and the builder url to the builder auth rpc endpoint. Separate JWT tokens will be needed for the two endpoints.
 
-You can also set the options using environment variables. See .env.example to use the default values.
+You can also set the options using environment variables. See `.env.example` to use the default values.
 
 ```bash
-cargo run --bin rollup-boost -- --l2-jwt-token your_jwt_token --l2-url http://localhost:8545 --builder-jwt-token your_jwt_token --builder-url http://localhost:8546
+cargo run --bin rollup-boost -- \
+    --l2-jwt-token your_jwt_token \
+    --l2-url http://localhost:8545 \
+    --builder-jwt-token your_jwt_token \
+    --builder-url http://localhost:8546
 ```
 
 To set up a builder, you can use [`op-rbuilder`](https://github.com/flashbots/op-rbuilder) with an op-node instance and have rollup-boost point to the builder auth rpc endpoint.
@@ -173,17 +177,27 @@ curl http://localhost:9090/metrics
 
 All spans create duration histogram metrics with the name "{span_name}\_duration". Currently, this list includes:
 
-- fork_choice_updated_v3_duration
-- get_payload_v3_duration
-- new_payload_v3_duration
+- fork_choice_updated_duration
+- get_payload_duration
+- new_payload_duration
 
-Additionally, execution engines such as op-rbuilder has rpc metrics exposed to check if `engine_getPayloadV3` requests have been received. To check if the builder blocks are landing on-chain, the builder can be configured to include a builder transaction in the block, which is captured as part of the builder metrics. To see more details about observability in the op-builder, you can check op-rbuilder's [README](https://github.com/flashbots/rollup-boost?tab=readme-ov-file#rollup-boost).
+Additionally, execution engines such as op-rbuilder has rpc metrics exposed to check if `engine_getPayloadV4` requests have been received. To check if the builder blocks are landing on-chain, the builder can be configured to include a builder transaction in the block, which is captured as part of the builder metrics. To see more details about observability in the op-builder, you can check op-rbuilder's [README](https://github.com/flashbots/op-rbuilder?tab=readme-ov-file#observability).
+
+#### Flashblocks
+
+There are metrics and observability in all the services supporting flashblocks. In rollup-boost:
+
+- `messages_processed` - number of messages processed from the flashblocks websocket stream
+- `flashblocks_counter` - number of flashblocks proposed
+- `flashblocks_missing_counter` - number of flashblocks missed from the expected number of flashblocks
+
+Additionally, the builder transaction can also be observed in the last flashblock to determine if the number of expected flashblocks has been included onchain.
 
 ### Tracing
 
 Tracing is enabled by setting the `--tracing` flag. This will start exporting traces to the otlp endpoint specified in the `--otlp-endpoint` flag. This endpoint is set to `http://localhost:4317` by default.
 
-Traces use the payload id to track the block building lifecycle. A distributed tracing system such as [Jaeger](https://www.jaegertracing.io/) can be used to visualize when the proposer triggers block building via `engine_forkchoiceUpdatedV3` and retrieve the block with `engine_getPayloadV3`.
+Traces use the payload id to track the block building lifecycle. A distributed tracing system such as [Jaeger](https://www.jaegertracing.io/) can be used to visualize when the proposer triggers block building via `engine_forkchoiceUpdated` and retrieve the block with `engine_getPayload`.
 
 ## Troubleshooting Builder Responses
 

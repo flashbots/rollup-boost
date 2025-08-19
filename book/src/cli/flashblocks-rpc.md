@@ -1,6 +1,5 @@
 # flashblocks-rpc
 
-
 ## Command Line Options
 
 - `flashblocks.enabled`: Enable flashblocks functionality (default: false)

@@ -1,7 +1,5 @@
 # websocket-proxy
 
-The websocket-proxy is a service 
-
 ## Command-line Options
 
 ### Connection Configuration

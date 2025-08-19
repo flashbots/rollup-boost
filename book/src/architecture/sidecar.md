@@ -59,8 +59,8 @@ sequenceDiagram
 
 By default, `rollup-boost` will proxy all RPC calls from the proposer `op-node` to its local `op-geth` node. These are the list of RPC calls that are proxied to both the proposer and the builder execution engines:
 
-- `engine_forkchoiceUpdatedV3`: this call is only multiplexed to the builder if the call contains payload attributes and the no_tx_pool attribute is false.
-- `engine_getPayloadV3`: this is used to get the builder block.
+- `engine_forkchoiceUpdated`: this call is only multiplexed to the builder if the call contains payload attributes and the no_tx_pool attribute is false.
+- `engine_getPayload`: this is used to get the builder block.
 - `miner_*`: this allows the builder to be aware of changes in effective gas price, extra data, and [DA throttling requests](https://docs.optimism.io/builders/chain-operators/configuration/batcher) from the batcher.
 - `eth_sendRawTransaction*`: this forwards transactions the proposer receives to the builder for block building. This call may not come from the proposer `op-node`, but directly from the rollup's rpc engine.
 
@@ -68,5 +68,11 @@ By default, `rollup-boost` will proxy all RPC calls from the proposer `op-node` 
 
 `rollup-boost` will use boost sync by default to sync directly with the proposer `op-node` via the Engine API. Boost sync improves the performance of keeping the builder in sync with the tip of the chain by removing the need to receive chain updates via p2p from the builder `op-node` once the builder is synced. This entails additional engine api calls that are multiplexed to the builder from rollup-boost:
 
-- `engine_forkchoiceUpdatedV3`: this call will be multiplexed to the builder regardless of whether the call contains payload attributes or not.
-- `engine_newPayloadV3`: ensures the builder has the latest block if the local payload was used.
+- `engine_forkchoiceUpdated`: this call will be multiplexed to the builder regardless of whether the call contains payload attributes or not.
+- `engine_newPayload`: ensures the builder has the latest block if the local payload was used.
+
+## Reorgs 
+
+Rollup-boost remains unaffected by blockchain reorganizations due to its stateless design as a pure proxy layer between the consensus layer (op-node) and execution engines. 
+
+When reorgs impact the sequencing epoch derivation or cause drift in the L2 chain state, rollup-boost simply proxies all Engine API calls—including fork choice updates reflecting the new canonical chain and payload requests for reorg recovery—directly to both the builder and local execution client without maintaining any state about the reorganization. The actual reorg handling, including re-deriving the correct L2 blocks from the updated sequencing windows and managing any resulting drift, is performed by the underlying execution engines (e.g op-geth, op-reth) which receive these reorg signals through the standard Engine API methods that rollup-boost forwards.
