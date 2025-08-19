@@ -212,64 +212,12 @@ where
                 return Ok(Some(payload));
             }
 
-            let fcu_info = self
-                .payload_to_fcu_request
-                .lock()
-                .remove(&payload_id)
-                .unwrap()
-                .to_owned()
-                .clone();
-
-            let new_payload_attrs = match fcu_info.1.as_ref() {
-                Some(attrs) => OpPayloadAttributes {
-                    payload_attributes: attrs.payload_attributes.clone(),
-                    transactions: Some(payload.transactions()),
-                    no_tx_pool: Some(true),
-                    gas_limit: attrs.gas_limit,
-                    eip_1559_params: attrs.eip_1559_params,
-                },
-                None => OpPayloadAttributes {
-                    payload_attributes: payload.payload_attributes(),
-                    transactions: Some(payload.transactions()),
-                    no_tx_pool: Some(true),
-                    gas_limit: None,
-                    eip_1559_params: None,
-                },
-            };
-
-            let l2_result = self
-                .l2_client
-                .fork_choice_updated_v3(fcu_info.0, Some(new_payload_attrs))
-                .await?;
-
-            if let Some(new_payload_id) = l2_result.payload_id {
-                debug!(
-                    message = "sent FCU to l2 to calculate new state root",
-                    "returned_payload_id" = %new_payload_id,
-                    "old_payload_id" = %payload_id,
-                );
-                let l2_payload = self.l2_client.get_payload(new_payload_id, version).await;
-
-                match l2_payload {
-                    Ok(new_payload) => {
-                        debug!(
-                            message = "received new state root payload from l2",
-                            payload = ?new_payload,
-                        );
-                        return Ok(Some(new_payload));
-                    }
-
-                    Err(e) => {
-                        error!(message = "error getting new state root payload from l2", error = %e);
-                        return Err(e.into());
-                    }
-                }
-            }
-
-            Ok(None)
+            return self
+                .calculate_external_state_root(payload, payload_id, version)
+                .await;
         };
 
-        let (builder_payload, l2_payload) = tokio::join!(builder_fut, l2_fut);
+        let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
 
         // Evaluate the builder and l2 response and select the final payload
         let (payload, context) = {
@@ -344,6 +292,69 @@ where
 
     fn should_skip_unhealthy_builder(&self) -> bool {
         self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy)
+    }
+
+    async fn calculate_external_state_root(
+        &self,
+        builder_payload: OpExecutionPayloadEnvelope,
+        payload_id: PayloadId,
+        version: PayloadVersion,
+    ) -> RpcResult<Option<OpExecutionPayloadEnvelope>> {
+        let fcu_info = self
+            .payload_to_fcu_request
+            .lock()
+            .remove(&payload_id)
+            .unwrap()
+            .to_owned()
+            .clone();
+
+        let new_payload_attrs = match fcu_info.1.as_ref() {
+            Some(attrs) => OpPayloadAttributes {
+                payload_attributes: attrs.payload_attributes.clone(),
+                transactions: Some(builder_payload.transactions()),
+                no_tx_pool: Some(true),
+                gas_limit: attrs.gas_limit,
+                eip_1559_params: attrs.eip_1559_params,
+            },
+            None => OpPayloadAttributes {
+                payload_attributes: builder_payload.payload_attributes(),
+                transactions: Some(builder_payload.transactions()),
+                no_tx_pool: Some(true),
+                gas_limit: None,
+                eip_1559_params: None,
+            },
+        };
+
+        let l2_result = self
+            .l2_client
+            .fork_choice_updated_v3(fcu_info.0, Some(new_payload_attrs))
+            .await?;
+
+        if let Some(new_payload_id) = l2_result.payload_id {
+            debug!(
+                message = "sent FCU to l2 to calculate new state root",
+                "returned_payload_id" = %new_payload_id,
+                "old_payload_id" = %payload_id,
+            );
+            let l2_payload = self.l2_client.get_payload(new_payload_id, version).await;
+
+            match l2_payload {
+                Ok(new_payload) => {
+                    debug!(
+                        message = "received new state root payload from l2",
+                        payload = ?new_payload,
+                    );
+                    return Ok(Some(new_payload));
+                }
+
+                Err(e) => {
+                    error!(message = "error getting new state root payload from l2", error = %e);
+                    return Err(e.into());
+                }
+            }
+        }
+
+        Ok(None)
     }
 }
 

@@ -84,7 +84,7 @@ async fn no_traffic_to_unhealthy_builder_when_flag_disabled() -> eyre::Result<()
 
     // Step 5: Generate blocks - builder should now be unhealthy and with flag=false,
     // no engine API calls should go to the builder
-    for i in 0..5 {
+    for _i in 0..5 {
         let (_block, block_creator) = block_generator.generate_block(false).await?;
         // Blocks should be created by L2 since builder is unhealthy and flag is false
         assert!(
