@@ -1,25 +1,30 @@
 # Architecture Overview
 
-Rollup Boost modifies the workflow of the engine api to enable block building and flashblocks.
+![Rollup Boost OP Conductor](../assets/rollup-boost-op-conductor.png)
+
+Rollup Boost modifies the workflow of the Engine API to enable block building and flashblocks. It uses the JWT token in the Engine API as authentication for the builder and multiplexes the RPC calls to the builder to source external blocks.
 
 ## Core System Workflow
 
-1. `rollup-boost` receives an `engine_FCU` with the attributes to initiate block building:
-   - It relays the call to proposer `op-geth` as usual and multiplexes the call to builder.
+1. `rollup-boost` receives an `engine_FCU` with the attributes to initiate block building:
+   - It relays the call to proposer `op-geth` as usual and multiplexes the call to builder.
    - The FCU call returns the proposer payload id and internally maps the builder payload id to proposer payload id in the case the payload ids are not the same.
-2. When `rollup-boost` receives an `engine_getPayload`:
+2. When `rollup-boost` receives an `engine_getPayload`:
    - It queries proposer `op-geth` for a fallback block.
    - In parallel, it queries builder for a block.
 3. Upon receiving the builder block:
-   - `rollup-boost` validates the block with proposer `op-geth` using `engine_newPayload`.
+   - `rollup-boost` validates the block with proposer `op-geth` using `engine_newPayload`.
    - This validation ensures the block will be valid for proposer `op-geth`, preventing network stalls due to invalid blocks.
    - If the external block is valid, it is returned to the proposer `op-node`. Otherwise, `rollup-boost` will return the fallback block.
 4. The proposer `op-node` sends a `engine_newPayload` request to `rollup-boost` and another `engine_FCU` without attributes to update chain state.
    - `rollup-boost` just relays the calls to proposer `op-geth`.
-   - Note that since we already called `engine_newPayload` on the proposer `op-geth` in the previous step, the block should be cached and add minimal latency.
+   - Note that since we already called `engine_newPayload` on the proposer `op-geth` in the previous step, the block should be cached and add minimal latency.
    - The builder `op-node` will receive blocks via p2p gossip and keep the builder node in sync via the engine api.
 
+![OP Stack High Availability](../assets/op-stack-ha.png)
+
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#f4f4f4', 'primaryColor': '#2c3e50', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#34495e', 'lineColor': '#34495e', 'secondaryColor': '#ecf0f1', 'tertiaryColor': '#bdc3c7'}}}%%
 sequenceDiagram
     box Proposer
         participant op-node
@@ -65,7 +70,7 @@ By default, `rollup-boost` will proxy all RPC calls from the proposer `op-node` 
 
 ### Boost Sync
 
-By default, `rollup-boost` will sync the builder with the proposer `op-node`. After the builder is synced, boost sync improves the performance of keeping the builder in sync with the tip of the chainby removing the need to receive chain updates via p2p via the builder `op-node`. This entails additional engine api calls that are multiplexed to the builder from rollup-boost:
+`rollup-boost` will use boost sync by default to sync directly with the proposer `op-node` via the Engine API. Boost sync improves the performance of keeping the builder in sync with the tip of the chain by removing the need to receive chain updates via p2p from the builder `op-node` once the builder is synced. This entails additional engine api calls that are multiplexed to the builder from rollup-boost:
 
 - `engine_forkchoiceUpdatedV3`: this call will be multiplexed to the builder regardless of whether the call contains payload attributes or not.
 - `engine_newPayloadV3`: ensures the builder has the latest block if the local payload was used.
