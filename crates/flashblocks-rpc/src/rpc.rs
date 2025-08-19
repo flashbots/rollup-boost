@@ -113,6 +113,7 @@ where
         debug!("get_balance: {:?}, {:?}", address, block_number);
 
         let block_id = block_number.unwrap_or_default();
+        #[allow(clippy::collapsible_if)]
         if block_id.is_pending() {
             if let Some(balance) = self.flashblocks_api.get_balance(address).await {
                 return Ok(balance);
