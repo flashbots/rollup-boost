@@ -192,11 +192,6 @@ where
                 return RpcResult::Ok(None);
             }
 
-            if self.should_skip_unhealthy_builder() {
-                info!(message = "builder is unhealthy, skipping get_payload call to builder");
-                return RpcResult::Ok(None);
-            }
-
             // Get payload and validate with the local l2 client
             tracing::Span::current().record("builder_has_payload", true);
             info!(message = "builder has payload, calling get_payload on builder");
