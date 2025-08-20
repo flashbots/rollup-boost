@@ -2,9 +2,9 @@
 
 ## Regular Sequencer Setup
 
-To run rollup boost with a regular sequencer setup, change the `--l2` flag in the proposer `op-node` to point to the rollup boost rpc endpoint.
+To run rollup-boost with a regular sequencer setup, change the `--l2` flag in the proposer `op-node` to point to the rollup-boost RPC endpoint.
 
-To configure rollup-boost, set the l2 url to the url of the proposer auth rpc endpoint and the builder url to the builder auth rpc endpoint. Separate JWT tokens will be needed for the two endpoints.
+To configure rollup-boost, set the L2 URL to the URL of the proposer auth RPC endpoint and the builder URL to the builder auth RPC endpoint. Separate JWT tokens will be needed for the two endpoints.
 
 You can also set the options using environment variables. See `.env.example` to use the default values.
 
@@ -16,7 +16,7 @@ cargo run --bin rollup-boost -- \
     --builder-url http://localhost:8546
 ```
 
-To set up a builder, you can use [`op-rbuilder`](https://github.com/flashbots/op-rbuilder) with an op-node instance and have rollup-boost point to the builder auth rpc endpoint.
+To set up a builder, you can use [`op-rbuilder`](https://github.com/flashbots/op-rbuilder) with an op-node instance and have rollup-boost point to the builder auth RPC endpoint.
 
 ## Flashblocks
 
@@ -169,7 +169,7 @@ Retrieves the current execution mode.
 
 ### Metrics
 
-To enable metrics, you can set the `--metrics` flag. This will start a metrics server which will run on port 9090 by default. To see the list of metrics, you can checkout metrics.rs and ping the metrics endpoint:
+To enable metrics, you can set the `--metrics` flag. This will start a metrics server which will run on port 9090 by default. To see the list of metrics, you can check out metrics.rs and ping the metrics endpoint:
 
 ```bash
 curl http://localhost:9090/metrics
@@ -181,17 +181,17 @@ All spans create duration histogram metrics with the name "{span_name}\_duration
 - get_payload_duration
 - new_payload_duration
 
-Additionally, execution engines such as op-rbuilder has rpc metrics exposed to check if `engine_getPayloadV4` requests have been received. To check if the builder blocks are landing on-chain, the builder can be configured to include a builder transaction in the block, which is captured as part of the builder metrics. To see more details about observability in the op-builder, you can check op-rbuilder's [README](https://github.com/flashbots/op-rbuilder?tab=readme-ov-file#observability).
+Additionally, execution engines such as op-rbuilder have RPC metrics exposed to check if `engine_getPayloadV4` requests have been received. To check if the builder blocks are landing on-chain, the builder can be configured to include a builder transaction in the block, which is captured as part of the builder metrics. To see more details about observability in the op-builder, you can check op-rbuilder's [README](https://github.com/flashbots/op-rbuilder?tab=readme-ov-file#observability).
 
 #### Flashblocks
 
-There are metrics and observability in all the services supporting flashblocks. In rollup-boost:
+There are metrics and observability in all the services supporting Flashblocks. In rollup-boost:
 
-- `messages_processed` - number of messages processed from the flashblocks websocket stream
-- `flashblocks_counter` - number of flashblocks proposed
-- `flashblocks_missing_counter` - number of flashblocks missed from the expected number of flashblocks
+- `messages_processed` - number of messages processed from the Flashblocks WebSocket stream
+- `flashblocks_counter` - number of Flashblocks proposed
+- `flashblocks_missing_counter` - number of Flashblocks missed from the expected number of Flashblocks
 
-Additionally, the builder transaction can also be observed in the last flashblock to determine if the number of expected flashblocks has been included onchain.
+Additionally, the builder transaction can also be observed in the last Flashblock to determine if the number of expected Flashblocks has been included on-chain.
 
 ### Tracing
 

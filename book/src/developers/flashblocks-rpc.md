@@ -4,7 +4,7 @@ The Flashblocks RPC implementation provides preconfirmation data through modifie
 
 ## Quick Start
 
-To run a node capable of serving flashblocks, run the `flashblock-rpc` crate inside the rollup-boost repository.
+To run a node capable of serving Flashblocks, run the `flashblocks-rpc` crate inside the rollup-boost repository.
 
 Build:
 
@@ -174,7 +174,7 @@ Retrieves the transaction count (nonce) for an account from the pending state.
 **Notes:**
 - Returns nonce reflecting all preconfirmed transactions
 - Combines latest confirmed nonce with pending transaction count
-- Useful for determining the next valid nonce for the next flashblock
+- Useful for determining the next valid nonce for the next Flashblock
 
 ## Data Flow
 
