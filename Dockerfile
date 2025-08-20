@@ -6,7 +6,7 @@
 #
 # Based on https://depot.dev/blog/rust-dockerfile-best-practices
 #
-FROM rust:1.89.0 AS base
+FROM rust:1.89.0-bookworm AS base
 
 ARG FEATURES
 ARG RELEASE=true
@@ -15,7 +15,7 @@ RUN cargo install sccache --version ^0.9
 RUN cargo install cargo-chef --version ^0.1
 
 RUN apt-get update \
-    && apt-get install -y clang libclang-dev
+    && apt-get install -y clang libclang-dev gcc
 
 ENV CARGO_HOME=/usr/local/cargo
 ENV RUSTC_WRAPPER=sccache
