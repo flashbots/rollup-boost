@@ -1026,4 +1026,4 @@ For RPC Operators, Flashblocks will require a modified RPC node that subscribes 
 
 # Implementation
 
-A feature complete implementation of all components described in this document can be found in the [rollup-boost](https://github.com/flashbots/rollup-boost), [op-rbuilder](https://github.com/flashbots/rbuilder/tree/develop/crates/op-rbuilder), [flashblocks-websocket-proxy](https://github.com/base/flashblocks-websocket-proxy), and [reth-flashblocks](https://github.com/danyalprout/reth-flashblocks).
+A feature complete implementation of all components described in this document can be found in the [rollup-boost](https://github.com/flashbots/rollup-boost), [op-rbuilder](https://github.com/flashbots/op-rbuilder/) and [node-reth](https://github.com/base/node-reth).
