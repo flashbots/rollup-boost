@@ -120,7 +120,7 @@ class FlashblocksPayloadV1():
     parent_flash_hash: Optional[Bytes32]
     base: Optional[ExecutionPayloadBaseV1]
     diff: ExecutionPayloadFlashblockResultV1
-    metadata: FlashblocksMetadata
+    metadata: Metadata
 ```
 
 **Field descriptions:**
@@ -200,7 +200,7 @@ class ExecutionPayloadBaseV1():
 Container encapsulating all metadata for a flashblock, including account state changes and transaction results.
 
 ```python
-class FlashblockMetadata():
+class Metadata():
 		accounts: List[AccountMetadata]
 		transactions: List[TransactionMetadata]
 ```
