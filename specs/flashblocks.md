@@ -114,11 +114,11 @@ The core data structure sent from the Block Builder to Rollup Boost and then ext
 
 ```python
 class FlashblocksPayloadV1():
-		version: Bytes4
+    version: Bytes4
     payload_id: Bytes8
-    parent_flash_hash: Optional[Bytes32]
     index: uint64
-    static: Optional[ExecutionPayloadStaticV1]
+    parent_flash_hash: Optional[Bytes32]
+    base: Optional[ExecutionPayloadStaticV1]
     diff: ExecutionPayloadFlashblockResultV1
     metadata: FlashblocksMetadata
 ```
