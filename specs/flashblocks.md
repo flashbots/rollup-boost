@@ -10,7 +10,7 @@
   - [Data structures](#data-structures)
     - [**`FlashblocksPayloadV1`**](#flashblockspayloadv1)
     - [**`ExecutionPayloadFlashblockResultV1`**](#executionpayloadflashblockresultv1)
-    - [**`ExecutionPayloadStaticV1`**](#executionpayloadstaticv1)
+    - [**`ExecutionPayloadBaseV1`**](#executionpayloadbasev1)
     - [**`Metadata`**](#metadata)
     - [**`AccountMetadata`**](#accountmetadata)
     - [**`StorageSlot`**](#storageslot)
@@ -118,7 +118,7 @@ class FlashblocksPayloadV1():
     payload_id: Bytes8
     index: uint64
     parent_flash_hash: Optional[Bytes32]
-    base: Optional[ExecutionPayloadStaticV1]
+    base: Optional[ExecutionPayloadBaseV1]
     diff: ExecutionPayloadFlashblockResultV1
     metadata: FlashblocksMetadata
 ```
@@ -166,12 +166,12 @@ class ExecutionPayloadFlashblockResultV1():
 
 All fields in this structure represent the cumulative state of the entire block up to and including the current flashblock, not just the changes from this specific flashblock.
 
-### **`ExecutionPayloadStaticV1`**
+### **`ExecutionPayloadBaseV1`**
 
 Container representing immutable fundamental block properties established at initial block creation, unchanged throughout construction.
 
 ```python
-class ExecutionPayloadStaticV1():
+class ExecutionPayloadBaseV1():
     parent_beacon_block_root: Bytes32
     parent_hash: Bytes32
     fee_recipient: ExecutionAddress
