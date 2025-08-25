@@ -18,6 +18,10 @@
 - [For DApp Developers](./developers/README.md)
     - [Flashblocks Data over JSON RPC](./developers/flashblocks-rpc.md)
 
+- [For Contributors](./contributors/README.md)
+    - [Repository Structure](./contributors/repository.md)
+    - [Ecosystem](./contributors/ecosystem.md)
+
 - [CLI Reference](./cli/README.md)
     - [rollup-boost](./cli/rollup-boost.md)
     - [websocket-proxy](./cli/websocket-proxy.md)
