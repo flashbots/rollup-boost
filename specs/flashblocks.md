@@ -367,7 +367,7 @@ The lifecycle of a Flashblock begins with the Sequencer initiating block creatio
     
     It's important to emphasize that during this process, the External Block Builder sends only the incremental changes in each Flashblock, not the full block state each time. Each `FlashblocksPayloadV1` contains just the delta from the previous state (new transactions, updated state roots, etc.), allowing for efficient bandwidth usage and faster propagation.
     
-    Only the first Flashblock (with `index` 0) includes the `static` field containing immutable block data, while subsequent Flashblocks omit this field since this information remains constant throughout the block's construction. Each Flashblock includes a `parent_flash_hash` that references the SSZ hash of the previous Flashblock in the sequence, creating a hash-linked chain within the block.
+    Only the first Flashblock (with `index` 0) includes the `base` field containing immutable block data, while subsequent Flashblocks omit this field since this information remains constant throughout the block's construction. Each Flashblock includes a `parent_flash_hash` that references the SSZ hash of the previous Flashblock in the sequence, creating a hash-linked chain within the block.
     
     The combined information received across all flashblocks is sufficient to fully reconstruct the complete block without any additional data.
     
