@@ -184,14 +184,19 @@ where
         if FORWARD_REQUESTS.contains(&request.method_name()) {
             // If the request should be forwarded, send to both the
             // default execution client and the builder
-            let request = request;
-            let mut builder_client = self.builder_client.clone();
+            let request = request.clone();
 
+            let mut builder_client = self.builder_client.clone();
+            let method_name = request.method_name().to_string();
+            // TODO: Fix this
+            let req_str = serde_json::to_string(&request).unwrap();
+            let req = http::Request::builder().body(HttpBody::from(req_str)).expect("asd");
             // Fire and forget the builder request
             tokio::spawn(async move {
-                let _ = builder_client.forward(request.params(), request.method_name().to_string()).await;
+                let _ = builder_client.forward(req, method_name).await;
             });
         }
+        self.inner.call(request)
 
     }
 
