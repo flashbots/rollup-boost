@@ -13,7 +13,9 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
+use jsonrpsee::types::Request;
 use opentelemetry::trace::SpanKind;
+use serde::Serialize;
 use tower::{
     Service as _, ServiceBuilder, ServiceExt,
     timeout::{Timeout, TimeoutLayer},
