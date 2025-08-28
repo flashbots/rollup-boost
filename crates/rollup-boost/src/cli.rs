@@ -9,17 +9,11 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
+use jsonrpsee::core::middleware::RpcServiceBuilder;
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
-use crate::{
-    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
-    client::rpc::{BuilderArgs, L2ClientArgs},
-    debug_api::ExecutionMode,
-    get_version, init_metrics,
-    payload::PayloadSource,
-    probe::ProbeLayer,
-};
+use crate::{BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient, client::rpc::{BuilderArgs, L2ClientArgs}, debug_api::ExecutionMode, get_version, init_metrics, payload::PayloadSource, probe::ProbeLayer, EngineApiServer};
 
 #[derive(Clone, Parser, Debug)]
 #[clap(author, version = get_version(), about)]
@@ -190,18 +184,20 @@ impl RollupBoostArgs {
 
         let http_middleware =
             tower::ServiceBuilder::new()
-                .layer(probe_layer)
-                .layer(ProxyLayer::new(
-                    l2_client_args.l2_url,
-                    l2_auth_jwt,
-                    l2_client_args.l2_timeout,
-                    builder_args.builder_url,
-                    builder_auth_jwt,
-                    builder_args.builder_timeout,
-                ));
+                .layer(probe_layer);
+        let rpc_middleware = RpcServiceBuilder::new()
+            .layer(ProxyLayer::new(
+                l2_client_args.l2_url,
+                l2_auth_jwt,
+                l2_client_args.l2_timeout,
+                builder_args.builder_url,
+                builder_auth_jwt,
+                builder_args.builder_timeout,
+            ));
 
         let server = Server::builder()
             .set_http_middleware(http_middleware)
+            .set_rpc_middleware(rpc_middleware)
             .build(format!("{}:{}", self.rpc_host, self.rpc_port).parse::<SocketAddr>()?)
             .await?;
         let handle = server.start(rpc_module);

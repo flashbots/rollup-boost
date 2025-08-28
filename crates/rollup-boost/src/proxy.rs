@@ -6,8 +6,11 @@ use http::Uri;
 use http_body_util::BodyExt as _;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
+use jsonrpsee::core::middleware::{Batch, Notification, RpcServiceT};
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
+use std::ops::Deref;
+use jsonrpsee::core::client::{Error, MiddlewareMethodResponse};
 use tower::{Layer, Service};
 use tracing::info;
 
@@ -53,7 +56,9 @@ impl ProxyLayer {
     }
 }
 
-impl<S> Layer<S> for ProxyLayer {
+impl<S> Layer<S> for ProxyLayer
+where S: RpcServiceT + Send + Sync + Clone + 'static,
+{
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
@@ -87,78 +92,119 @@ pub struct ProxyService<S> {
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
-impl<S> Service<Request> for ProxyService<S>
+// impl<S> Service<Request> for ProxyService<S>
+// where
+//     S: Service<Request, Response = Response> + Send + Sync + Clone + 'static,
+//     S::Response: 'static,
+//     S::Error: Into<BoxError> + 'static,
+//     S::Future: Send + 'static,
+// {
+//     type Response = Response;
+//     type Error = BoxError;
+//     type Future =
+//         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+//
+//     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+//         self.inner.poll_ready(cx).map_err(Into::into)
+//     }
+//
+//     fn call(&mut self, req: Request) -> Self::Future {
+//         #[derive(serde::Deserialize, Debug)]
+//         struct RpcRequest<'a> {
+//             #[serde(borrow)]
+//             method: &'a str,
+//         }
+//
+//         // See https://github.com/tower-rs/tower/blob/abb375d08cf0ba34c1fe76f66f1aba3dc4341013/tower-service/src/lib.rs#L276
+//         // for an explanation of this pattern
+//         let mut service = self.clone();
+//         service.inner = std::mem::replace(&mut self.inner, service.inner);
+//
+//         let fut = async move {
+//             let buffered = into_buffered_request(req).await?;
+//             let body_bytes = buffered.clone().collect().await?.to_bytes();
+//
+//             // Deserialize the bytes to find the method
+//             let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
+//                 .method
+//                 .to_string();
+//
+//             // If the request is an Engine API method, call the inner RollupBoostServer
+//             if method.starts_with(ENGINE_METHOD) {
+//                 info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
+//                 return service
+//                     .inner
+//                     .call(from_buffered_request(buffered))
+//                     .await
+//                     .map_err(|e| e.into());
+//             }
+//
+//             if FORWARD_REQUESTS.contains(&method.as_str()) {
+//                 // If the request should be forwarded, send to both the
+//                 // default execution client and the builder
+//                 let method_clone = method.clone();
+//                 let buffered_clone = buffered.clone();
+//                 let mut builder_client = service.builder_client.clone();
+//
+//                 // Fire and forget the builder request
+//                 tokio::spawn(async move {
+//                     let _ = builder_client.forward(buffered_clone, method_clone).await;
+//                 });
+//             }
+//
+//             // Return the response from the L2 client
+//             service
+//                 .l2_client
+//                 .forward(buffered, method)
+//                 .await
+//                 .map(|res| res.map(HttpBody::new))
+//         };
+//
+//         Box::pin(fut)
+//     }
+// }
+
+impl<S> RpcServiceT for ProxyService<S>
 where
-    S: Service<Request, Response = Response> + Send + Sync + Clone + 'static,
-    S::Response: 'static,
-    S::Error: Into<BoxError> + 'static,
-    S::Future: Send + 'static,
+    S: RpcServiceT + Send + Sync + Clone + 'static,
 {
-    type Response = Response;
-    type Error = BoxError;
-    type Future =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+    type MethodResponse = S::MethodResponse;
+    type NotificationResponse = S::NotificationResponse;
+    type BatchResponse = S::BatchResponse;
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(Into::into)
-    }
+    fn call<'a>(&self, request: jsonrpsee::types::Request<'a>) -> impl Future<Output=Self::MethodResponse> + Send + 'a {
+        println!("request: {:?}", request);
+        // If the request is an Engine API method, call the inner RollupBoostServer
+        if request.method.starts_with(ENGINE_METHOD) {
+            info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?request.method);
+            return self
+                .inner
+                .call(request);
+        }
+        if FORWARD_REQUESTS.contains(&request.method_name()) {
+            // If the request should be forwarded, send to both the
+            // default execution client and the builder
+            let request = request;
+            let mut builder_client = self.builder_client.clone();
 
-    fn call(&mut self, req: Request) -> Self::Future {
-        #[derive(serde::Deserialize, Debug)]
-        struct RpcRequest<'a> {
-            #[serde(borrow)]
-            method: &'a str,
+            // Fire and forget the builder request
+            tokio::spawn(async move {
+                let _ = builder_client.forward(request.params(), request.method_name().to_string()).await;
+            });
         }
 
-        // See https://github.com/tower-rs/tower/blob/abb375d08cf0ba34c1fe76f66f1aba3dc4341013/tower-service/src/lib.rs#L276
-        // for an explanation of this pattern
-        let mut service = self.clone();
-        service.inner = std::mem::replace(&mut self.inner, service.inner);
+    }
 
-        let fut = async move {
-            let buffered = into_buffered_request(req).await?;
-            let body_bytes = buffered.clone().collect().await?.to_bytes();
+    fn batch<'a>(&self, requests: Batch<'a>) -> impl Future<Output=Self::BatchResponse> + Send + 'a {
+        println!("requests: {:?}", requests);
+        self.inner.batch(requests)
+    }
 
-            // Deserialize the bytes to find the method
-            let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
-                .method
-                .to_string();
-
-            // If the request is an Engine API method, call the inner RollupBoostServer
-            if method.starts_with(ENGINE_METHOD) {
-                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                return service
-                    .inner
-                    .call(from_buffered_request(buffered))
-                    .await
-                    .map_err(|e| e.into());
-            }
-
-            if FORWARD_REQUESTS.contains(&method.as_str()) {
-                // If the request should be forwarded, send to both the
-                // default execution client and the builder
-                let method_clone = method.clone();
-                let buffered_clone = buffered.clone();
-                let mut builder_client = service.builder_client.clone();
-
-                // Fire and forget the builder request
-                tokio::spawn(async move {
-                    let _ = builder_client.forward(buffered_clone, method_clone).await;
-                });
-            }
-
-            // Return the response from the L2 client
-            service
-                .l2_client
-                .forward(buffered, method)
-                .await
-                .map(|res| res.map(HttpBody::new))
-        };
-
-        Box::pin(fut)
+    fn notification<'a>(&self, n: Notification<'a>) -> impl Future<Output=Self::NotificationResponse> + Send + 'a {
+        println!("notification: {:?}", n);
+        self.inner.notification(n)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use crate::probe::ProbeLayer;

@@ -13,6 +13,7 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
+use jsonrpsee::types::Request;
 use opentelemetry::trace::SpanKind;
 use tower::{
     Service as _, ServiceBuilder, ServiceExt,
@@ -78,6 +79,46 @@ impl HttpClient {
         B: Body<Data = Bytes, Error: Into<Box<dyn std::error::Error + Send + Sync>>>
             + Send
             + 'static,
+    {
+        debug!("forwarding {} to {}", method, self.target);
+        tracing::Span::current().record("method", method);
+        *req.uri_mut() = self.url.clone();
+
+        let req = req.map(HttpBody::new);
+
+        let res = self.client.ready().await?.call(req).await?;
+
+        let (parts, body) = res.into_parts();
+        let body_bytes = body.collect().await?.to_bytes();
+
+        if let Some(code) = parse_response_code(&body_bytes)? {
+            error!(%code, "error in forwarded response");
+            tracing::Span::current().record("code", code);
+        }
+
+        Ok(http::Response::from_parts(parts, Full::from(body_bytes)))
+    }
+
+    /// Forwards an HTTP request to the `authrpc`, attaching the provided JWT authorization.
+    #[instrument(
+        skip(self, req),
+        fields(
+            otel.kind = ?SpanKind::Client,
+            url = %self.url,
+            method,
+            code,
+        ),
+        err(Debug)
+    )]
+    pub async fn send(
+        &mut self,
+        req: Request,
+        method: String,
+    ) -> Result<http::Response<Full<Bytes>>, BoxError>
+    where
+        B: Body<Data = Bytes, Error: Into<Box<dyn std::error::Error + Send + Sync>>>
+        + Send
+        + 'static,
     {
         debug!("forwarding {} to {}", method, self.target);
         tracing::Span::current().record("method", method);
