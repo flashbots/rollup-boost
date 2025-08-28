@@ -1,5 +1,5 @@
 use crate::debug_api::ExecutionMode;
-use crate::{BlockSelectionPolicy, EngineApiExt};
+use crate::{AuthApiExt, BlockSelectionPolicy};
 use crate::{
     client::rpc::RpcClient,
     debug_api::DebugServer,
@@ -10,29 +10,40 @@ use crate::{
     },
     probe::{Health, Probes},
 };
-use alloy_primitives::{B256, Bytes, bytes};
+use alloy_eips::BlockId;
+use alloy_primitives::{Address, B256, BlockHash, Bytes, U64, U128, U256, bytes};
 use alloy_rpc_types_engine::{
-    ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
+    ClientVersionV1, ExecutionPayload, ExecutionPayloadBodiesV1, ExecutionPayloadEnvelopeV2,
+    ExecutionPayloadInputV2, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
     PayloadStatus,
 };
-use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use http_body_util::{BodyExt, Full};
+use alloy_rpc_types_eth::erc4337::TransactionConditional;
+use alloy_rpc_types_eth::state::StateOverride;
+use alloy_rpc_types_eth::{
+    BlockNumberOrTag, BlockOverrides, EIP1186AccountProofResponse, Filter, Log, SyncStatus,
+};
+use alloy_serde::JsonStorageKey;
+use http_body_util::Full;
 use jsonrpsee::RpcModule;
-use jsonrpsee::core::BoxError;
 use jsonrpsee::core::{RegisterMethodError, RpcResult, async_trait};
-use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::server::HttpBody;
 use jsonrpsee::server::HttpRequest;
 use jsonrpsee::server::HttpResponse;
 use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use metrics::counter;
+use op_alloy_network::Optimism;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
-    OpPayloadAttributes,
+    OpPayloadAttributes, ProtocolVersion, SuperchainSignal,
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use reth_optimism_node::OpEngineTypes;
+use reth_optimism_payload_builder::OpPayloadTypes;
+use reth_optimism_rpc::OpEngineApiServer;
+use reth_optimism_rpc::miner::MinerApiExtServer;
+use reth_rpc_api::{EngineEthApiServer, L2EthApiExtServer, MinerApiServer};
+use reth_rpc_eth_api::{RpcBlock, RpcReceipt, RpcTxReq};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -44,7 +55,7 @@ pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
 pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
 #[derive(Clone)]
-pub struct RollupBoostServer<T: EngineApiExt> {
+pub struct RollupBoostServer<T: AuthApiExt> {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<T>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
@@ -55,7 +66,7 @@ pub struct RollupBoostServer<T: EngineApiExt> {
 
 impl<T> RollupBoostServer<T>
 where
-    T: EngineApiExt,
+    T: AuthApiExt,
 {
     pub fn new(
         l2_client: RpcClient,
@@ -269,13 +280,18 @@ where
 
 impl<T> TryInto<RpcModule<()>> for RollupBoostServer<T>
 where
-    T: EngineApiExt,
+    T: AuthApiExt + Clone,
 {
     type Error = RegisterMethodError;
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
         let mut module: RpcModule<()> = RpcModule::new(());
-        module.merge(EngineApiServer::into_rpc(self))?;
+        // TODO: get rid of clones
+        module.merge(OpEngineApiServer::into_rpc(self.clone()))?;
+        module.merge(EngineEthApiServer::into_rpc(self.clone()))?;
+        module.merge(MinerApiServer::into_rpc(self.clone()))?;
+        module.merge(MinerApiExtServer::into_rpc(self.clone()))?;
+        module.merge(L2EthApiExtServer::into_rpc(self))?;
 
         for method in module.method_names() {
             info!(?method, "method registered");
@@ -285,53 +301,85 @@ where
     }
 }
 
-#[rpc(server, client)]
-pub trait EngineApi {
-    #[method(name = "engine_forkchoiceUpdatedV3")]
-    async fn fork_choice_updated_v3(
-        &self,
-        fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<OpPayloadAttributes>,
-    ) -> RpcResult<ForkchoiceUpdated>;
+#[async_trait]
+impl<T> OpEngineApiServer<OpEngineTypes<OpPayloadTypes>> for RollupBoostServer<T>
+where
+    T: AuthApiExt,
+{
+    async fn new_payload_v2(&self, payload: ExecutionPayloadInputV2) -> RpcResult<PayloadStatus> {
+        Ok(self.l2_client.new_payload_v2(payload).await?)
+    }
 
-    #[method(name = "engine_getPayloadV3")]
-    async fn get_payload_v3(
-        &self,
-        payload_id: PayloadId,
-    ) -> RpcResult<OpExecutionPayloadEnvelopeV3>;
-
-    #[method(name = "engine_newPayloadV3")]
+    #[instrument(
+        skip_all,
+        err,
+        fields(
+            otel.kind = ?SpanKind::Server,
+        )
+    )]
     async fn new_payload_v3(
         &self,
         payload: ExecutionPayloadV3,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
-    ) -> RpcResult<PayloadStatus>;
+    ) -> RpcResult<PayloadStatus> {
+        info!("received new_payload_v3");
 
-    #[method(name = "engine_getPayloadV4")]
-    async fn get_payload_v4(
-        &self,
-        payload_id: PayloadId,
-    ) -> RpcResult<OpExecutionPayloadEnvelopeV4>;
+        self.new_payload(NewPayload::V3(NewPayloadV3 {
+            payload,
+            versioned_hashes,
+            parent_beacon_block_root,
+        }))
+        .await
+    }
 
-    #[method(name = "engine_newPayloadV4")]
+    #[instrument(
+        skip_all,
+        err,
+        fields(
+            otel.kind = ?SpanKind::Server,
+        )
+    )]
     async fn new_payload_v4(
         &self,
         payload: OpExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
-        execution_requests: Vec<Bytes>,
-    ) -> RpcResult<PayloadStatus>;
+        execution_requests: alloy_eips::eip7685::Requests,
+    ) -> RpcResult<PayloadStatus> {
+        info!("received new_payload_v4");
 
-    #[method(name = "eth_getBlockByNumber")]
-    async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block>;
-}
+        self.new_payload(NewPayload::V4(NewPayloadV4 {
+            payload,
+            versioned_hashes,
+            parent_beacon_block_root,
+            execution_requests: execution_requests.to_vec(),
+        }))
+        .await
+    }
 
-#[async_trait]
-impl<T> EngineApiServer for RollupBoostServer<T>
-where
-    T: EngineApiExt,
-{
+    async fn fork_choice_updated_v1(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> RpcResult<ForkchoiceUpdated> {
+        Ok(self
+            .l2_client
+            .fork_choice_updated_v1(fork_choice_state, payload_attributes)
+            .await?)
+    }
+
+    async fn fork_choice_updated_v2(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> RpcResult<ForkchoiceUpdated> {
+        Ok(self
+            .l2_client
+            .fork_choice_updated_v2(fork_choice_state, payload_attributes)
+            .await?)
+    }
+
     #[instrument(
         skip_all,
         err,
@@ -428,6 +476,10 @@ where
         }
     }
 
+    async fn get_payload_v2(&self, payload_id: PayloadId) -> RpcResult<ExecutionPayloadEnvelopeV2> {
+        Ok(self.l2_client.get_payload_v2(payload_id).await?)
+    }
+
     #[instrument(
         skip_all,
         err,
@@ -462,29 +514,6 @@ where
         err,
         fields(
             otel.kind = ?SpanKind::Server,
-        )
-    )]
-    async fn new_payload_v3(
-        &self,
-        payload: ExecutionPayloadV3,
-        versioned_hashes: Vec<B256>,
-        parent_beacon_block_root: B256,
-    ) -> RpcResult<PayloadStatus> {
-        info!("received new_payload_v3");
-
-        self.new_payload(NewPayload::V3(NewPayloadV3 {
-            payload,
-            versioned_hashes,
-            parent_beacon_block_root,
-        }))
-        .await
-    }
-
-    #[instrument(
-        skip_all,
-        err,
-        fields(
-            otel.kind = ?SpanKind::Server,
             %payload_id,
             payload_source,
             gas_delta,
@@ -507,45 +536,241 @@ where
         }
     }
 
-    #[instrument(
-        skip_all,
-        err,
-        fields(
-            otel.kind = ?SpanKind::Server,
-        )
-    )]
-    async fn new_payload_v4(
+    async fn get_payload_bodies_by_hash_v1(
         &self,
-        payload: OpExecutionPayloadV4,
-        versioned_hashes: Vec<B256>,
-        parent_beacon_block_root: B256,
-        execution_requests: Vec<Bytes>,
-    ) -> RpcResult<PayloadStatus> {
-        info!("received new_payload_v4");
-
-        self.new_payload(NewPayload::V4(NewPayloadV4 {
-            payload,
-            versioned_hashes,
-            parent_beacon_block_root,
-            execution_requests,
-        }))
-        .await
+        block_hashes: Vec<BlockHash>,
+    ) -> RpcResult<ExecutionPayloadBodiesV1> {
+        Ok(self
+            .l2_client
+            .get_payload_bodies_by_hash_v1(block_hashes)
+            .await?)
     }
 
-    async fn get_block_by_number(&self, number: BlockNumberOrTag, full: bool) -> RpcResult<Block> {
-        Ok(self.l2_client.get_block_by_number(number, full).await?)
+    async fn get_payload_bodies_by_range_v1(
+        &self,
+        start: U64,
+        count: U64,
+    ) -> RpcResult<ExecutionPayloadBodiesV1> {
+        Ok(self
+            .l2_client
+            .get_payload_bodies_by_range_v1(start, count)
+            .await?)
+    }
+
+    async fn signal_superchain_v1(&self, signal: SuperchainSignal) -> RpcResult<ProtocolVersion> {
+        Ok(self.l2_client.signal_superchain_v1(signal).await?)
+    }
+
+    async fn get_client_version_v1(
+        &self,
+        client_version: ClientVersionV1,
+    ) -> RpcResult<Vec<ClientVersionV1>> {
+        Ok(self.l2_client.get_client_version_v1(client_version).await?)
+    }
+
+    async fn exchange_capabilities(&self, capabilities: Vec<String>) -> RpcResult<Vec<String>> {
+        Ok(self.l2_client.exchange_capabilities(capabilities).await?)
     }
 }
 
-pub async fn into_buffered_request(req: HttpRequest) -> Result<BufferedRequest, BoxError> {
-    let (parts, body) = req.into_parts();
-    let bytes = body.collect().await?.to_bytes();
-    let full = Full::<bytes::Bytes>::from(bytes.clone());
-    Ok(http::Request::from_parts(parts, full))
+#[async_trait]
+impl<T> EngineEthApiServer<RpcTxReq<Optimism>, RpcBlock<Optimism>, RpcReceipt<Optimism>>
+    for RollupBoostServer<T>
+where
+    T: AuthApiExt,
+{
+    fn syncing(&self) -> RpcResult<SyncStatus> {
+        Ok(tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async { self.l2_client.syncing().await })
+        })?)
+    }
+
+    async fn chain_id(&self) -> RpcResult<Option<U64>> {
+        Ok(self.l2_client.chain_id().await?)
+    }
+
+    fn block_number(&self) -> RpcResult<U256> {
+        Ok(tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { self.l2_client.block_number().await })
+        })?)
+    }
+
+    async fn call(
+        &self,
+        request: RpcTxReq<Optimism>,
+        block_id: Option<BlockId>,
+        state_overrides: Option<StateOverride>,
+        block_overrides: Option<Box<BlockOverrides>>,
+    ) -> RpcResult<Bytes> {
+        Ok(self
+            .l2_client
+            .call(request, block_id, state_overrides, block_overrides)
+            .await?)
+    }
+
+    async fn get_code(&self, address: Address, block_id: Option<BlockId>) -> RpcResult<Bytes> {
+        Ok(self.l2_client.get_code(address, block_id).await?)
+    }
+
+    async fn block_by_hash(&self, hash: B256, full: bool) -> RpcResult<Option<RpcBlock<Optimism>>> {
+        Ok(self.l2_client.block_by_hash(hash, full).await?)
+    }
+
+    async fn block_by_number(
+        &self,
+        number: BlockNumberOrTag,
+        full: bool,
+    ) -> RpcResult<Option<RpcBlock<Optimism>>> {
+        Ok(self.l2_client.block_by_number(number, full).await?)
+    }
+
+    async fn block_receipts(
+        &self,
+        block_id: BlockId,
+    ) -> RpcResult<Option<Vec<RpcReceipt<Optimism>>>> {
+        Ok(self.l2_client.block_receipts(block_id).await?)
+    }
+
+    async fn send_raw_transaction(&self, bytes: Bytes) -> RpcResult<B256> {
+        {
+            let builder_client = self.builder_client.clone();
+            let bytes = bytes.clone();
+            tokio::spawn(async move {
+                let res = builder_client.send_raw_transaction(bytes).await;
+                if let Err(e) = res {
+                    error!("failed to proxy eth_sendRawTransaction to builder: {}", e);
+                }
+            });
+        }
+        Ok(self.l2_client.send_raw_transaction(bytes).await?)
+    }
+
+    async fn transaction_receipt(&self, hash: B256) -> RpcResult<Option<RpcReceipt<Optimism>>> {
+        Ok(self.l2_client.transaction_receipt(hash).await?)
+    }
+
+    async fn logs(&self, filter: Filter) -> RpcResult<Vec<Log>> {
+        Ok(self.l2_client.logs(filter).await?)
+    }
+
+    async fn get_proof(
+        &self,
+        address: Address,
+        keys: Vec<JsonStorageKey>,
+        block_number: Option<BlockId>,
+    ) -> RpcResult<EIP1186AccountProofResponse> {
+        Ok(self
+            .l2_client
+            .get_proof(address, keys, block_number)
+            .await?)
+    }
 }
 
-pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
-    req.map(HttpBody::new)
+#[async_trait]
+impl<T> L2EthApiExtServer for RollupBoostServer<T>
+where
+    T: AuthApiExt,
+{
+    async fn send_raw_transaction_conditional(
+        &self,
+        bytes: Bytes,
+        condition: TransactionConditional,
+    ) -> RpcResult<B256> {
+        {
+            let builder_client = self.builder_client.clone();
+            let bytes = bytes.clone();
+            let condition = condition.clone();
+            tokio::spawn(async move {
+                let res = builder_client
+                    .send_raw_transaction_conditional(bytes, condition)
+                    .await;
+                if let Err(e) = res {
+                    error!(
+                        "failed to proxy eth_sendRawTransactionConditional to builder: {}",
+                        e
+                    );
+                }
+            });
+        }
+        Ok(self
+            .l2_client
+            .send_raw_transaction_conditional(bytes, condition)
+            .await?)
+    }
+}
+
+#[async_trait]
+impl<T> MinerApiServer for RollupBoostServer<T>
+where
+    T: AuthApiExt,
+{
+    fn set_extra(&self, record: Bytes) -> RpcResult<bool> {
+        {
+            let builder_client = self.builder_client.clone();
+            let record = record.clone();
+            tokio::spawn(async move {
+                let res = builder_client.set_extra(record).await;
+                if let Err(e) = res {
+                    error!("failed to proxy miner_setExtra to builder: {}", e);
+                }
+            });
+        }
+        Ok(tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { self.l2_client.set_extra(record).await })
+        })?)
+    }
+
+    fn set_gas_price(&self, gas_price: U128) -> RpcResult<bool> {
+        let builder_client = self.builder_client.clone();
+        tokio::spawn(async move {
+            let res = builder_client.set_gas_price(gas_price).await;
+            if let Err(e) = res {
+                error!("failed to proxy miner_setGasPrice to builder: {}", e);
+            }
+        });
+        Ok(tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { self.l2_client.set_gas_price(gas_price).await })
+        })?)
+    }
+
+    fn set_gas_limit(&self, gas_limit: U128) -> RpcResult<bool> {
+        let builder_client = self.builder_client.clone();
+        tokio::spawn(async move {
+            let res = builder_client.set_gas_limit(gas_limit).await;
+            if let Err(e) = res {
+                error!("failed to proxy miner_setGasLimit to builder: {}", e);
+            }
+        });
+        Ok(tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { self.l2_client.set_gas_limit(gas_limit).await })
+        })?)
+    }
+}
+
+#[async_trait]
+impl<T> MinerApiExtServer for RollupBoostServer<T>
+where
+    T: AuthApiExt,
+{
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> RpcResult<bool> {
+        let builder_client = self.builder_client.clone();
+        tokio::spawn(async move {
+            let res = builder_client
+                .set_max_da_size(max_tx_size, max_block_size)
+                .await;
+            if let Err(e) = res {
+                error!("failed to proxy miner_setMaxDaSize to builder: {}", e);
+            }
+        });
+        Ok(self
+            .l2_client
+            .set_max_da_size(max_tx_size, max_block_size)
+            .await?)
+    }
 }
 
 #[cfg(test)]
@@ -553,7 +778,6 @@ pub fn from_buffered_request(req: BufferedRequest) -> HttpRequest {
 pub mod tests {
     use super::*;
     use crate::probe::ProbeLayer;
-    use crate::proxy::ProxyLayer;
     use alloy_primitives::hex;
     use alloy_primitives::{FixedBytes, U256};
     use alloy_rpc_types_engine::JwtSecret;
@@ -563,8 +787,10 @@ pub mod tests {
     use http::{StatusCode, Uri};
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
+
     use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
     use parking_lot::Mutex;
+    use reth_optimism_rpc::OpEngineApiClient;
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
@@ -679,17 +905,7 @@ pub mod tests {
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
 
-            let http_middleware =
-                tower::ServiceBuilder::new()
-                    .layer(probe_layer)
-                    .layer(ProxyLayer::new(
-                        l2_auth_rpc,
-                        jwt_secret,
-                        1,
-                        builder_auth_rpc,
-                        jwt_secret,
-                        1,
-                    ));
+            let http_middleware = tower::ServiceBuilder::new().layer(probe_layer);
 
             let server = Server::builder()
                 .set_http_middleware(http_middleware)
@@ -750,10 +966,14 @@ pub mod tests {
             safe_block_hash: FixedBytes::random(),
             finalized_block_hash: FixedBytes::random(),
         };
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(fcu, None)
+        let fcu_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v3(
+                &test_harness.rpc_client,
+                fcu,
+                None,
+            )
             .await;
+
         assert!(fcu_response.is_ok());
         let fcu_requests = test_harness.l2_mock.fcu_requests.clone();
         {
@@ -769,9 +989,9 @@ pub mod tests {
         }
 
         // test new_payload_v3 success
-        let new_payload_response = test_harness
-            .rpc_client
-            .new_payload_v3(
+        let new_payload_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::new_payload_v3(
+                &test_harness.rpc_client,
                 test_harness
                     .l2_mock
                     .get_payload_response
@@ -809,9 +1029,11 @@ pub mod tests {
         }
 
         // test get_payload_v3 success
-        let get_payload_response = test_harness
-            .rpc_client
-            .get_payload_v3(PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]))
+        let get_payload_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::get_payload_v3(
+                &test_harness.rpc_client,
+                PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]),
+            )
             .await;
         assert!(get_payload_response.is_ok());
         let get_payload_requests = test_harness.l2_mock.get_payload_requests.clone();
@@ -853,9 +1075,11 @@ pub mod tests {
         let test_harness = TestHarness::new(Some(l2_mock), None).await;
 
         // test get_payload_v3 return l2 payload if builder payload is invalid
-        let get_payload_response = test_harness
-            .rpc_client
-            .get_payload_v3(PayloadId::new([0, 0, 0, 0, 0, 0, 0, 0]))
+        let get_payload_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::get_payload_v3(
+                &test_harness.rpc_client,
+                PayloadId::new([0, 0, 0, 0, 0, 0, 0, 0]),
+            )
             .await;
         assert!(get_payload_response.is_ok());
         assert_eq!(get_payload_response.unwrap().block_value, U256::from(10));
@@ -931,9 +1155,12 @@ pub mod tests {
             safe_block_hash: FixedBytes::random(),
             finalized_block_hash: FixedBytes::random(),
         };
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(fcu, None)
+        let fcu_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v3(
+                &test_harness.rpc_client,
+                fcu,
+                Option::<OpPayloadAttributes>::None,
+            )
             .await;
         assert!(fcu_response.is_ok());
 
@@ -947,7 +1174,11 @@ pub mod tests {
         }
 
         // Test getPayload call
-        let get_res = test_harness.rpc_client.get_payload_v3(same_id).await;
+        let get_res = <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::get_payload_v3(
+            &test_harness.rpc_client,
+            same_id,
+        )
+        .await;
         assert!(get_res.is_ok());
 
         // wait for builder to observe the getPayload call
@@ -1004,26 +1235,42 @@ pub mod tests {
             gas_limit: Some(1000000),
             ..Default::default()
         };
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes.clone()))
+        let fcu_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v3(
+                &test_harness.rpc_client,
+                fcu,
+                Some(payload_attributes.clone()),
+            )
             .await;
         assert!(fcu_response.is_ok());
 
         // no tx pool is false so should return the builder payload
-        let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
+        let get_payload_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::get_payload_v3(
+                &test_harness.rpc_client,
+                payload_id,
+            )
+            .await;
         assert!(get_payload_response.is_ok());
         assert_eq!(get_payload_response.unwrap().block_value, U256::from(15));
 
         payload_attributes.no_tx_pool = Some(true);
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes))
+        let fcu_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v3(
+                &test_harness.rpc_client,
+                fcu,
+                Some(payload_attributes),
+            )
             .await;
         assert!(fcu_response.is_ok());
 
         // no tx pool is true so should return the l2 payload
-        let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
+        let get_payload_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::get_payload_v3(
+                &test_harness.rpc_client,
+                payload_id,
+            )
+            .await;
         assert!(get_payload_response.is_ok());
         assert_eq!(get_payload_response.unwrap().block_value, U256::from(10));
 
@@ -1048,9 +1295,12 @@ pub mod tests {
             safe_block_hash: FixedBytes::random(),
             finalized_block_hash: FixedBytes::random(),
         };
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(fcu, None)
+        let fcu_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v3(
+                &test_harness.rpc_client,
+                fcu,
+                Option::<OpPayloadAttributes>::None,
+            )
             .await;
         assert!(fcu_response.is_err());
 
@@ -1058,9 +1308,12 @@ pub mod tests {
             gas_limit: Some(1000000),
             ..Default::default()
         };
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(fcu, Some(payload_attributes))
+        let fcu_response =
+            <HttpClient<_> as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v3(
+                &test_harness.rpc_client,
+                fcu,
+                Some(payload_attributes),
+            )
             .await;
         assert!(fcu_response.is_err());
     }

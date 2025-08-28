@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 use crate::DebugClient;
 use crate::{AuthLayer, AuthService};
-use crate::{EngineApiClient, OpExecutionPayloadEnvelope, PayloadVersion};
 use crate::{NewPayload, PayloadSource};
+use crate::{OpExecutionPayloadEnvelope, PayloadVersion};
 use alloy_eips::Encodable2718;
+use alloy_eips::eip7685::Requests;
 use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
 use alloy_rpc_types_engine::{ExecutionPayload, JwtSecret};
 use alloy_rpc_types_engine::{
@@ -23,6 +24,8 @@ use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
 use proxy::{BuilderProxyHandler, start_proxy_server};
+use reth_optimism_node::OpEngineTypes;
+use reth_optimism_rpc::OpEngineApiClient;
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
@@ -100,29 +103,37 @@ impl EngineApi {
     ) -> eyre::Result<OpExecutionPayloadEnvelope> {
         match version {
             PayloadVersion::V3 => Ok(OpExecutionPayloadEnvelope::V3(
-                EngineApiClient::get_payload_v3(&self.engine_api_client, payload_id).await?,
+                OpEngineApiClient::<OpEngineTypes>::get_payload_v3(
+                    &self.engine_api_client,
+                    payload_id,
+                )
+                .await?,
             )),
             PayloadVersion::V4 => Ok(OpExecutionPayloadEnvelope::V4(
-                EngineApiClient::get_payload_v4(&self.engine_api_client, payload_id).await?,
+                OpEngineApiClient::<OpEngineTypes>::get_payload_v4(
+                    &self.engine_api_client,
+                    payload_id,
+                )
+                .await?,
             )),
         }
     }
 
     pub async fn new_payload(&self, payload: NewPayload) -> eyre::Result<PayloadStatus> {
         match payload {
-            NewPayload::V3(new_payload) => Ok(EngineApiClient::new_payload_v3(
+            NewPayload::V3(new_payload) => Ok(OpEngineApiClient::<OpEngineTypes>::new_payload_v3(
                 &self.engine_api_client,
                 new_payload.payload,
                 new_payload.versioned_hashes,
                 new_payload.parent_beacon_block_root,
             )
             .await?),
-            NewPayload::V4(new_payload) => Ok(EngineApiClient::new_payload_v4(
+            NewPayload::V4(new_payload) => Ok(OpEngineApiClient::<OpEngineTypes>::new_payload_v4(
                 &self.engine_api_client,
                 new_payload.payload,
                 new_payload.versioned_hashes,
                 new_payload.parent_beacon_block_root,
-                new_payload.execution_requests,
+                Requests::from(new_payload.execution_requests),
             )
             .await?),
         }
@@ -134,7 +145,7 @@ impl EngineApi {
         new_head: B256,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> eyre::Result<ForkchoiceUpdated> {
-        Ok(EngineApiClient::fork_choice_updated_v3(
+        Ok(OpEngineApiClient::<OpEngineTypes>::fork_choice_updated_v3(
             &self.engine_api_client,
             ForkchoiceState {
                 head_block_hash: new_head,
@@ -147,7 +158,7 @@ impl EngineApi {
     }
 
     pub async fn latest(&self) -> eyre::Result<Option<alloy_rpc_types_eth::Block>> {
-        Ok(BlockApiClient::get_block_by_number(
+        Ok(BlockApiClient::block_by_number(
             &self.engine_api_client,
             BlockNumberOrTag::Latest,
             false,
@@ -166,7 +177,7 @@ impl EngineApi {
 #[rpc(client, namespace = "eth")]
 pub trait BlockApi {
     #[method(name = "getBlockByNumber")]
-    async fn get_block_by_number(
+    async fn block_by_number(
         &self,
         block_number: BlockNumberOrTag,
         include_txs: bool,

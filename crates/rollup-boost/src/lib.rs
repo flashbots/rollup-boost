@@ -12,9 +12,6 @@ pub use debug_api::*;
 mod metrics;
 pub use metrics::*;
 
-mod proxy;
-pub use proxy::*;
-
 mod server;
 pub use server::*;
 

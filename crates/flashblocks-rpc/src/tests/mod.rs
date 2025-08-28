@@ -228,7 +228,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_block_by_number_pending() -> eyre::Result<()> {
+    async fn test_block_by_number_pending() -> eyre::Result<()> {
         reth_tracing::init_test_tracing();
         let node = setup_node().await?;
         let provider = node.provider().await?;

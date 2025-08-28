@@ -11,12 +11,12 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::{EngineApiExt, ExecutionMode, Health, Probes};
+use crate::{AuthApiExt, ExecutionMode, Health, Probes};
 
 pub struct HealthHandle {
     pub probes: Arc<Probes>,
     pub execution_mode: Arc<Mutex<ExecutionMode>>,
-    pub builder_client: Arc<dyn EngineApiExt>,
+    pub builder_client: Arc<dyn AuthApiExt>,
     pub health_check_interval: Duration,
     pub max_unsafe_interval: u64,
 }
@@ -26,7 +26,7 @@ impl HealthHandle {
     pub fn new(
         probes: Arc<Probes>,
         execution_mode: Arc<Mutex<ExecutionMode>>,
-        builder_client: Arc<dyn EngineApiExt>,
+        builder_client: Arc<dyn AuthApiExt>,
         health_check_interval: Duration,
         max_unsafe_interval: u64,
     ) -> Self {
@@ -48,10 +48,18 @@ impl HealthHandle {
             loop {
                 let latest_unsafe = match self
                     .builder_client
-                    .get_block_by_number(BlockNumberOrTag::Latest, false)
+                    .block_by_number(BlockNumberOrTag::Latest, false)
                     .await
                 {
-                    Ok(block) => block,
+                    Ok(Some(block)) => block,
+                    Ok(None) => {
+                        warn!(target: "rollup_boost::health", "Failed to get unsafe block from builder client: Latest block not found");
+                        if self.execution_mode.lock().is_enabled() {
+                            self.probes.set_health(Health::PartialContent);
+                        }
+                        sleep_until(Instant::now() + self.health_check_interval).await;
+                        continue;
+                    }
                     Err(e) => {
                         warn!(target: "rollup_boost::health", "Failed to get unsafe block from builder client: {} - updating health status", e);
                         if self.execution_mode.lock().is_enabled() {

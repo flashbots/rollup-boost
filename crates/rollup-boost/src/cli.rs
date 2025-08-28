@@ -13,7 +13,7 @@ use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
+    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
@@ -188,18 +188,7 @@ impl RollupBoostArgs {
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);
 
-        let http_middleware =
-            tower::ServiceBuilder::new()
-                .layer(probe_layer)
-                .layer(ProxyLayer::new(
-                    l2_client_args.l2_url,
-                    l2_auth_jwt,
-                    l2_client_args.l2_timeout,
-                    builder_args.builder_url,
-                    builder_auth_jwt,
-                    builder_args.builder_timeout,
-                ));
-
+        let http_middleware = tower::ServiceBuilder::new().layer(probe_layer);
         let server = Server::builder()
             .set_http_middleware(http_middleware)
             .build(format!("{}:{}", self.rpc_host, self.rpc_port).parse::<SocketAddr>()?)

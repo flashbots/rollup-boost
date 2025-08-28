@@ -19,23 +19,30 @@ url.workspace = true
 sha2.workspace = true
 
 reth-optimism-payload-builder.workspace = true
+reth-optimism-node.workspace = true
+reth-optimism-rpc = { workspace = true, features = ["client"]}
+reth-rpc-api = { workspace = true, features = ["client"]}
+reth-rpc-eth-api.workspace = true
+
 op-alloy-rpc-types-engine.workspace = true
+op-alloy-rpc-jsonrpsee.workspace = true
+op-alloy-network.workspace = true
 alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
 alloy-primitives.workspace = true
 alloy-serde.workspace = true
+alloy-eips.workspace = true
 
 tokio-tungstenite.workspace = true
 metrics-derive.workspace = true
 testcontainers.workspace = true
 
-# TODO: update to latest release when it is published
-# jsonrpsee = { version = "0.25.1", features = ["server", "http-client", "macros"] }
-jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", rev = "f04afa740e55db60dce20d9839758792f035ffff", features = [
-    "server",
-    "http-client",
-    "macros",
-] }
+jsonrpsee = { version = "0.26.0", features = ["server", "http-client", "macros"] }
+jsonrpsee-core = "0.26.0"
+jsonrpsee-server = "0.26.0"
+jsonrpsee-http-client = "0.26.0"
+jsonrpsee-types = "0.26.0"
+
 moka = { version = "0.12.10", features = ["future"] }
 http = "1.1.0"
 dotenvy = "0.15.7"
@@ -69,7 +76,6 @@ tokio-util = { version = "0.7.13" }
 rand = "0.9.0"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
 op-alloy-consensus = "0.17.2"
-alloy-eips = { version = "1.0.9", features = ["serde"] }
 alloy-consensus = { version = "1.0.9", features = ["serde"] }
 anyhow = "1.0"
 assert_cmd = "2.0.10"

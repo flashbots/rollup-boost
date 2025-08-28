@@ -1,14 +1,20 @@
-use crate::EngineApiExt;
+use crate::AuthApiExt;
 use crate::client::auth::AuthLayer;
 use crate::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
-use crate::server::EngineApiClient;
 use crate::version::{CARGO_PKG_VERSION, VERGEN_GIT_SHA};
-use alloy_primitives::{B256, Bytes};
+use alloy_eips::BlockId;
+use alloy_primitives::{Address, B256, BlockHash, Bytes, U64, U128, U256};
 use alloy_rpc_types_engine::{
+    ClientVersionV1, ExecutionPayloadBodiesV1, ExecutionPayloadEnvelopeV2, ExecutionPayloadInputV2,
     ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret, PayloadId,
     PayloadStatus,
 };
-use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use alloy_rpc_types_eth::erc4337::TransactionConditional;
+use alloy_rpc_types_eth::state::StateOverride;
+use alloy_rpc_types_eth::{
+    BlockNumberOrTag, BlockOverrides, EIP1186AccountProofResponse, Filter, Log, SyncStatus,
+};
+use alloy_serde::JsonStorageKey;
 use clap::{Parser, arg};
 use http::{HeaderMap, Uri};
 use jsonrpsee::core::async_trait;
@@ -16,12 +22,18 @@ use jsonrpsee::core::middleware::layer::RpcLogger;
 use jsonrpsee::http_client::transport::HttpBackend;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder, RpcService};
 use jsonrpsee::types::ErrorObjectOwned;
+use op_alloy_network::Optimism;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
-    OpPayloadAttributes,
+    OpPayloadAttributes, ProtocolVersion, SuperchainSignal,
 };
 use opentelemetry::trace::SpanKind;
 use paste::paste;
+use reth_optimism_node::OpEngineTypes;
+use reth_optimism_rpc::OpEngineApiClient;
+use reth_rpc_api::eth::L2EthApiExtClient;
+use reth_rpc_api::{EngineEthApiClient, MinerApiClient};
+use reth_rpc_eth_api::{RpcBlock, RpcReceipt, RpcTxReq};
 use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
@@ -104,11 +116,11 @@ impl From<RpcClientError> for ErrorObjectOwned {
 #[derive(Clone)]
 pub struct RpcClient {
     /// Handles requests to the authenticated Engine API (requires JWT authentication)
-    auth_client: RpcClientService,
+    pub auth_client: RpcClientService,
     /// Uri of the RPC server for authenticated Engine API calls
-    auth_rpc: Uri,
+    pub auth_rpc: Uri,
     /// The source of the payload
-    payload_source: PayloadSource,
+    pub payload_source: PayloadSource,
 }
 
 impl RpcClient {
@@ -122,7 +134,6 @@ impl RpcClient {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
         let mut headers = HeaderMap::new();
         headers.insert("User-Agent", version.parse().unwrap());
-
         let auth_layer = AuthLayer::new(auth_rpc_jwt_secret);
         let auth_client = HttpClientBuilder::new()
             .set_http_middleware(tower::ServiceBuilder::new().layer(auth_layer))
@@ -155,11 +166,13 @@ impl RpcClient {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
-        let res = self
-            .auth_client
-            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-            .await
-            .set_code()?;
+        let res = <RpcClientService as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v3(
+            &self.auth_client,
+            fork_choice_state,
+            payload_attributes,
+        )
+        .await
+        .set_code()?;
 
         if let Some(payload_id) = res.payload_id {
             tracing::Span::current().record("payload_id", payload_id.to_string());
@@ -195,11 +208,14 @@ impl RpcClient {
     ) -> ClientResult<OpExecutionPayloadEnvelopeV3> {
         tracing::Span::current().record("payload_id", payload_id.to_string());
         info!("Sending get_payload_v3 to {}", self.payload_source);
-        Ok(self
-            .auth_client
-            .get_payload_v3(payload_id)
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::get_payload_v3(
+                &self.auth_client,
+                payload_id,
+            )
             .await
-            .set_code()?)
+            .set_code()?,
+        )
     }
 
     #[instrument(
@@ -221,11 +237,14 @@ impl RpcClient {
     ) -> ClientResult<PayloadStatus> {
         info!("Sending new_payload_v3 to {}", self.payload_source);
 
-        let res = self
-            .auth_client
-            .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
-            .await
-            .set_code()?;
+        let res = <RpcClientService as OpEngineApiClient<OpEngineTypes>>::new_payload_v3(
+            &self.auth_client,
+            payload,
+            versioned_hashes,
+            parent_beacon_block_root,
+        )
+        .await
+        .set_code()?;
 
         if res.is_invalid() {
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
@@ -249,11 +268,14 @@ impl RpcClient {
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV4> {
         info!("Sending get_payload_v4 to {}", self.payload_source);
-        Ok(self
-            .auth_client
-            .get_payload_v4(payload_id)
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::get_payload_v4(
+                &self.auth_client,
+                payload_id,
+            )
             .await
-            .set_code()?)
+            .set_code()?,
+        )
     }
 
     pub async fn get_payload(
@@ -291,16 +313,15 @@ impl RpcClient {
     ) -> ClientResult<PayloadStatus> {
         info!("Sending new_payload_v4 to {}", self.payload_source);
 
-        let res = self
-            .auth_client
-            .new_payload_v4(
-                payload,
-                versioned_hashes,
-                parent_beacon_block_root,
-                execution_requests,
-            )
-            .await
-            .set_code()?;
+        let res = <RpcClientService as OpEngineApiClient<OpEngineTypes>>::new_payload_v4(
+            &self.auth_client,
+            payload,
+            versioned_hashes,
+            parent_beacon_block_root,
+            execution_requests.into(),
+        )
+        .await
+        .set_code()?;
 
         if res.is_invalid() {
             return Err(RpcClientError::InvalidPayload(res.status.to_string()).set_code());
@@ -331,21 +352,343 @@ impl RpcClient {
         }
     }
 
-    pub async fn get_block_by_number(
+    pub async fn block_number(&self) -> ClientResult<U256> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::block_number(&self.auth_client)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn chain_id(&self) -> ClientResult<Option<U64>> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::chain_id(&self.auth_client)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn block_by_number(
         &self,
         number: BlockNumberOrTag,
         full: bool,
-    ) -> ClientResult<Block> {
+    ) -> ClientResult<Option<RpcBlock<Optimism>>> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::block_by_number(&self.auth_client, number, full)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn send_raw_transaction(&self, bytes: Bytes) -> ClientResult<B256> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::send_raw_transaction(&self.auth_client, bytes)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn send_raw_transaction_conditional(
+        &self,
+        bytes: Bytes,
+        condition: TransactionConditional,
+    ) -> ClientResult<B256> {
         Ok(self
             .auth_client
-            .get_block_by_number(number, full)
+            .send_raw_transaction_conditional(bytes, condition)
             .await
             .set_code()?)
+    }
+
+    pub async fn syncing(&self) -> ClientResult<SyncStatus> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::syncing(&self.auth_client)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn set_extra(&self, record: Bytes) -> ClientResult<bool> {
+        Ok(
+            <RpcClientService as MinerApiClient>::set_extra(&self.auth_client, record)
+                .await
+                .set_code()?,
+        )
+    }
+
+    pub async fn set_gas_price(&self, gas_price: U128) -> ClientResult<bool> {
+        Ok(
+            <RpcClientService as MinerApiClient>::set_gas_price(&self.auth_client, gas_price)
+                .await
+                .set_code()?,
+        )
+    }
+
+    pub async fn set_gas_limit(&self, gas_limit: U128) -> ClientResult<bool> {
+        Ok(
+            <RpcClientService as MinerApiClient>::set_gas_limit(&self.auth_client, gas_limit)
+                .await
+                .set_code()?,
+        )
+    }
+
+    pub async fn set_max_da_size(&self, max_da_size: U64, max_da_gas: U64) -> ClientResult<bool> {
+        Ok(
+            <RpcClientService as op_alloy_rpc_jsonrpsee::traits::MinerApiExtClient>::set_max_da_size(
+                &self.auth_client,
+                max_da_size,
+                max_da_gas,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn get_payload_v2(
+        &self,
+        payload_id: PayloadId,
+    ) -> ClientResult<ExecutionPayloadEnvelopeV2> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::get_payload_v2(
+                &self.auth_client,
+                payload_id,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn fork_choice_updated_v1(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> ClientResult<ForkchoiceUpdated> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v1(
+                &self.auth_client,
+                fork_choice_state,
+                payload_attributes,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+    pub async fn fork_choice_updated_v2(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> ClientResult<ForkchoiceUpdated> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::fork_choice_updated_v2(
+                &self.auth_client,
+                fork_choice_state,
+                payload_attributes,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn new_payload_v2(
+        &self,
+        payload: ExecutionPayloadInputV2,
+    ) -> ClientResult<PayloadStatus> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::new_payload_v2(
+                &self.auth_client,
+                payload,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn get_payload_bodies_by_hash_v1(
+        &self,
+        block_hashes: Vec<BlockHash>,
+    ) -> ClientResult<ExecutionPayloadBodiesV1> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::get_payload_bodies_by_hash_v1(
+                &self.auth_client,
+                block_hashes,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn get_payload_bodies_by_range_v1(
+        &self,
+        start: U64,
+        count: U64,
+    ) -> ClientResult<ExecutionPayloadBodiesV1> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::get_payload_bodies_by_range_v1(
+                &self.auth_client,
+                start,
+                count,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn signal_superchain_v1(
+        &self,
+        signal: SuperchainSignal,
+    ) -> ClientResult<ProtocolVersion> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::signal_superchain_v1(
+                &self.auth_client,
+                signal,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn get_client_version_v1(
+        &self,
+        client_version: ClientVersionV1,
+    ) -> ClientResult<Vec<ClientVersionV1>> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::get_client_version_v1(
+                &self.auth_client,
+                client_version,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn exchange_capabilities(
+        &self,
+        capabilities: Vec<String>,
+    ) -> ClientResult<Vec<String>> {
+        Ok(
+            <RpcClientService as OpEngineApiClient<OpEngineTypes>>::exchange_capabilities(
+                &self.auth_client,
+                capabilities,
+            )
+            .await
+            .set_code()?,
+        )
+    }
+
+    pub async fn call(
+        &self,
+        request: RpcTxReq<Optimism>,
+        block_id: Option<BlockId>,
+        state_overrides: Option<StateOverride>,
+        block_overrides: Option<Box<BlockOverrides>>,
+    ) -> ClientResult<Bytes> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::call(
+            &self.auth_client,
+            request,
+            block_id,
+            state_overrides,
+            block_overrides,
+        )
+        .await
+        .set_code()?)
+    }
+
+    pub async fn get_code(
+        &self,
+        address: Address,
+        block_id: Option<BlockId>,
+    ) -> ClientResult<Bytes> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::get_code(&self.auth_client, address, block_id)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn block_by_hash(
+        &self,
+        hash: B256,
+        full: bool,
+    ) -> ClientResult<Option<RpcBlock<Optimism>>> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::block_by_hash(&self.auth_client, hash, full)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn block_receipts(
+        &self,
+        block_id: BlockId,
+    ) -> ClientResult<Option<Vec<RpcReceipt<Optimism>>>> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::block_receipts(&self.auth_client, block_id)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn transaction_receipt(
+        &self,
+        hash: B256,
+    ) -> ClientResult<Option<RpcReceipt<Optimism>>> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::transaction_receipt(&self.auth_client, hash)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn logs(&self, filter: Filter) -> ClientResult<Vec<Log>> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::logs(&self.auth_client, filter)
+        .await
+        .set_code()?)
+    }
+
+    pub async fn get_proof(
+        &self,
+        address: Address,
+        keys: Vec<JsonStorageKey>,
+        block_number: Option<BlockId>,
+    ) -> ClientResult<EIP1186AccountProofResponse> {
+        Ok(<RpcClientService as EngineEthApiClient<
+            RpcTxReq<Optimism>,
+            RpcBlock<Optimism>,
+            RpcReceipt<Optimism>,
+        >>::get_proof(&self.auth_client, address, keys, block_number)
+        .await
+        .set_code()?)
     }
 }
 
 #[async_trait]
-impl EngineApiExt for RpcClient {
+impl AuthApiExt for RpcClient {
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
@@ -367,12 +710,165 @@ impl EngineApiExt for RpcClient {
         self.get_payload(payload_id, version).await
     }
 
-    async fn get_block_by_number(
+    async fn send_raw_transaction(&self, bytes: Bytes) -> ClientResult<B256> {
+        self.send_raw_transaction(bytes).await
+    }
+
+    async fn send_raw_transaction_conditional(
+        &self,
+        bytes: Bytes,
+        condition: TransactionConditional,
+    ) -> ClientResult<B256> {
+        self.send_raw_transaction_conditional(bytes, condition)
+            .await
+    }
+
+    async fn syncing(&self) -> ClientResult<SyncStatus> {
+        self.syncing().await
+    }
+
+    async fn chain_id(&self) -> ClientResult<Option<U64>> {
+        self.chain_id().await
+    }
+
+    async fn block_number(&self) -> ClientResult<U256> {
+        self.block_number().await
+    }
+
+    async fn block_by_number(
         &self,
         number: BlockNumberOrTag,
         full: bool,
-    ) -> ClientResult<Block> {
-        self.get_block_by_number(number, full).await
+    ) -> ClientResult<Option<RpcBlock<Optimism>>> {
+        self.block_by_number(number, full).await
+    }
+
+    async fn set_extra(&self, record: Bytes) -> ClientResult<bool> {
+        self.set_extra(record).await
+    }
+
+    async fn set_gas_price(&self, gas_price: U128) -> ClientResult<bool> {
+        self.set_gas_price(gas_price).await
+    }
+
+    async fn set_gas_limit(&self, gas_limit: U128) -> ClientResult<bool> {
+        self.set_gas_limit(gas_limit).await
+    }
+
+    async fn set_max_da_size(&self, max_da_size: U64, max_da_gas: U64) -> ClientResult<bool> {
+        self.set_max_da_size(max_da_size, max_da_gas).await
+    }
+
+    async fn get_payload_v2(
+        &self,
+        payload_id: PayloadId,
+    ) -> ClientResult<ExecutionPayloadEnvelopeV2> {
+        self.get_payload_v2(payload_id).await
+    }
+
+    async fn fork_choice_updated_v1(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> ClientResult<ForkchoiceUpdated> {
+        self.fork_choice_updated_v1(fork_choice_state, payload_attributes)
+            .await
+    }
+
+    async fn fork_choice_updated_v2(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> ClientResult<ForkchoiceUpdated> {
+        self.fork_choice_updated_v2(fork_choice_state, payload_attributes)
+            .await
+    }
+
+    async fn new_payload_v2(
+        &self,
+        payload: ExecutionPayloadInputV2,
+    ) -> ClientResult<PayloadStatus> {
+        self.new_payload_v2(payload).await
+    }
+
+    async fn get_payload_bodies_by_hash_v1(
+        &self,
+        block_hashes: Vec<BlockHash>,
+    ) -> ClientResult<ExecutionPayloadBodiesV1> {
+        self.get_payload_bodies_by_hash_v1(block_hashes).await
+    }
+
+    async fn get_payload_bodies_by_range_v1(
+        &self,
+        start: U64,
+        count: U64,
+    ) -> ClientResult<ExecutionPayloadBodiesV1> {
+        self.get_payload_bodies_by_range_v1(start, count).await
+    }
+
+    async fn signal_superchain_v1(
+        &self,
+        signal: SuperchainSignal,
+    ) -> ClientResult<ProtocolVersion> {
+        self.signal_superchain_v1(signal).await
+    }
+
+    async fn get_client_version_v1(
+        &self,
+        client_version: ClientVersionV1,
+    ) -> ClientResult<Vec<ClientVersionV1>> {
+        self.get_client_version_v1(client_version).await
+    }
+
+    async fn exchange_capabilities(&self, capabilities: Vec<String>) -> ClientResult<Vec<String>> {
+        self.exchange_capabilities(capabilities).await
+    }
+
+    async fn call(
+        &self,
+        request: RpcTxReq<Optimism>,
+        block_id: Option<BlockId>,
+        state_overrides: Option<StateOverride>,
+        block_overrides: Option<Box<BlockOverrides>>,
+    ) -> ClientResult<Bytes> {
+        self.call(request, block_id, state_overrides, block_overrides)
+            .await
+    }
+
+    async fn get_code(&self, address: Address, block_id: Option<BlockId>) -> ClientResult<Bytes> {
+        self.get_code(address, block_id).await
+    }
+
+    async fn block_by_hash(
+        &self,
+        hash: B256,
+        full: bool,
+    ) -> ClientResult<Option<RpcBlock<Optimism>>> {
+        self.block_by_hash(hash, full).await
+    }
+
+    async fn block_receipts(
+        &self,
+        block_id: BlockId,
+    ) -> ClientResult<Option<Vec<RpcReceipt<Optimism>>>> {
+        self.block_receipts(block_id).await
+    }
+
+    async fn transaction_receipt(&self, hash: B256) -> ClientResult<Option<RpcReceipt<Optimism>>> {
+        self.transaction_receipt(hash).await
+    }
+
+    async fn logs(&self, filter: Filter) -> ClientResult<Vec<Log>> {
+        self.logs(filter).await
+    }
+
+    async fn get_proof(
+        &self,
+        address: Address,
+        keys: Vec<JsonStorageKey>,
+        block_number: Option<BlockId>,
+    ) -> ClientResult<EIP1186AccountProofResponse> {
+        self.get_proof(address, keys, block_number).await
     }
 }
 

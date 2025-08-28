@@ -4,21 +4,30 @@ use super::primitives::{
 };
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
-    ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
+    AuthApiExt, ClientResult, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
 };
-use alloy_primitives::U256;
+use alloy_eips::BlockId;
+use alloy_primitives::{Address, B256, BlockHash, Bytes, U64, U128, U256};
 use alloy_rpc_types_engine::{
-    BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
+    BlobsBundleV1, ClientVersionV1, ExecutionPayloadBodiesV1, ExecutionPayloadEnvelopeV2,
+    ExecutionPayloadInputV2, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
 };
 use alloy_rpc_types_engine::{ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus};
-use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use alloy_rpc_types_eth::erc4337::TransactionConditional;
+use alloy_rpc_types_eth::state::StateOverride;
+use alloy_rpc_types_eth::{
+    BlockNumberOrTag, BlockOverrides, EIP1186AccountProofResponse, Filter, Log, SyncStatus,
+};
+use alloy_serde::JsonStorageKey;
 use core::net::SocketAddr;
 use jsonrpsee::core::async_trait;
+use op_alloy_network::Optimism;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
-    OpPayloadAttributes,
+    OpPayloadAttributes, ProtocolVersion, SuperchainSignal,
 };
 use reth_optimism_payload_builder::payload_id_optimism;
+use reth_rpc_eth_api::{RpcBlock, RpcReceipt, RpcTxReq};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
@@ -317,7 +326,7 @@ impl FlashblocksService {
 }
 
 #[async_trait]
-impl EngineApiExt for FlashblocksService {
+impl AuthApiExt for FlashblocksService {
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
@@ -387,12 +396,175 @@ impl EngineApiExt for FlashblocksService {
         }
     }
 
-    async fn get_block_by_number(
+    async fn block_number(&self) -> ClientResult<U256> {
+        self.client.block_number().await
+    }
+
+    async fn chain_id(&self) -> ClientResult<Option<U64>> {
+        self.client.chain_id().await
+    }
+
+    async fn block_by_number(
         &self,
         number: BlockNumberOrTag,
         full: bool,
-    ) -> ClientResult<Block> {
-        self.client.get_block_by_number(number, full).await
+    ) -> ClientResult<Option<RpcBlock<Optimism>>> {
+        self.client.block_by_number(number, full).await
+    }
+
+    async fn send_raw_transaction(&self, bytes: Bytes) -> ClientResult<B256> {
+        self.client.send_raw_transaction(bytes).await
+    }
+
+    async fn send_raw_transaction_conditional(
+        &self,
+        bytes: Bytes,
+        condition: TransactionConditional,
+    ) -> ClientResult<B256> {
+        self.client
+            .send_raw_transaction_conditional(bytes, condition)
+            .await
+    }
+
+    async fn syncing(&self) -> ClientResult<SyncStatus> {
+        self.client.syncing().await
+    }
+
+    async fn set_extra(&self, record: Bytes) -> ClientResult<bool> {
+        self.client.set_extra(record).await
+    }
+
+    async fn set_gas_price(&self, gas_price: U128) -> ClientResult<bool> {
+        self.client.set_gas_price(gas_price).await
+    }
+
+    async fn set_gas_limit(&self, gas_limit: U128) -> ClientResult<bool> {
+        self.client.set_gas_limit(gas_limit).await
+    }
+
+    async fn set_max_da_size(&self, max_tx_size: U64, max_block_size: U64) -> ClientResult<bool> {
+        self.client
+            .set_max_da_size(max_tx_size, max_block_size)
+            .await
+    }
+
+    async fn get_payload_v2(
+        &self,
+        payload_id: PayloadId,
+    ) -> ClientResult<ExecutionPayloadEnvelopeV2> {
+        self.client.get_payload_v2(payload_id).await
+    }
+
+    async fn fork_choice_updated_v1(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> ClientResult<ForkchoiceUpdated> {
+        self.client
+            .fork_choice_updated_v1(fork_choice_state, payload_attributes)
+            .await
+    }
+
+    async fn fork_choice_updated_v2(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+    ) -> ClientResult<ForkchoiceUpdated> {
+        self.client
+            .fork_choice_updated_v2(fork_choice_state, payload_attributes)
+            .await
+    }
+
+    async fn new_payload_v2(
+        &self,
+        payload: ExecutionPayloadInputV2,
+    ) -> ClientResult<PayloadStatus> {
+        self.client.new_payload_v2(payload).await
+    }
+
+    async fn get_payload_bodies_by_hash_v1(
+        &self,
+        block_hashes: Vec<BlockHash>,
+    ) -> ClientResult<ExecutionPayloadBodiesV1> {
+        self.client
+            .get_payload_bodies_by_hash_v1(block_hashes)
+            .await
+    }
+
+    async fn get_payload_bodies_by_range_v1(
+        &self,
+        start: U64,
+        count: U64,
+    ) -> ClientResult<ExecutionPayloadBodiesV1> {
+        self.client
+            .get_payload_bodies_by_range_v1(start, count)
+            .await
+    }
+
+    async fn signal_superchain_v1(
+        &self,
+        signal: SuperchainSignal,
+    ) -> ClientResult<ProtocolVersion> {
+        self.client.signal_superchain_v1(signal).await
+    }
+
+    async fn get_client_version_v1(
+        &self,
+        client_version: ClientVersionV1,
+    ) -> ClientResult<Vec<ClientVersionV1>> {
+        self.client.get_client_version_v1(client_version).await
+    }
+
+    async fn exchange_capabilities(&self, capabilities: Vec<String>) -> ClientResult<Vec<String>> {
+        self.client.exchange_capabilities(capabilities).await
+    }
+
+    async fn call(
+        &self,
+        request: RpcTxReq<Optimism>,
+        block_id: Option<BlockId>,
+        state_overrides: Option<StateOverride>,
+        block_overrides: Option<Box<BlockOverrides>>,
+    ) -> ClientResult<Bytes> {
+        self.client
+            .call(request, block_id, state_overrides, block_overrides)
+            .await
+    }
+
+    async fn get_code(&self, address: Address, block_id: Option<BlockId>) -> ClientResult<Bytes> {
+        self.client.get_code(address, block_id).await
+    }
+
+    async fn block_by_hash(
+        &self,
+        hash: B256,
+        full: bool,
+    ) -> ClientResult<Option<RpcBlock<Optimism>>> {
+        self.client.block_by_hash(hash, full).await
+    }
+
+    async fn block_receipts(
+        &self,
+        block_id: BlockId,
+    ) -> ClientResult<Option<Vec<RpcReceipt<Optimism>>>> {
+        self.client.block_receipts(block_id).await
+    }
+
+    async fn transaction_receipt(&self, hash: B256) -> ClientResult<Option<RpcReceipt<Optimism>>> {
+        self.client.transaction_receipt(hash).await
+    }
+
+    async fn logs(&self, filter: Filter) -> ClientResult<Vec<Log>> {
+        self.client.logs(filter).await
+    }
+
+    async fn get_proof(
+        &self,
+        address: Address,
+        keys: Vec<JsonStorageKey>,
+        block_number: Option<BlockId>,
+    ) -> ClientResult<EIP1186AccountProofResponse> {
+        self.client.get_proof(address, keys, block_number).await
     }
 }
 
