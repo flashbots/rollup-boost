@@ -201,7 +201,7 @@ Container encapsulating all metadata for a flashblock, including account state c
 
 ```python
 class Metadata():
-        block_number: uint64
+		block_number: uint64
 		new_account_balances: Dict[ExecutionAddress, uint256]
 		receipts: Dict[Bytes32, Receipt]
 ```
