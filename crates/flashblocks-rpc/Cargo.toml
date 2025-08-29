@@ -9,23 +9,23 @@ rollup-boost.workspace = true
 flashblocks-p2p.workspace = true
 
 reth-optimism-primitives.workspace = true
-reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc", features = [
+reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326", features = [
     "test-utils",
 ] }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-tasks = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-node-core = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-db = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-tracing = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-tasks = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-node-core = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-db = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
 
 reth-eth-wire = { workspace = true }
 reth-network = { workspace = true }
@@ -56,6 +56,6 @@ metrics-derive.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 
-jsonrpsee = { version = "0.25.1" }
+jsonrpsee = { version = "0.26.0" }
 futures-util = "0.3.31"
 brotli = "8.0.1"

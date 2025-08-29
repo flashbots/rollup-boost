@@ -1,9 +1,8 @@
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, TxHash, U256};
-use jsonrpsee::{
-    core::{RpcResult, async_trait},
-    proc_macros::rpc,
-};
+use jsonrpsee::core::RpcResult;
+use jsonrpsee::core::async_trait;
+use jsonrpsee::proc_macros::rpc;
 use op_alloy_network::Optimism;
 use reth_optimism_primitives::OpTransactionSigned;
 use reth_provider::TransactionsProvider;

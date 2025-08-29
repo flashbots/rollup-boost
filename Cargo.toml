@@ -8,9 +8,6 @@ members = [
     "crates/flashblocks-node",
 ]
 
-[patch.crates-io]
-alloy-primitives = { git = "https://github.com/alloy-rs/core", rev = "8c5713c" }
-
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
 flashblocks-p2p = { path = "crates/flashblocks-p2p" }
@@ -33,27 +30,27 @@ sha2 = { version = "0.10", default-features = false }
 arbitrary = { version = "=1.4.2", features = ["derive"] }
 
 # Reth deps
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
+reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
 # Issue with reth feature compatibility. Include this in all crates for temp fix.
-reth-op = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc", features = [
+reth-op = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326", features = [
     "full",
     "alloy-compat",
 ] }
-reth = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-network-peers = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc", features = [
+reth = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-network-peers = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326", features = [
     "serde",
     "arbitrary",
     "reth-codec",
 ] }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "6daf5fc" }
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "6daf5fc" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "9b86326" }
+reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "9b86326" }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.13"
@@ -68,10 +65,10 @@ alloy-genesis = "1.0.13"
 alloy-rpc-client = "1.0.13"
 alloy-rlp = "0.3.12"
 alloy-provider = "1.0.13"
-op-alloy-network = "0.18.7"
-op-alloy-rpc-types-engine = "0.18.7"
-op-alloy-consensus = "0.18.7"
-op-alloy-rpc-types = "=0.18.14"
+op-alloy-network = "0.19.1"
+op-alloy-rpc-types-engine = "0.19.1"
+op-alloy-consensus = "0.19.1"
+op-alloy-rpc-types = "0.19.1"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
