@@ -171,9 +171,9 @@ async fn broadcast_loop(
             // Handle incoming WebSocket messages (including pings)
             msg = stream_read.next() => {
                 match msg {
-                    Some(Ok(Message::Close(_))) => {
-                        tracing::debug!("Client {peer_addr} closed connection");
-                        break;
+                    Some(Ok(_)) => {
+                        // Ignore all inbound frames.
+                        // Tungstenite will auto-respond to Ping and handle Close internally.
                     }
                     Some(Err(e)) => {
                         tracing::debug!("WebSocket error from {peer_addr}: {e}");
@@ -182,9 +182,6 @@ async fn broadcast_loop(
                     None => {
                         tracing::debug!("WebSocket stream ended for {peer_addr}");
                         break;
-                    }
-                    _ => {
-                        // Ignore other message types (Text, Binary, Pong)
                     }
                 }
             }
