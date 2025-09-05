@@ -1,5 +1,5 @@
 use ed25519_dalek::SigningKey;
-use flashblocks_p2p::protocol::handler::{FlashblocksHandle, PublishingStatus};
+use flashblocks_p2p::protocol::handler::{FlashblocksHandle, Publish, PublishingStatus};
 use futures::StreamExt as _;
 use reth::payload::PayloadId;
 use rollup_boost::{
@@ -31,12 +31,12 @@ fn payload(payload_id: reth::payload::PayloadId, idx: u64) -> FlashblocksPayload
 }
 
 /// Build a fresh handle plus its broadcast receiver.
-fn fresh_handle() -> FlashblocksHandle {
+fn fresh_handle() -> FlashblocksHandle<Publish> {
     // authorizer + builder keys
     let auth_sk = signing_key(1);
     let builder_sk = signing_key(2);
 
-    FlashblocksHandle::new(auth_sk.verifying_key(), builder_sk)
+    FlashblocksHandle::new(auth_sk.verifying_key()).publisher(builder_sk)
 }
 
 #[tokio::test]
@@ -48,10 +48,10 @@ async fn publish_without_clearance_is_rejected() {
         payload_id,
         DUMMY_TIMESTAMP,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     let payload = payload(payload_id, 0);
-    let signed = AuthorizedPayload::new(&handle.ctx.builder_sk, auth, payload.clone());
+    let signed = AuthorizedPayload::new(&handle.ctx.client.builder_sk, auth, payload.clone());
 
     // We never called `start_publishing`, so this must fail.
     let err = handle.publish_new(signed).unwrap_err();
@@ -71,7 +71,7 @@ async fn expired_authorization_is_rejected() {
         payload_id,
         DUMMY_TIMESTAMP,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     handle.start_publishing(auth_1);
 
@@ -80,10 +80,10 @@ async fn expired_authorization_is_rejected() {
         payload_id,
         DUMMY_TIMESTAMP + 1,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     let payload = payload(payload_id, 0);
-    let signed = AuthorizedPayload::new(&handle.ctx.builder_sk, auth_2, payload);
+    let signed = AuthorizedPayload::new(&handle.ctx.client.builder_sk, auth_2, payload);
 
     let err = handle.publish_new(signed).unwrap_err();
     assert!(matches!(
@@ -102,14 +102,14 @@ async fn flashblock_stream_is_ordered() {
         payload_id,
         DUMMY_TIMESTAMP,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     handle.start_publishing(auth);
 
     // send index 1 first (out-of-order)
     for &idx in &[1u64, 0] {
         let p = payload(payload_id, idx);
-        let signed = AuthorizedPayload::new(&handle.ctx.builder_sk, auth, p.clone());
+        let signed = AuthorizedPayload::new(&handle.ctx.client.builder_sk, auth, p.clone());
         handle.publish_new(signed).unwrap();
     }
 
@@ -132,7 +132,7 @@ async fn stop_and_restart_updates_state() {
         payload_id_0,
         DUMMY_TIMESTAMP,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     handle.start_publishing(auth_0);
     assert!(matches!(
@@ -153,7 +153,7 @@ async fn stop_and_restart_updates_state() {
         payload_id_1,
         DUMMY_TIMESTAMP + 5,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     handle.start_publishing(auth_1);
     assert!(matches!(
@@ -184,7 +184,7 @@ async fn stop_and_restart_with_active_publishers() {
         payload_id,
         timestamp,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     handle.start_publishing(auth);
     match handle.publishing_status() {
@@ -218,12 +218,12 @@ async fn flashblock_stream_buffers_and_live() {
         pid,
         timestamp,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     handle.start_publishing(auth);
 
     // publish index 0 before creating the stream
-    let signed0 = AuthorizedPayload::new(&handle.ctx.builder_sk, auth, payload(pid, 0));
+    let signed0 = AuthorizedPayload::new(&handle.ctx.client.builder_sk, auth, payload(pid, 0));
     handle.publish_new(signed0).unwrap();
 
     // now create the combined stream
@@ -234,7 +234,7 @@ async fn flashblock_stream_buffers_and_live() {
     assert_eq!(first.index, 0);
 
     // publish index 1 after the stream exists
-    let signed1 = AuthorizedPayload::new(&handle.ctx.builder_sk, auth, payload(pid, 1));
+    let signed1 = AuthorizedPayload::new(&handle.ctx.client.builder_sk, auth, payload(pid, 1));
     handle.publish_new(signed1).unwrap();
 
     // second item should be delivered live
@@ -263,7 +263,7 @@ async fn await_clearance_unblocks_on_publish() {
         payload_id,
         DUMMY_TIMESTAMP,
         &signing_key(1),
-        handle.ctx.builder_sk.verifying_key(),
+        handle.ctx.client.builder_sk.verifying_key(),
     );
     handle.start_publishing(auth);
 

@@ -1,6 +1,6 @@
 use crate::{FlashblocksApi, cache::FlashblocksCache};
 use alloy_primitives::{Address, TxHash, U256};
-use flashblocks_p2p::protocol::handler::FlashblocksHandle;
+use flashblocks_p2p::protocol::handler::{FlashblocksHandle, Publish};
 use futures_util::StreamExt as _;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
@@ -12,12 +12,15 @@ use tracing::error;
 
 #[derive(Debug, Clone)]
 pub struct FlashblocksOverlay {
-    flashblocks_handle: FlashblocksHandle,
+    flashblocks_handle: FlashblocksHandle<Publish>,
     cache: FlashblocksCache,
 }
 
 impl FlashblocksOverlay {
-    pub fn new(flashblocks_handle: FlashblocksHandle, chain_spec: Arc<OpChainSpec>) -> Self {
+    pub fn new(
+        flashblocks_handle: FlashblocksHandle<Publish>,
+        chain_spec: Arc<OpChainSpec>,
+    ) -> Self {
         Self {
             flashblocks_handle,
             cache: FlashblocksCache::new(chain_spec),

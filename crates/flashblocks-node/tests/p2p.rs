@@ -5,7 +5,9 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::SigningKey;
-use flashblocks_p2p::protocol::handler::{FlashblocksHandle, FlashblocksP2PProtocol, PeerMsg};
+use flashblocks_p2p::protocol::handler::{
+    FlashblocksHandle, FlashblocksP2PProtocol, PeerMsg, Publish,
+};
 use flashblocks_rpc::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, Metadata};
 use op_alloy_consensus::{OpPooledTransaction, OpTxEnvelope};
 use reth_eth_wire::BasicNetworkPrimitives;
@@ -39,7 +41,7 @@ type Network = NetworkHandle<
 >;
 
 pub struct NodeContext {
-    p2p_handle: FlashblocksHandle,
+    p2p_handle: FlashblocksHandle<Publish>,
     pub local_node_record: NodeRecord,
     http_api_addr: SocketAddr,
     _node_exit_future: NodeExitFuture,
@@ -97,7 +99,7 @@ async fn setup_node(
 
     let node = OpNode::new(RollupArgs::default());
 
-    let p2p_handle = FlashblocksHandle::new(authorizer_sk.verifying_key(), builder_sk);
+    let p2p_handle = FlashblocksHandle::new(authorizer_sk.verifying_key()).publisher(builder_sk);
     let p2p_handle_clone = p2p_handle.clone();
 
     let NodeHandle {
@@ -301,11 +303,14 @@ async fn test_double_failover() -> eyre::Result<()> {
         payload_0.payload_id,
         0,
         &authorizer,
-        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[0].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let msg = payload_0.clone();
-    let authorized_0 =
-        AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization_0, msg);
+    let authorized_0 = AuthorizedPayload::new(
+        &nodes[0].p2p_handle.ctx.client.builder_sk,
+        authorization_0,
+        msg,
+    );
     nodes[0].p2p_handle.start_publishing(authorization_0);
     nodes[0].p2p_handle.publish_new(authorized_0).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -315,10 +320,10 @@ async fn test_double_failover() -> eyre::Result<()> {
         payload_1.payload_id,
         0,
         &authorizer,
-        nodes[1].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[1].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let authorized_1 = AuthorizedPayload::new(
-        &nodes[1].p2p_handle.ctx.builder_sk,
+        &nodes[1].p2p_handle.ctx.client.builder_sk,
         authorization_1,
         payload_1.clone(),
     );
@@ -334,10 +339,10 @@ async fn test_double_failover() -> eyre::Result<()> {
         payload_2.payload_id,
         0,
         &authorizer,
-        nodes[2].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[2].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let authorized_2 = AuthorizedPayload::new(
-        &nodes[2].p2p_handle.ctx.builder_sk,
+        &nodes[2].p2p_handle.ctx.client.builder_sk,
         authorization_2,
         msg.clone(),
     );
@@ -389,11 +394,14 @@ async fn test_force_race_condition() -> eyre::Result<()> {
         payload_0.payload_id,
         0,
         &authorizer,
-        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[0].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let msg = payload_0.clone();
-    let authorized =
-        AuthorizedPayload::new(&nodes[0].p2p_handle.ctx.builder_sk, authorization, msg);
+    let authorized = AuthorizedPayload::new(
+        &nodes[0].p2p_handle.ctx.client.builder_sk,
+        authorization,
+        msg,
+    );
     nodes[0].p2p_handle.start_publishing(authorization);
     nodes[0].p2p_handle.publish_new(authorized).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -415,10 +423,10 @@ async fn test_force_race_condition() -> eyre::Result<()> {
         payload_1.payload_id,
         0,
         &authorizer,
-        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[0].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let authorized = AuthorizedPayload::new(
-        &nodes[0].p2p_handle.ctx.builder_sk,
+        &nodes[0].p2p_handle.ctx.client.builder_sk,
         authorization,
         payload_1.clone(),
     );
@@ -443,17 +451,17 @@ async fn test_force_race_condition() -> eyre::Result<()> {
         payload_2.payload_id,
         1,
         &authorizer,
-        nodes[1].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[1].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let authorization_2 = Authorization::new(
         payload_2.payload_id,
         1,
         &authorizer,
-        nodes[2].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[2].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let msg = payload_2.clone();
     let authorized_1 = AuthorizedPayload::new(
-        &nodes[1].p2p_handle.ctx.builder_sk,
+        &nodes[1].p2p_handle.ctx.client.builder_sk,
         authorization_1,
         msg.clone(),
     );
@@ -505,10 +513,10 @@ async fn test_get_block_by_number_pending() -> eyre::Result<()> {
         base_payload.payload_id,
         0,
         &authorizer,
-        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[0].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let authorized = AuthorizedPayload::new(
-        &nodes[0].p2p_handle.ctx.builder_sk,
+        &nodes[0].p2p_handle.ctx.client.builder_sk,
         authorization,
         base_payload,
     );
@@ -530,10 +538,10 @@ async fn test_get_block_by_number_pending() -> eyre::Result<()> {
         next_payload.payload_id,
         0,
         &authorizer,
-        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[0].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
     let authorized = AuthorizedPayload::new(
-        &nodes[0].p2p_handle.ctx.builder_sk,
+        &nodes[0].p2p_handle.ctx.client.builder_sk,
         authorization,
         next_payload,
     );
@@ -579,12 +587,12 @@ async fn test_peer_reputation() -> eyre::Result<()> {
         payload_0.payload_id,
         0,
         &invalid_authorizer,
-        nodes[0].p2p_handle.ctx.builder_sk.verifying_key(),
+        nodes[0].p2p_handle.ctx.client.builder_sk.verifying_key(),
     );
 
     let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
     let authorized_payload = Authorized::new(
-        &nodes[0].p2p_handle.ctx.builder_sk,
+        &nodes[0].p2p_handle.ctx.client.builder_sk,
         authorization,
         authorized_msg,
     );
