@@ -159,8 +159,8 @@ impl<N: FlashblocksP2PNetworkHandle> Stream for FlashblocksConnection<N> {
 
             match msg {
                 FlashblocksP2PMsg::Authorized(authorized) => {
-                    if authorized.authorization.builder_vk
-                        == this.protocol.handle.ctx.builder_sk.verifying_key()
+                    if Ok(authorized.authorization.builder_vk)
+                        == this.protocol.handle.builder_sk().map(|s| s.verifying_key())
                     {
                         tracing::warn!(
                             target: "flashblocks::p2p",
@@ -333,6 +333,9 @@ impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
     /// - If we are not publishing, adds the new publisher to the list of active publishers
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
         let state = self.protocol.handle.state.lock();
+        let Ok(builder_sk) = self.protocol.handle.builder_sk() else {
+            return;
+        };
         let authorization = &authorized_payload.authorized.authorization;
 
         // Check if the request is expired for dos protection.
@@ -363,11 +366,8 @@ impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
                         "Received StartPublish over p2p, stopping publishing flashblocks"
                     );
 
-                    let authorized = Authorized::new(
-                        &self.protocol.handle.ctx.builder_sk,
-                        *our_authorization,
-                        StopPublish.into(),
-                    );
+                    let authorized =
+                        Authorized::new(builder_sk, *our_authorization, StopPublish.into());
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
                     let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                     self.protocol.handle.ctx.peer_tx.send(peer_msg).ok();

@@ -24,8 +24,10 @@ pub fn main() {
         Cli::<OpChainSpecParser, FlashblocksRollupArgs>::parse().run(async move |builder, args| {
             let rollup_args = args.rollup_args;
             let chain_spec = builder.config().chain.clone();
-            let flashblocks_handle =
-                FlashblocksHandle::new(VerifyingKey::default(), SigningKey::from_bytes(&[0u8; 32]));
+            let flashblocks_handle = FlashblocksHandle::new(
+                VerifyingKey::default(),
+                Some(SigningKey::from_bytes(&[0u8; 32])),
+            );
 
             let flashblocks_overlay =
                 FlashblocksOverlay::new(flashblocks_handle.clone(), chain_spec);

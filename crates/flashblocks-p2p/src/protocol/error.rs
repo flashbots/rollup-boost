@@ -8,4 +8,6 @@ pub enum FlashblocksP2PError {
         "attempt to publish flashblocks with expired authorization. Make sure to call `start_publishing` first"
     )]
     ExpiredAuthorization,
+    #[error("builder signing key has not been configured")]
+    MissingBuilderSk,
 }

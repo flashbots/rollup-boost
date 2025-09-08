@@ -139,7 +139,7 @@ pub struct FlashblocksP2PCtx {
     /// Authorizer's verifying key used to verify authorization signatures from rollup-boost.
     pub authorizer_vk: VerifyingKey,
     /// Builder's signing key used to sign outgoing authorized P2P messages.
-    pub builder_sk: SigningKey,
+    pub builder_sk: Option<SigningKey>,
     /// Broadcast sender for peer messages that will be sent to all connected peers.
     /// Messages may not be strictly ordered due to network conditions.
     pub peer_tx: broadcast::Sender<PeerMsg>,
@@ -162,7 +162,7 @@ pub struct FlashblocksHandle {
 }
 
 impl FlashblocksHandle {
-    pub fn new(authorizer_vk: VerifyingKey, builder_sk: SigningKey) -> Self {
+    pub fn new(authorizer_vk: VerifyingKey, builder_sk: Option<SigningKey>) -> Self {
         let flashblock_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
         let peer_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
         let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
@@ -178,6 +178,13 @@ impl FlashblocksHandle {
 
     pub fn flashblocks_tx(&self) -> broadcast::Sender<FlashblocksPayloadV1> {
         self.ctx.flashblock_tx.clone()
+    }
+
+    pub fn builder_sk(&self) -> Result<&SigningKey, FlashblocksP2PError> {
+        self.ctx
+            .builder_sk
+            .as_ref()
+            .ok_or(FlashblocksP2PError::MissingBuilderSk)
     }
 }
 
@@ -294,8 +301,12 @@ impl FlashblocksHandle {
     /// # Note
     /// Calling this method does not guarantee immediate publishing clearance.
     /// The node may need to wait for other publishers to stop first.
-    pub fn start_publishing(&self, new_authorization: Authorization) {
+    pub fn start_publishing(
+        &self,
+        new_authorization: Authorization,
+    ) -> Result<(), FlashblocksP2PError> {
         let state = self.state.lock();
+        let builder_sk = self.builder_sk()?;
         state.publishing_status.send_modify(|status| {
             match status {
                 PublishingStatus::Publishing { authorization } => {
@@ -334,7 +345,7 @@ impl FlashblocksHandle {
                     // Send an authorized `StartPublish` message to the network
                     let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
                     let authorized_payload =
-                        Authorized::new(&self.ctx.builder_sk, new_authorization, authorized_msg);
+                        Authorized::new(builder_sk, new_authorization, authorized_msg);
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                     let peer_msg = PeerMsg::StartPublishing(p2p_msg.encode());
                     self.ctx.peer_tx.send(peer_msg).ok();
@@ -364,6 +375,8 @@ impl FlashblocksHandle {
                 }
             }
         });
+
+        Ok(())
     }
 
     /// Stops flashblock publishing and notifies the P2P network.
@@ -371,8 +384,10 @@ impl FlashblocksHandle {
     /// This method broadcasts a StopPublish message to all connected peers and transitions
     /// the node to a non-publishing state. It should be called when receiving a
     /// ForkChoiceUpdated without payload attributes or without an Authorization token.
-    pub fn stop_publishing(&self) {
+    pub fn stop_publishing(&self) -> Result<(), FlashblocksP2PError> {
         let state = self.state.lock();
+        let builder_sk = self.builder_sk()?;
+
         state.publishing_status.send_modify(|status| {
             match status {
                 PublishingStatus::Publishing { authorization } => {
@@ -384,7 +399,7 @@ impl FlashblocksHandle {
                         "stopping to publish flashblocks",
                     );
                     let authorized_payload =
-                        Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
+                        Authorized::new(builder_sk, *authorization, StopPublish.into());
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                     let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                     self.ctx.peer_tx.send(peer_msg).ok();
@@ -405,7 +420,7 @@ impl FlashblocksHandle {
                         "aborting wait to publish flashblocks",
                     );
                     let authorized_payload =
-                        Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
+                        Authorized::new(builder_sk, *authorization, StopPublish.into());
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                     let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                     self.ctx.peer_tx.send(peer_msg).ok();
@@ -416,6 +431,8 @@ impl FlashblocksHandle {
                 PublishingStatus::NotPublishing { .. } => {}
             }
         });
+
+        Ok(())
     }
 
     /// Returns a stream of ordered flashblocks starting from the beginning of the current payload.
