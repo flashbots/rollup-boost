@@ -217,23 +217,6 @@ impl FlashblocksHandle<Subscibe> {
     }
 }
 
-impl FlashblocksHandle<Publish> {
-    pub fn subscriber(&self) -> FlashblocksHandle<Subscibe> {
-        let publish = self.clone();
-        let ctx = FlashblocksP2PCtx {
-            client: Subscibe,
-            authorizer_vk: publish.ctx.authorizer_vk,
-            peer_tx: publish.ctx.peer_tx,
-            flashblock_tx: publish.ctx.flashblock_tx,
-        };
-
-        FlashblocksHandle {
-            state: publish.state,
-            ctx,
-        }
-    }
-}
-
 impl<C> FlashblocksHandle<C> {
     pub fn flashblocks_tx(&self) -> broadcast::Sender<FlashblocksPayloadV1> {
         self.ctx.flashblock_tx.clone()
