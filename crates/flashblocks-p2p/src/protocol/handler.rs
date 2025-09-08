@@ -129,42 +129,17 @@ impl FlashblocksP2PState {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Subscibe;
-
-#[derive(Clone, Debug)]
-pub struct Publish {
-    /// Builder's signing key used to sign outgoing authorized P2P messages.
-    pub builder_sk: SigningKey,
-}
-
-pub trait P2PClient: Unpin + Clone + std::fmt::Debug + Send + Sync + 'static {
-    fn builder_sk(&self) -> Option<&SigningKey>;
-}
-
-impl P2PClient for Subscibe {
-    fn builder_sk(&self) -> Option<&SigningKey> {
-        None
-    }
-}
-
-impl P2PClient for Publish {
-    fn builder_sk(&self) -> Option<&SigningKey> {
-        Some(&self.builder_sk)
-    }
-}
-
 /// Context struct containing shared resources for the flashblocks P2P protocol.
 ///
 /// This struct holds the network handle, cryptographic keys, and communication channels
 /// used across all connections in the flashblocks P2P protocol. It provides the shared
 /// infrastructure needed for message verification, signing, and broadcasting.
 #[derive(Clone, Debug)]
-pub struct FlashblocksP2PCtx<C> {
-    /// Client type, either publisher or subscriber
-    pub client: C,
+pub struct FlashblocksP2PCtx {
     /// Authorizer's verifying key used to verify authorization signatures from rollup-boost.
     pub authorizer_vk: VerifyingKey,
+    /// Builder's signing key used to sign outgoing authorized P2P messages.
+    pub builder_sk: SigningKey,
     /// Broadcast sender for peer messages that will be sent to all connected peers.
     /// Messages may not be strictly ordered due to network conditions.
     pub peer_tx: broadcast::Sender<PeerMsg>,
@@ -178,22 +153,22 @@ pub struct FlashblocksP2PCtx<C> {
 /// Encapsulates the shared context and mutable state of the flashblocks
 /// P2P protocol.
 #[derive(Clone, Debug)]
-pub struct FlashblocksHandle<C> {
+pub struct FlashblocksHandle {
     /// Shared context containing network handle, keys, and communication channels.
-    pub ctx: FlashblocksP2PCtx<C>,
+    pub ctx: FlashblocksP2PCtx,
     /// Thread-safe mutable state of the flashblocks protocol.
     /// Protected by a mutex to allow concurrent access from multiple connections.
     pub state: Arc<Mutex<FlashblocksP2PState>>,
 }
 
-impl FlashblocksHandle<Subscibe> {
-    pub fn new(authorizer_vk: VerifyingKey) -> Self {
+impl FlashblocksHandle {
+    pub fn new(authorizer_vk: VerifyingKey, builder_sk: SigningKey) -> Self {
         let flashblock_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
         let peer_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
         let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
         let ctx = FlashblocksP2PCtx {
-            client: Subscibe,
             authorizer_vk,
+            builder_sk,
             peer_tx,
             flashblock_tx,
         };
@@ -201,23 +176,6 @@ impl FlashblocksHandle<Subscibe> {
         Self { ctx, state }
     }
 
-    pub fn publisher(&self, builder_sk: SigningKey) -> FlashblocksHandle<Publish> {
-        let sub = self.clone();
-        let ctx = FlashblocksP2PCtx {
-            client: Publish { builder_sk },
-            authorizer_vk: sub.ctx.authorizer_vk,
-            peer_tx: sub.ctx.peer_tx,
-            flashblock_tx: sub.ctx.flashblock_tx,
-        };
-
-        FlashblocksHandle {
-            state: sub.state,
-            ctx,
-        }
-    }
-}
-
-impl<C> FlashblocksHandle<C> {
     pub fn flashblocks_tx(&self) -> broadcast::Sender<FlashblocksPayloadV1> {
         self.ctx.flashblock_tx.clone()
     }
@@ -229,14 +187,14 @@ impl<C> FlashblocksHandle<C> {
 /// and maintains the protocol state across all peer connections. It implements the core
 /// logic for multi-builder coordination and failover scenarios in HA sequencer setups.
 #[derive(Clone, Debug)]
-pub struct FlashblocksP2PProtocol<N, C> {
+pub struct FlashblocksP2PProtocol<N> {
     /// Network handle used to update peer reputation and manage connections.
     pub network: N,
     /// Shared context containing network handle, keys, and communication channels.
-    pub handle: FlashblocksHandle<C>,
+    pub handle: FlashblocksHandle,
 }
 
-impl<N: FlashblocksP2PNetworkHandle, C> FlashblocksP2PProtocol<N, C> {
+impl<N: FlashblocksP2PNetworkHandle> FlashblocksP2PProtocol<N> {
     /// Creates a new flashblocks P2P protocol handler.
     ///
     /// Initializes the handler with the necessary cryptographic keys, network handle,
@@ -245,7 +203,7 @@ impl<N: FlashblocksP2PNetworkHandle, C> FlashblocksP2PProtocol<N, C> {
     /// # Arguments
     /// * `network` - Network handle for peer management and reputation updates
     /// * `handle` - Shared handle containing the protocol context and mutable state
-    pub fn new(network: N, handle: FlashblocksHandle<C>) -> Self {
+    pub fn new(network: N, handle: FlashblocksHandle) -> Self {
         Self {
             network: network.clone(),
             handle,
@@ -253,7 +211,7 @@ impl<N: FlashblocksP2PNetworkHandle, C> FlashblocksP2PProtocol<N, C> {
     }
 }
 
-impl<N, C> FlashblocksP2PProtocol<N, C> {
+impl<N> FlashblocksP2PProtocol<N> {
     /// Returns the P2P capability for the flashblocks v1 protocol.
     ///
     /// This capability is used during devp2p handshake to advertise support
@@ -263,7 +221,7 @@ impl<N, C> FlashblocksP2PProtocol<N, C> {
     }
 }
 
-impl FlashblocksHandle<Publish> {
+impl FlashblocksHandle {
     /// Publishes a newly created flashblock from the payload builder to the P2P network.
     ///
     /// This method validates that the builder has authorization to publish and that
@@ -375,11 +333,8 @@ impl FlashblocksHandle<Publish> {
                 PublishingStatus::NotPublishing { active_publishers } => {
                     // Send an authorized `StartPublish` message to the network
                     let authorized_msg = AuthorizedMsg::StartPublish(StartPublish);
-                    let authorized_payload = Authorized::new(
-                        &self.ctx.client.builder_sk,
-                        new_authorization,
-                        authorized_msg,
-                    );
+                    let authorized_payload =
+                        Authorized::new(&self.ctx.builder_sk, new_authorization, authorized_msg);
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                     let peer_msg = PeerMsg::StartPublishing(p2p_msg.encode());
                     self.ctx.peer_tx.send(peer_msg).ok();
@@ -428,11 +383,8 @@ impl FlashblocksHandle<Publish> {
                         timestamp = %authorization.timestamp,
                         "stopping to publish flashblocks",
                     );
-                    let authorized_payload = Authorized::new(
-                        &self.ctx.client.builder_sk,
-                        *authorization,
-                        StopPublish.into(),
-                    );
+                    let authorized_payload =
+                        Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                     let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                     self.ctx.peer_tx.send(peer_msg).ok();
@@ -452,11 +404,8 @@ impl FlashblocksHandle<Publish> {
                         timestamp = %authorization.timestamp,
                         "aborting wait to publish flashblocks",
                     );
-                    let authorized_payload = Authorized::new(
-                        &self.ctx.client.builder_sk,
-                        *authorization,
-                        StopPublish.into(),
-                    );
+                    let authorized_payload =
+                        Authorized::new(&self.ctx.builder_sk, *authorization, StopPublish.into());
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized_payload);
                     let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                     self.ctx.peer_tx.send(peer_msg).ok();
@@ -468,9 +417,7 @@ impl FlashblocksHandle<Publish> {
             }
         });
     }
-}
 
-impl<C> FlashblocksHandle<C> {
     /// Returns a stream of ordered flashblocks starting from the beginning of the current payload.
     ///
     /// # Behavior
@@ -493,7 +440,7 @@ impl<C> FlashblocksHandle<C> {
     }
 }
 
-impl<C> FlashblocksP2PCtx<C> {
+impl FlashblocksP2PCtx {
     /// Processes and publishes a verified flashblock payload to the P2P network and local stream.
     ///
     /// This method handles the core logic of flashblock processing, including validation,
@@ -610,11 +557,7 @@ impl<C> FlashblocksP2PCtx<C> {
     }
 }
 
-impl<N, C> ProtocolHandler for FlashblocksP2PProtocol<N, C>
-where
-    N: FlashblocksP2PNetworkHandle,
-    C: P2PClient,
-{
+impl<N: FlashblocksP2PNetworkHandle> ProtocolHandler for FlashblocksP2PProtocol<N> {
     type ConnectionHandler = Self;
 
     fn on_incoming(&self, _socket_addr: SocketAddr) -> Option<Self::ConnectionHandler> {
@@ -630,12 +573,8 @@ where
     }
 }
 
-impl<N, C> ConnectionHandler for FlashblocksP2PProtocol<N, C>
-where
-    N: FlashblocksP2PNetworkHandle,
-    C: P2PClient,
-{
-    type Connection = FlashblocksConnection<N, C>;
+impl<N: FlashblocksP2PNetworkHandle> ConnectionHandler for FlashblocksP2PProtocol<N> {
+    type Connection = FlashblocksConnection<N>;
 
     fn protocol(&self) -> Protocol {
         Protocol::new(Self::capability(), 1)

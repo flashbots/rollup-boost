@@ -11,17 +11,17 @@ use reth_node_builder::{
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 
 use crate::protocol::handler::{
-    FlashblocksHandle, FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol, P2PClient,
+    FlashblocksHandle, FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol,
 };
 
 #[derive(Debug)]
-pub struct FlashblocksNetworkBuilder<T, C> {
+pub struct FlashblocksNetworkBuilder<T> {
     inner: T,
-    flashblocks_p2p_handle: Option<FlashblocksHandle<C>>,
+    flashblocks_p2p_handle: Option<FlashblocksHandle>,
 }
 
-impl<T, C> FlashblocksNetworkBuilder<T, C> {
-    pub fn new(inner: T, flashblocks_p2p_handle: FlashblocksHandle<C>) -> Self {
+impl<T> FlashblocksNetworkBuilder<T> {
+    pub fn new(inner: T, flashblocks_p2p_handle: FlashblocksHandle) -> Self {
         Self {
             inner,
             flashblocks_p2p_handle: Some(flashblocks_p2p_handle),
@@ -36,10 +36,9 @@ impl<T, C> FlashblocksNetworkBuilder<T, C> {
     }
 }
 
-impl<T, C, Network, Node, Pool> NetworkBuilder<Node, Pool> for FlashblocksNetworkBuilder<T, C>
+impl<T, Network, Node, Pool> NetworkBuilder<Node, Pool> for FlashblocksNetworkBuilder<T>
 where
     T: NetworkBuilder<Node, Pool, Network = Network>,
-    C: P2PClient,
     Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>,
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
         + Unpin

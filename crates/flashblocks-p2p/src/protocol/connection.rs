@@ -1,5 +1,5 @@
 use crate::protocol::handler::{
-    FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol, MAX_FLASHBLOCK_INDEX, P2PClient, PeerMsg,
+    FlashblocksP2PNetworkHandle, FlashblocksP2PProtocol, MAX_FLASHBLOCK_INDEX, PeerMsg,
     PublishingStatus,
 };
 use alloy_primitives::bytes::BytesMut;
@@ -27,9 +27,9 @@ use tracing::trace;
 ///
 /// The connection implements the `Stream` trait to provide outgoing message bytes that
 /// should be sent to the connected peer over the underlying protocol connection.
-pub struct FlashblocksConnection<N, C> {
+pub struct FlashblocksConnection<N> {
     /// The flashblocks protocol handler that manages the overall protocol state.
-    protocol: FlashblocksP2PProtocol<N, C>,
+    protocol: FlashblocksP2PProtocol<N>,
     /// The underlying protocol connection for sending and receiving raw bytes.
     conn: ProtocolConnection,
     /// The unique identifier of the connected peer.
@@ -44,7 +44,7 @@ pub struct FlashblocksConnection<N, C> {
     received: Vec<bool>,
 }
 
-impl<N: FlashblocksP2PNetworkHandle, C> FlashblocksConnection<N, C> {
+impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
     /// Creates a new `FlashblocksConnection` instance.
     ///
     /// # Arguments
@@ -53,12 +53,12 @@ impl<N: FlashblocksP2PNetworkHandle, C> FlashblocksConnection<N, C> {
     /// * `peer_id` - The unique identifier of the connected peer.
     /// * `peer_rx` - Receiver for peer messages to be sent to all peers.
     pub fn new(
-        protocol: FlashblocksP2PProtocol<N, C>,
+        protocol: FlashblocksP2PProtocol<N>,
         conn: ProtocolConnection,
         peer_id: PeerId,
         peer_rx: BroadcastStream<PeerMsg>,
     ) -> Self {
-        gauge!("p2p.flashblocks_peers", "capability" => FlashblocksP2PProtocol::<N, C>::capability().to_string()).increment(1);
+        gauge!("p2p.flashblocks_peers", "capability" => FlashblocksP2PProtocol::<N>::capability().to_string()).increment(1);
 
         Self {
             protocol,
@@ -71,16 +71,13 @@ impl<N: FlashblocksP2PNetworkHandle, C> FlashblocksConnection<N, C> {
     }
 }
 
-impl<N, C> Drop for FlashblocksConnection<N, C> {
+impl<N> Drop for FlashblocksConnection<N> {
     fn drop(&mut self) {
-        gauge!("p2p.flashblocks_peers", "capability" => FlashblocksP2PProtocol::<N, C>::capability().to_string()).decrement(1);
+        gauge!("p2p.flashblocks_peers", "capability" => FlashblocksP2PProtocol::<N>::capability().to_string()).decrement(1);
     }
 }
 
-impl<N: FlashblocksP2PNetworkHandle, C> Stream for FlashblocksConnection<N, C>
-where
-    C: P2PClient,
-{
+impl<N: FlashblocksP2PNetworkHandle> Stream for FlashblocksConnection<N> {
     type Item = BytesMut;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -162,14 +159,8 @@ where
 
             match msg {
                 FlashblocksP2PMsg::Authorized(authorized) => {
-                    if Some(authorized.authorization.builder_vk)
-                        == this
-                            .protocol
-                            .handle
-                            .ctx
-                            .client
-                            .builder_sk()
-                            .map(|s| s.verifying_key())
+                    if authorized.authorization.builder_vk
+                        == this.protocol.handle.ctx.builder_sk.verifying_key()
                     {
                         tracing::warn!(
                             target: "flashblocks::p2p",
@@ -212,7 +203,7 @@ where
     }
 }
 
-impl<N: FlashblocksP2PNetworkHandle, C: P2PClient> FlashblocksConnection<N, C> {
+impl<N: FlashblocksP2PNetworkHandle> FlashblocksConnection<N> {
     /// Handles incoming flashblock payload messages from a peer.
     ///
     /// This method validates the flashblock payload, checks for duplicates and ordering,
@@ -343,10 +334,6 @@ impl<N: FlashblocksP2PNetworkHandle, C: P2PClient> FlashblocksConnection<N, C> {
     fn handle_start_publish(&mut self, authorized_payload: AuthorizedPayload<StartPublish>) {
         let state = self.protocol.handle.state.lock();
         let authorization = &authorized_payload.authorized.authorization;
-        let Some(builder_sk) = self.protocol.handle.ctx.client.builder_sk() else {
-            // We're not publishers so we can ignore
-            return;
-        };
 
         // Check if the request is expired for dos protection.
         // It's important to ensure that this `StartPublish` request
@@ -376,8 +363,11 @@ impl<N: FlashblocksP2PNetworkHandle, C: P2PClient> FlashblocksConnection<N, C> {
                         "Received StartPublish over p2p, stopping publishing flashblocks"
                     );
 
-                    let authorized =
-                        Authorized::new(builder_sk, *our_authorization, StopPublish.into());
+                    let authorized = Authorized::new(
+                        &self.protocol.handle.ctx.builder_sk,
+                        *our_authorization,
+                        StopPublish.into(),
+                    );
                     let p2p_msg = FlashblocksP2PMsg::Authorized(authorized);
                     let peer_msg = PeerMsg::StopPublishing(p2p_msg.encode());
                     self.protocol.handle.ctx.peer_tx.send(peer_msg).ok();
