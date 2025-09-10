@@ -3,10 +3,26 @@ optimism_package:
     enabled: true
   chains:
     - participants:
-      - el_type: op-geth
-        el_builder_type: op-reth
-        el_builder_image: "ghcr.io/paradigmxyz/op-reth:nightly"
-        cl_builder_type: op-node
+        node0:
+          sequencer: true
+          el:
+            type: op-geth
+          cl:
+            type: op-node
+            log_level: debug
+        # Flashblocks
+        fb0:
+          sequencer: true
+          el:
+            type: op-reth
+          el_builder:
+            type: op-rbuilder
+          cl_builder:
+            type: op-node
+          mev_params:
+            enabled: true
+          cl:
+            type: op-node
       network_params:
         network: "kurtosis"
         fund_dev_accounts: true
@@ -16,12 +32,11 @@ optimism_package:
         isthmus_time_offset: 5
       mev_params:
         image: "flashbots/rollup-boost:develop"
-      additional_services: 
-        - rollup-boost
 ethereum_package:
   participants:
-  - el_type: geth
-    cl_type: teku
+    - el_type: geth
+      cl_type: lighthouse
+      cl_image: "ethpandaops/lighthouse:stable-e21198c"
   network_params:
     preset: minimal
     genesis_delay: 5
