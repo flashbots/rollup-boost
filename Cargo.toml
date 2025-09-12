@@ -30,45 +30,45 @@ sha2 = { version = "0.10", default-features = false }
 arbitrary = { version = "=1.4.2", features = ["derive"] }
 
 # Reth deps
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
+reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
 # Issue with reth feature compatibility. Include this in all crates for temp fix.
-reth-op = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0", features = [
+reth-op = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab", features = [
     "full",
     "alloy-compat",
 ] }
-reth = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-network-peers = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0", features = [
+reth = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-eth-wire = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-network-peers = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab", features = [
     "serde",
     "arbitrary",
     "reth-codec",
 ] }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "v1.7.0" }
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "v1.7.0" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "44a48ab" }
+reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", rev = "44a48ab" }
 
 # Alloy libraries
-alloy-rpc-types-engine = "1.0.13"
-alloy-rpc-types-eth = "1.0.13"
+alloy-rpc-types-engine = "1.0.30"
+alloy-rpc-types-eth = "1.0.30"
 alloy-primitives = { version = "1.3.0", features = ["rand", "arbitrary"] }
-alloy-serde = "1.0.13"
-alloy-eips = "1.0.13"
-alloy-json-rpc = "1.0.13"
-alloy-consensus = "1.0.13"
-alloy-rpc-types = "1.0.13"
-alloy-genesis = "1.0.13"
-alloy-rpc-client = "1.0.13"
-alloy-rlp = "0.3.12"
-alloy-provider = "1.0.13"
-op-alloy-network = "0.19.1"
-op-alloy-rpc-types-engine = "0.19.1"
-op-alloy-consensus = "0.19.1"
-op-alloy-rpc-types = "0.19.1"
+alloy-serde = "1.0.30"
+alloy-eips = "1.0.30"
+alloy-json-rpc = "1.0.30"
+alloy-consensus = "1.0.30"
+alloy-rpc-types = "1.0.30"
+alloy-genesis = "1.0.30"
+alloy-rpc-client = "1.0.30"
+alloy-rlp = "0.3.10"
+alloy-provider = "1.0.30"
+op-alloy-network = "0.19.0"
+op-alloy-rpc-types-engine = "0.19.0"
+op-alloy-consensus = "0.19.0"
+op-alloy-rpc-types = "0.19.0"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
