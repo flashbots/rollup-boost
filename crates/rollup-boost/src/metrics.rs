@@ -74,6 +74,6 @@ async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre
 
 /// Update the execution_mode prometheus metric
 pub fn update_execution_mode_gauge(execution_mode: ExecutionMode) {
-    let gauge = gauge!("execution_mode");
+    let gauge = gauge!("rollup_boost_execution_mode");
     gauge.set(execution_mode.to_metric_value());
 }
