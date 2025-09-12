@@ -16,6 +16,7 @@ use alloy_rpc_types_engine::{
     PayloadStatus,
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use dashmap::DashMap;
 use http_body_util::{BodyExt, Full};
 use jsonrpsee::RpcModule;
 use jsonrpsee::core::BoxError;
@@ -33,7 +34,6 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -54,8 +54,7 @@ pub struct RollupBoostServer<T: EngineApiExt> {
     ignore_unhealthy_builders: bool,
     execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
-    payload_to_fcu_request:
-        Arc<Mutex<HashMap<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>>>,
+    payload_to_fcu_request: DashMap<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>,
 }
 
 impl<T> RollupBoostServer<T>
@@ -80,7 +79,7 @@ where
             probes,
             external_state_root,
             ignore_unhealthy_builders,
-            payload_to_fcu_request: Arc::new(Mutex::new(HashMap::new())),
+            payload_to_fcu_request: DashMap::new(),
         }
     }
 
@@ -295,13 +294,7 @@ where
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> RpcResult<Option<OpExecutionPayloadEnvelope>> {
-        let fcu_info = self
-            .payload_to_fcu_request
-            .lock()
-            .remove(&payload_id)
-            .unwrap()
-            .to_owned()
-            .clone();
+        let fcu_info = self.payload_to_fcu_request.remove(&payload_id).unwrap().1;
 
         let new_payload_attrs = match fcu_info.1.as_ref() {
             Some(attrs) => OpPayloadAttributes {
@@ -502,7 +495,6 @@ where
 
                     if self.external_state_root {
                         self.payload_to_fcu_request
-                            .lock()
                             .insert(payload_id, (fork_choice_state, payload_attributes));
                     }
                 }
@@ -528,7 +520,6 @@ where
             if let Some(payload_id) = l2_response.payload_id {
                 if self.external_state_root {
                     self.payload_to_fcu_request
-                        .lock()
                         .insert(payload_id, (fork_choice_state, payload_attributes));
                 }
             }
