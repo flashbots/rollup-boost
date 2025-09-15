@@ -20,7 +20,7 @@ use crate::cli::{LogFormat, RollupBoostArgs};
 /// label cardinality in mind. Not all span attributes make
 /// appropriate labels.
 pub const SPAN_ATTRIBUTE_LABELS: [&str; 4] =
-    ["code", "payload_source", "method", "builder_has_payload"];
+    ["code", "execution_client", "method", "builder_has_payload"];
 
 /// Custom span processor that records span durations as histograms
 #[derive(Debug)]
@@ -124,82 +124,61 @@ pub fn init_tracing(args: &RollupBoostArgs) -> eyre::Result<()> {
         BoxMakeWriter::new(std::io::stdout)
     };
 
-    // Weird control flow here is required because of type system
+    global::set_text_map_propagator(TraceContextPropagator::new());
+
+    let mut provider_builder = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_resource(
+            Resource::builder_empty()
+                .with_attributes([
+                    KeyValue::new("service.name", env!("CARGO_PKG_NAME")),
+                    KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+                ])
+                .build(),
+        );
+
     if args.tracing {
-        global::set_text_map_propagator(TraceContextPropagator::new());
         let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
             .with_endpoint(&args.otlp_endpoint)
             .build()
             .context("Failed to create OTLP exporter")?;
-        let mut provider_builder = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-            .with_batch_exporter(otlp_exporter)
-            .with_resource(
-                Resource::builder_empty()
-                    .with_attributes([
-                        KeyValue::new("service.name", env!("CARGO_PKG_NAME")),
-                        KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-                    ])
-                    .build(),
-            );
-        if args.metrics {
-            provider_builder = provider_builder.with_span_processor(MetricsSpanProcessor);
+        provider_builder = provider_builder.with_batch_exporter(otlp_exporter);
+    }
+
+    if args.metrics {
+        provider_builder = provider_builder.with_span_processor(MetricsSpanProcessor);
+    }
+
+    let provider = provider_builder.build();
+    let tracer = provider.tracer(env!("CARGO_PKG_NAME"));
+
+    let trace_filter = Targets::new()
+        .with_default(LevelFilter::OFF)
+        .with_target(&filter_name, LevelFilter::TRACE);
+
+    let registry = registry.with(OpenTelemetryLayer::new(tracer).with_filter(trace_filter));
+
+    match args.log_format {
+        LogFormat::Json => {
+            tracing::subscriber::set_global_default(
+                registry.with(
+                    tracing_subscriber::fmt::layer()
+                        .json()
+                        .with_ansi(false)
+                        .with_writer(writer)
+                        .with_filter(log_filter.clone()),
+                ),
+            )?;
         }
-        let provider = provider_builder.build();
-        let tracer = provider.tracer(env!("CARGO_PKG_NAME"));
-
-        let trace_filter = Targets::new()
-            .with_default(LevelFilter::OFF)
-            .with_target(&filter_name, LevelFilter::TRACE);
-
-        let registry = registry.with(OpenTelemetryLayer::new(tracer).with_filter(trace_filter));
-
-        match args.log_format {
-            LogFormat::Json => {
-                tracing::subscriber::set_global_default(
-                    registry.with(
-                        tracing_subscriber::fmt::layer()
-                            .json()
-                            .with_ansi(false)
-                            .with_writer(writer)
-                            .with_filter(log_filter.clone()),
-                    ),
-                )?;
-            }
-            LogFormat::Text => {
-                tracing::subscriber::set_global_default(
-                    registry.with(
-                        tracing_subscriber::fmt::layer()
-                            .with_ansi(false)
-                            .with_writer(writer)
-                            .with_filter(log_filter.clone()),
-                    ),
-                )?;
-            }
-        }
-    } else {
-        match args.log_format {
-            LogFormat::Json => {
-                tracing::subscriber::set_global_default(
-                    registry.with(
-                        tracing_subscriber::fmt::layer()
-                            .json()
-                            .with_ansi(false)
-                            .with_writer(writer)
-                            .with_filter(log_filter.clone()),
-                    ),
-                )?;
-            }
-            LogFormat::Text => {
-                tracing::subscriber::set_global_default(
-                    registry.with(
-                        tracing_subscriber::fmt::layer()
-                            .with_ansi(false)
-                            .with_writer(writer)
-                            .with_filter(log_filter.clone()),
-                    ),
-                )?;
-            }
+        LogFormat::Text => {
+            tracing::subscriber::set_global_default(
+                registry.with(
+                    tracing_subscriber::fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(writer)
+                        .with_filter(log_filter.clone()),
+                ),
+            )?;
         }
     }
 

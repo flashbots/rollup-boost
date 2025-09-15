@@ -1,4 +1,4 @@
-use crate::{OpExecutionPayloadEnvelope, PayloadSource};
+use crate::{ExecutionClient, OpExecutionPayloadEnvelope};
 use serde::{Deserialize, Serialize};
 
 /// Defines the strategy for choosing between the builder block and the L2 client block
@@ -19,7 +19,7 @@ impl BlockSelectionPolicy {
         &self,
         builder_payload: OpExecutionPayloadEnvelope,
         l2_payload: OpExecutionPayloadEnvelope,
-    ) -> (OpExecutionPayloadEnvelope, PayloadSource) {
+    ) -> (OpExecutionPayloadEnvelope, ExecutionClient) {
         match self {
             BlockSelectionPolicy::GasUsed => {
                 let builder_gas = builder_payload.gas_used() as f64;
@@ -28,9 +28,9 @@ impl BlockSelectionPolicy {
                 // Select the L2 block if the builder block uses less than 10% of the gas.
                 // This avoids selecting empty or severely underfilled blocks,
                 if builder_gas < l2_gas * 0.1 {
-                    (l2_payload, PayloadSource::L2)
+                    (l2_payload, ExecutionClient::Sequencer)
                 } else {
-                    (builder_payload, PayloadSource::Builder)
+                    (builder_payload, ExecutionClient::Builder)
                 }
             }
         }
@@ -71,7 +71,7 @@ mod tests {
         let selected_payload =
             BlockSelectionPolicy::GasUsed.select_block(builder_payload, l2_payload);
 
-        assert_eq!(selected_payload.1, PayloadSource::L2);
+        assert_eq!(selected_payload.1, ExecutionClient::Sequencer);
         Ok(())
     }
 
@@ -103,7 +103,7 @@ mod tests {
         let selected_payload =
             BlockSelectionPolicy::GasUsed.select_block(builder_payload, l2_payload);
 
-        assert_eq!(selected_payload.1, PayloadSource::Builder);
+        assert_eq!(selected_payload.1, ExecutionClient::Builder);
         Ok(())
     }
 }
