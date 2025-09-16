@@ -10,6 +10,7 @@ members = [
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
 
+reqwest = "0.12.21"
 tracing = "0.1.4"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
 clap = { version = "4", features = ["derive", "env"] }
@@ -40,7 +41,6 @@ alloy-rpc-types = "1.0.35"
 alloy-genesis = "1.0.35"
 alloy-rpc-client = "1.0.35"
 alloy-provider = "1.0.35"
-alloy-transport-http = "1.0.35"
 alloy-transport = "1.0.35"
 op-alloy-network = "0.20.0"
 op-alloy-rpc-types-engine = "0.20.0"
@@ -49,5 +49,3 @@ op-alloy-rpc-types = "0.20.0"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
-
-reqwest = "0.12.21"
