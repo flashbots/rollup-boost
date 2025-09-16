@@ -829,6 +829,10 @@ checksum = "e2379d998f46d422ec8ef2b61603bc28cda931e5e267aea1ebe71f62da61d101"
 dependencies = [
  "alloy-json-rpc",
  "alloy-transport",
+ "http-body-util",
+ "hyper",
+ "hyper-tls",
+ "hyper-util",
  "reqwest",
  "serde_json",
  "tower 0.5.2",
@@ -10051,6 +10055,7 @@ dependencies = [
  "alloy-rpc-types-eth",
  "alloy-serde",
  "alloy-transport",
+ "alloy-transport-http",
  "anyhow",
  "assert_cmd",
  "bytes",
