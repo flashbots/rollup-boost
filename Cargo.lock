@@ -10051,7 +10051,6 @@ dependencies = [
  "alloy-rpc-types-eth",
  "alloy-serde",
  "alloy-transport",
- "alloy-transport-http",
  "anyhow",
  "assert_cmd",
  "bytes",
