@@ -85,8 +85,7 @@ pub struct ProxyService<S> {
     builder_client: RpcProxyClient,
 }
 
-impl<S> ProxyService<S>
-{
+impl<S> ProxyService<S> {
     pub fn maybe_proxy_to_builder(&self, request: jsonrpsee::types::Request<'_>) {
         if FORWARD_REQUESTS.contains(&request.method_name()) {
             let method = request.method_name().to_string();
