@@ -25,7 +25,6 @@ use paste::paste;
 use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
-use tower_http::ServiceExt;
 use tracing::{error, info, instrument};
 
 use super::auth::Auth;
