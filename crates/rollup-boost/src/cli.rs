@@ -3,13 +3,18 @@ use clap::Parser;
 use eyre::bail;
 use jsonrpsee::{RpcModule, server::Server};
 use parking_lot::Mutex;
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+};
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, FlashblocksArgs, FlashblocksKeys, ProxyLayer, RollupBoostServer,
-    RpcClient,
+    BlockSelectionPolicy, Flashblocks, FlashblocksP2PArgs, FlashblocksP2PKeys, FlashblocksWsArgs,
+    ProxyLayer, RollupBoostServer, RpcClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
@@ -99,7 +104,10 @@ pub struct RollupBoostArgs {
     pub ignore_unhealthy_builders: bool,
 
     #[clap(flatten)]
-    pub flashblocks: Option<FlashblocksArgs>,
+    pub flashblocks_p2p: Option<FlashblocksP2PArgs>,
+
+    #[clap(flatten)]
+    pub flashblocks_ws: Option<FlashblocksWsArgs>,
 }
 
 impl RollupBoostArgs {
@@ -135,7 +143,7 @@ impl RollupBoostArgs {
             bail!("Missing Builder JWT secret");
         };
 
-        let flashblocks_keys = self.flashblocks.as_ref().map(|fb| FlashblocksKeys {
+        let flashblocks_keys = self.flashblocks_p2p.as_ref().map(|fb| FlashblocksP2PKeys {
             authorization_sk: fb.flashblocks_authorizer_sk.clone(),
             builder_pk: fb.flashblocks_builder_vk.clone(),
         });
@@ -151,59 +159,72 @@ impl RollupBoostArgs {
         let (probe_layer, probes) = ProbeLayer::new();
         let execution_mode = Arc::new(Mutex::new(self.execution_mode));
 
-<<<<<<< HEAD
-        let (rpc_module, health_handle): (RpcModule<()>, _) = {
-=======
-        let (rpc_module, health_handle): (RpcModule<()>, _) = if self.flashblocks.flashblocks {
-            let flashblocks_args = self.flashblocks;
-            let inbound_url = flashblocks_args.flashblocks_builder_url;
-            let outbound_addr = SocketAddr::new(
-                IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
-                flashblocks_args.flashblocks_port,
-            );
+        let (rpc_module, health_handle): (RpcModule<()>, _) =
+            if let Some(flashblocks_ws) = self.flashblocks_ws {
+                let inbound_url = flashblocks_ws.flashblocks_builder_url;
+                let outbound_addr = SocketAddr::new(
+                    IpAddr::from_str(&flashblocks_ws.flashblocks_host)?,
+                    flashblocks_ws.flashblocks_port,
+                );
 
-            let builder_client = Arc::new(Flashblocks::run(
-                builder_client.clone(),
-                inbound_url,
-                outbound_addr,
-                flashblocks_args.flashblock_builder_ws_reconnect_ms,
-            )?);
+                let builder_client = Arc::new(Flashblocks::run(
+                    builder_client.clone(),
+                    inbound_url,
+                    outbound_addr,
+                    flashblocks_ws.flashblock_builder_ws_reconnect_ms,
+                )?);
 
-            let rollup_boost = RollupBoostServer::new(
-                l2_client,
-                builder_client,
-                execution_mode.clone(),
-                self.block_selection_policy,
-                probes.clone(),
-                self.external_state_root,
-                self.ignore_unhealthy_builders,
-            );
+                let rollup_boost = RollupBoostServer::new(
+                    l2_client,
+                    builder_client,
+                    execution_mode.clone(),
+                    self.block_selection_policy,
+                    probes.clone(),
+                    self.external_state_root,
+                    self.ignore_unhealthy_builders,
+                );
 
-            let health_handle = rollup_boost
-                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
+                let health_handle = rollup_boost
+                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
-            // Spawn the debug server
-            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-            (rollup_boost.try_into()?, health_handle)
-        } else {
->>>>>>> main
-            let rollup_boost = RollupBoostServer::new(
-                l2_client,
-                Arc::new(builder_client),
-                execution_mode.clone(),
-                self.block_selection_policy,
-                probes.clone(),
-                self.external_state_root,
-                self.ignore_unhealthy_builders,
-            );
+                // Spawn the debug server
+                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+                (rollup_boost.try_into()?, health_handle)
+            } else if let Some(flashblocks_p2p) = self.flashblocks_p2p {
+                let rollup_boost = RollupBoostServer::new(
+                    l2_client,
+                    Arc::new(builder_client),
+                    execution_mode.clone(),
+                    self.block_selection_policy,
+                    probes.clone(),
+                    self.external_state_root,
+                    self.ignore_unhealthy_builders,
+                );
 
-            let health_handle = rollup_boost
-                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
+                let health_handle = rollup_boost
+                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
-            // Spawn the debug server
-            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-            (rollup_boost.try_into()?, health_handle)
-        };
+                // Spawn the debug server
+                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+                (rollup_boost.try_into()?, health_handle)
+            } else {
+                let rollup_boost = RollupBoostServer::new(
+                    l2_client,
+                    Arc::new(builder_client),
+                    execution_mode.clone(),
+                    self.block_selection_policy,
+                    probes.clone(),
+                    self.external_state_root,
+                    self.ignore_unhealthy_builders,
+                );
+
+                let health_handle = rollup_boost
+                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
+
+                // Spawn the debug server
+                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+                (rollup_boost.try_into()?, health_handle)
+            };
 
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);
@@ -290,7 +311,8 @@ pub mod tests {
         assert!(!args.metrics);
         assert_eq!(args.rpc_host, "127.0.0.1");
         assert_eq!(args.rpc_port, 8081);
-        assert!(args.flashblocks.is_none());
+        assert!(args.flashblocks_ws.is_none());
+        assert!(args.flashblocks_p2p.is_none());
 
         Ok(())
     }

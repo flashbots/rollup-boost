@@ -29,6 +29,7 @@ arbitrary = { version = "=1.4.2", features = ["derive"] }
 
 # Reth deps
 reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.7.0" }
+reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth", tag = "v1.7.0" }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.30"

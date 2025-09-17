@@ -100,7 +100,7 @@ impl From<RpcClientError> for ErrorObjectOwned {
 }
 
 #[derive(Clone)]
-pub struct FlashblocksKeys {
+pub struct FlashblocksP2PKeys {
     /// Flashblocks Authorization Secret
     pub authorization_sk: SigningKey,
     /// Flashblocks builder vk
@@ -121,8 +121,8 @@ pub struct RpcClient {
     payload_source: PayloadSource,
     /// Flashblocks keys
     ///
-    /// `None` if flashblocks are disabled
-    flashblocks_keys: Option<FlashblocksKeys>,
+    /// `None` if p2p flashblocks are disabled
+    flashblocks_p2p_keys: Option<FlashblocksP2PKeys>,
 }
 
 impl RpcClient {
@@ -132,7 +132,7 @@ impl RpcClient {
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
         payload_source: PayloadSource,
-        flashblocks_keys: Option<FlashblocksKeys>,
+        flashblocks_p2p_keys: Option<FlashblocksP2PKeys>,
     ) -> Result<Self, RpcClientError> {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
         let mut headers = HeaderMap::new();
@@ -149,7 +149,7 @@ impl RpcClient {
             auth_client,
             auth_rpc,
             payload_source,
-            flashblocks_keys,
+            flashblocks_p2p_keys,
         })
     }
 
@@ -171,7 +171,7 @@ impl RpcClient {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
-        let res = match (&payload_attributes, &self.flashblocks_keys) {
+        let res = match (&payload_attributes, &self.flashblocks_p2p_keys) {
             (Some(attrs), Some(flashblocks)) => {
                 let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attrs, 3);
                 let authorization = Authorization::new(
@@ -482,7 +482,9 @@ pub mod tests {
         let mut cmd = Command::cargo_bin("rollup-boost").unwrap();
         cmd.arg("--invalid-arg");
 
-        cmd.assert().failure();
+        cmd.assert().failure().stderr(predicate::str::contains(
+            "error: unexpected argument '--invalid-arg' found",
+        ));
     }
 
     #[tokio::test]

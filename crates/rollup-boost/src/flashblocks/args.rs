@@ -1,16 +1,17 @@
 use clap::Args;
 use ed25519_dalek::{SigningKey, VerifyingKey};
+use url::Url;
 
 use hex::FromHex;
 
-#[derive(Parser, Clone, Debug)]
+#[derive(Args, Clone, Debug)]
 #[group(requires = "flashblocks_ws")]
 pub struct FlashblocksWsArgs {
     /// Enable Flashblocks client
     #[arg(
         long,
         id = "flashblocks_ws",
-        conflicts = "flashblocks_p2p",
+        conflicts_with = "flashblocks_p2p",
         env,
         default_value = "false"
     )]
@@ -40,7 +41,7 @@ pub struct FlashblocksP2PArgs {
     #[arg(
         long,
         id = "flashblocks_p2p",
-        conflicts = "flashblocks_ws",
+        conflicts_with = "flashblocks_ws",
         env,
         required = false
     )]

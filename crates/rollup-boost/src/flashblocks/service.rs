@@ -1,17 +1,23 @@
+use super::outbound::WebSocketPublisher;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
-use crate::{FlashblocksError, OpExecutionPayloadEnvelope, PayloadVersion};
+use crate::flashblocks::metrics::FlashblocksServiceMetrics;
+use crate::{
+    ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
+};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
 };
+use alloy_rpc_types_engine::{ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus};
+use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
+use core::net::SocketAddr;
+use jsonrpsee::core::async_trait;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
+    OpPayloadAttributes,
 };
-<<<<<<< HEAD
-
-=======
 use reth_optimism_payload_builder::payload_id_optimism;
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -50,7 +56,6 @@ enum FlashblocksEngineMessage {
     FlashblocksPayloadV1(FlashblocksPayloadV1),
 }
 
->>>>>>> main
 #[derive(Clone, Debug, Default)]
 pub struct FlashblockBuilder {
     base: Option<ExecutionPayloadBaseV1>,
@@ -167,8 +172,6 @@ impl FlashblockBuilder {
         }
     }
 }
-<<<<<<< HEAD
-=======
 
 #[derive(Clone)]
 pub struct FlashblocksService {
@@ -524,4 +527,3 @@ mod tests {
         Ok(())
     }
 }
->>>>>>> main

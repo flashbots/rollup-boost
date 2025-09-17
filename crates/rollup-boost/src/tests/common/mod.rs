@@ -380,7 +380,6 @@ impl RollupBoostTestHarnessBuilder {
         println!("proxy authrpc: {}", builder_url);
 
         // Start Rollup-boost instance
-
         let mut rollup_boost = RollupBoostConfig::default();
         rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
         rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
