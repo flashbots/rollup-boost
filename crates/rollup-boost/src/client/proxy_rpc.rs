@@ -1,21 +1,23 @@
 use std::time::Duration;
 
+use crate::AuthLayer;
+use crate::client::error::restore_error;
 use crate::payload::PayloadSource;
-use crate::{secret_to_bearer_header, AuthLayer};
 use alloy_json_rpc::{RpcError, RpcRecv, RpcSend};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::JwtSecret;
 use alloy_transport::TransportResult;
 use alloy_transport_http::{Http, HyperClient};
-use http::header::AUTHORIZATION;
-use http::{HeaderMap, Uri};
+use http::Uri;
 use http_body_util::Full;
+use hyper::body::Incoming;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use opentelemetry::trace::SpanKind;
-use tower::ServiceBuilder;
-use tower::timeout::TimeoutLayer;
-use tower_http::decompression::DecompressionLayer;
+use tower::util::MapErrLayer;
+use tower::{BoxError, ServiceBuilder};
+use tower_http::decompression::{DecompressionBody, DecompressionLayer};
+use tower_http::map_response_body::MapResponseBodyLayer;
 use tracing::{debug, error, instrument};
 
 #[derive(Clone, Debug)]
@@ -35,12 +37,19 @@ impl RpcProxyClient {
             .enable_http2()
             .build();
 
-        let client = Client::builder(TokioExecutor::new()).build::<_, Full<hyper::body::Bytes>>(connector);
+        let client =
+            Client::builder(TokioExecutor::new()).build::<_, Full<hyper::body::Bytes>>(connector);
 
         let service = ServiceBuilder::new()
-            // .layer(TimeoutLayer::new(Duration::from_millis(timeout)))
-            // .layer(DecompressionLayer::new())
+            // This layer formats error, because timeout layer erases error types and we need it for alloy
+            .layer(MapErrLayer::new(|e: BoxError| restore_error(e)))
+            // We need this layer because DecompressionLayer modifies responce and alloy rpc client requires it to be Incoming
+            .layer(MapResponseBodyLayer::new(
+                |a: DecompressionBody<Incoming>| a.into_inner(),
+            ))
+            .layer(DecompressionLayer::new())
             .layer(AuthLayer::new(secret))
+            .timeout(Duration::from_secs(timeout))
             .service(client);
 
         let layer_transport = HyperClient::with_service(service);
