@@ -1187,6 +1187,58 @@ pub mod tests {
         assert!(fcu_response.is_err());
     }
 
+    // Helper to create a test harness with custom external state root setting
+    async fn create_custom_test_harness(
+        l2_mock: MockEngineServer,
+        builder_mock: MockEngineServer,
+        external_state_root: bool,
+    ) -> (HttpClient, reqwest::Client, SocketAddr, ServerHandle) {
+        let jwt_secret = JwtSecret::random();
+        let l2_server_addr = {
+            let (server, addr) = spawn_server(l2_mock).await;
+            std::mem::forget(server);
+            addr
+        };
+        let builder_server_addr = {
+            let (server, addr) = spawn_server(builder_mock).await;
+            std::mem::forget(server);
+            addr
+        };
+
+        let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
+        let l2_client = RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
+        let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
+        let builder_client = Arc::new(
+            RpcClient::new(builder_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::Builder).unwrap(),
+        );
+
+        let (probe_layer, probes) = ProbeLayer::new();
+        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
+        probes.set_health(Health::Healthy);
+
+        let rollup_boost = RollupBoostServer::new(
+            l2_client, builder_client, execution_mode, None, probes.clone(), external_state_root, true,
+        );
+
+        let module: RpcModule<()> = rollup_boost.try_into().unwrap();
+        let http_middleware = tower::ServiceBuilder::new()
+            .layer(probe_layer)
+            .layer(ProxyLayer::new(l2_auth_rpc, jwt_secret, 1, builder_auth_rpc, jwt_secret, 1));
+
+        let server = Server::builder()
+            .set_http_middleware(http_middleware)
+            .build("127.0.0.1:0".parse::<SocketAddr>().unwrap())
+            .await
+            .unwrap();
+
+        let server_addr = server.local_addr().expect("missing server address");
+        let server_handle = server.start(module);
+        let rpc_client = HttpClient::builder().build(format!("http://{server_addr}")).unwrap();
+        let http_client = reqwest::Client::new();
+
+        (rpc_client, http_client, server_addr, server_handle)
+    }
+
     // Helper function to create mock servers and run a test scenario
     async fn run_health_test_scenario(
         l2_mock: MockEngineServer,
@@ -1195,53 +1247,12 @@ pub mod tests {
         external_state_root: bool,
         expect_l2_get_payload_success: bool,
     ) {
-        let test_harness = if external_state_root {
-            // For external state root test, we need custom setup
-            let jwt_secret = JwtSecret::random();
-            let l2_server_addr = {
-                let (server, addr) = spawn_server(l2_mock.clone()).await;
-                std::mem::forget(server);
-                addr
-            };
-            let builder_server_addr = {
-                let (server, addr) = spawn_server(builder_mock.unwrap()).await;
-                std::mem::forget(server);
-                addr
-            };
-
-            let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-            let l2_client = RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
-            let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
-            let builder_client = Arc::new(
-                RpcClient::new(builder_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::Builder).unwrap(),
-            );
-
-            let (probe_layer, probes) = ProbeLayer::new();
-            let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
-            probes.set_health(Health::Healthy);
-
-            let rollup_boost = RollupBoostServer::new(
-                l2_client, builder_client, execution_mode, None, probes.clone(), true, true,
-            );
-
-            let module: RpcModule<()> = rollup_boost.try_into().unwrap();
-            let http_middleware = tower::ServiceBuilder::new()
-                .layer(probe_layer)
-                .layer(ProxyLayer::new(l2_auth_rpc, jwt_secret, 1, builder_auth_rpc, jwt_secret, 1));
-
-            let server = Server::builder()
-                .set_http_middleware(http_middleware)
-                .build("127.0.0.1:0".parse::<SocketAddr>().unwrap())
-                .await
-                .unwrap();
-
-            let server_addr = server.local_addr().expect("missing server address");
-            let server_handle = server.start(module);
-            let rpc_client = HttpClient::builder().build(format!("http://{server_addr}")).unwrap();
-            let http_client = reqwest::Client::new();
-
-            // Custom cleanup for external state root test
-            let fcu_response = rpc_client
+        // Run the test flow
+        if external_state_root {
+            let (rpc_client, http_client, server_addr, server_handle) = 
+                create_custom_test_harness(l2_mock, builder_mock.unwrap(), true).await;
+            
+            let response = rpc_client
                 .fork_choice_updated_v3(
                     ForkchoiceState {
                         head_block_hash: FixedBytes::random(),
@@ -1251,9 +1262,9 @@ pub mod tests {
                     Some(OpPayloadAttributes { gas_limit: Some(1000000), ..Default::default() }),
                 )
                 .await;
-            assert!(fcu_response.is_ok());
+            assert!(response.is_ok());
 
-            let payload_id = fcu_response.unwrap().payload_id.unwrap();
+            let payload_id = response.unwrap().payload_id.unwrap();
             let get_payload_response = rpc_client.get_payload_v3(payload_id).await;
             if expect_l2_get_payload_success {
                 assert!(get_payload_response.is_ok());
@@ -1266,37 +1277,36 @@ pub mod tests {
 
             server_handle.stop().unwrap();
             server_handle.stopped().await;
-            return; 
+            return;
         } else {
-            TestHarness::new(Some(l2_mock), builder_mock).await
-        };
+            let test_harness = TestHarness::new(Some(l2_mock), builder_mock).await;
+            
+            let response = test_harness
+                .rpc_client
+                .fork_choice_updated_v3(
+                    ForkchoiceState {
+                        head_block_hash: FixedBytes::random(),
+                        safe_block_hash: FixedBytes::random(),
+                        finalized_block_hash: FixedBytes::random(),
+                    },
+                    Some(OpPayloadAttributes { gas_limit: Some(1000000), ..Default::default() }),
+                )
+                .await;
+            assert!(response.is_ok());
 
-        // Standard test flow
-        let fcu_response = test_harness
-            .rpc_client
-            .fork_choice_updated_v3(
-                ForkchoiceState {
-                    head_block_hash: FixedBytes::random(),
-                    safe_block_hash: FixedBytes::random(),
-                    finalized_block_hash: FixedBytes::random(),
-                },
-                Some(OpPayloadAttributes { gas_limit: Some(1000000), ..Default::default() }),
-            )
-            .await;
-        assert!(fcu_response.is_ok());
+            let payload_id = response.unwrap().payload_id.unwrap();
+            let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
+            if expect_l2_get_payload_success {
+                assert!(get_payload_response.is_ok());
+            } else {
+                assert!(get_payload_response.is_err());
+            }
 
-        let payload_id = fcu_response.unwrap().payload_id.unwrap();
-        let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
-        if expect_l2_get_payload_success {
-            assert!(get_payload_response.is_ok());
-        } else {
-            assert!(get_payload_response.is_err());
+            let health = test_harness.get("healthz").await;
+            assert_eq!(health.status(), expected_health);
+
+            test_harness.cleanup().await;
         }
-
-        let health = test_harness.get("healthz").await;
-        assert_eq!(health.status(), expected_health);
-
-        test_harness.cleanup().await;
     }
 
     #[tokio::test]
