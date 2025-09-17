@@ -1,7 +1,11 @@
 [workspace]
 resolver = "3"
 
-members = ["crates/rollup-boost", "crates/flashblocks-rpc"]
+members = [
+    "crates/rollup-boost",
+    "crates/websocket-proxy",
+    "crates/flashblocks-rpc",
+]
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
