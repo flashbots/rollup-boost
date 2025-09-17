@@ -191,7 +191,7 @@ where
             {
                 info!(message = "builder has no payload, skipping get_payload call to builder");
                 tracing::Span::current().record("builder_has_payload", false);
-                return BuilderResult::Ok((None, false || !self.external_state_root));
+                return BuilderResult::Ok((None, true));
             }
 
             // Get payload and validate with the local l2 client
@@ -1293,7 +1293,7 @@ pub mod tests {
                     p
                 });
 
-            // no external state root, mark unhealthy
+            // L2 validation failure still marks as unhealthy
             run_health_test_scenario(
                 l2_mock.clone(),
                 Some(builder_mock.clone()),
@@ -1302,9 +1302,6 @@ pub mod tests {
                 true,
             )
             .await;
-
-            // with external state root, mark healthy
-            run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::OK, true, true).await;
         }
 
         // Test 3: Both APIs succeed - should remain healthy
