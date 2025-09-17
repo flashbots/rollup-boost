@@ -10,14 +10,11 @@ use alloy_transport::TransportResult;
 use alloy_transport_http::{Http, HyperClient};
 use http::Uri;
 use http_body_util::Full;
-use hyper::body::Incoming;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use opentelemetry::trace::SpanKind;
 use tower::util::MapErrLayer;
 use tower::{BoxError, ServiceBuilder};
-use tower_http::decompression::{DecompressionBody, DecompressionLayer};
-use tower_http::map_response_body::MapResponseBodyLayer;
 use tracing::{debug, error, instrument};
 
 #[derive(Clone, Debug)]
@@ -43,11 +40,15 @@ impl RpcProxyClient {
         let service = ServiceBuilder::new()
             // This layer formats error, because timeout layer erases error types and we need it for alloy
             .layer(MapErrLayer::new(|e: BoxError| restore_error(e)))
-            // We need this layer because DecompressionLayer modifies responce and alloy rpc client requires it to be Incoming
-            .layer(MapResponseBodyLayer::new(
-                |a: DecompressionBody<Incoming>| a.into_inner(),
-            ))
-            .layer(DecompressionLayer::new())
+            // We need this layer because DecompressionLayer modifies responses and alloy rpc client requires it to be Incoming
+            // TODO: removing it for now until figured out
+            // .layer(MapResponseBodyLayer::new(
+            //     |a: DecompressionBody<Incoming>|  {
+            // Into inner does not decode the body
+            //         a.into_inner()
+            //     }
+            // ))
+            // .layer(DecompressionLayer::new())
             .layer(AuthLayer::new(secret))
             .timeout(Duration::from_secs(timeout))
             .service(client);
