@@ -44,3 +44,7 @@ pub use engine_api::*;
 
 mod version;
 pub use version::*;
+
+pub mod ed25519_dalek {
+    pub use ed25519_dalek::*;
+}

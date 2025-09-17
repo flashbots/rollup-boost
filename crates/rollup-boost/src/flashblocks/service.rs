@@ -2,6 +2,7 @@ use super::outbound::WebSocketPublisher;
 use super::primitives::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
+use crate::flashblocks::error::FlashblocksError;
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
@@ -23,24 +24,9 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
-
-#[derive(Debug, Error, PartialEq)]
-pub enum FlashblocksError {
-    #[error("Missing base payload for initial flashblock")]
-    MissingBasePayload,
-    #[error("Unexpected base payload for non-initial flashblock")]
-    UnexpectedBasePayload,
-    #[error("Missing delta for flashblock")]
-    MissingDelta,
-    #[error("Invalid index for flashblock")]
-    InvalidIndex,
-    #[error("Missing payload")]
-    MissingPayload,
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct FlashbotsMessage {
@@ -420,6 +406,7 @@ mod tests {
             jwt_secret,
             2000,
             PayloadSource::Builder,
+            None,
         )?;
 
         let service =
@@ -449,6 +436,7 @@ mod tests {
             jwt_secret,
             2000,
             PayloadSource::Builder,
+            None,
         )?;
 
         let service =

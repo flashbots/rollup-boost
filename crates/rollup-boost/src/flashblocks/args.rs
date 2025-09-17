@@ -1,11 +1,21 @@
-use clap::Parser;
+use clap::Args;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use url::Url;
 
-#[derive(Parser, Clone, Debug)]
-pub struct FlashblocksArgs {
+use hex::FromHex;
+
+#[derive(Args, Clone, Debug)]
+#[group(requires = "flashblocks_ws")]
+pub struct FlashblocksWsArgs {
     /// Enable Flashblocks client
-    #[arg(long, env, default_value = "false")]
-    pub flashblocks: bool,
+    #[arg(
+        long,
+        id = "flashblocks_ws",
+        conflicts_with = "flashblocks_p2p",
+        env,
+        default_value = "false"
+    )]
+    pub flashblocks_ws: bool,
 
     /// Flashblocks Builder WebSocket URL
     #[arg(long, env, default_value = "ws://127.0.0.1:1111")]
@@ -22,4 +32,44 @@ pub struct FlashblocksArgs {
     /// Time used for timeout if builder disconnected
     #[arg(long, env, default_value = "5000")]
     pub flashblock_builder_ws_reconnect_ms: u64,
+}
+
+#[derive(Args, Clone, Debug)]
+#[group(requires = "flashblocks_p2p")]
+pub struct FlashblocksP2PArgs {
+    /// Enable Flashblocks client
+    #[arg(
+        long,
+        id = "flashblocks_p2p",
+        conflicts_with = "flashblocks_ws",
+        env,
+        required = false
+    )]
+    pub flashblocks_p2p: bool,
+
+    #[arg(
+        long,
+        env = "FLASHBLOCKS_AUTHORIZER_SK",
+        value_parser = parse_sk,
+        required = false,
+    )]
+    pub flashblocks_authorizer_sk: SigningKey,
+
+    #[arg(
+        long,
+        env = "FLASHBLOCKS_BUILDER_VK",
+        value_parser = parse_vk,
+        required = false,
+    )]
+    pub flashblocks_builder_vk: VerifyingKey,
+}
+
+pub fn parse_sk(s: &str) -> eyre::Result<SigningKey> {
+    let bytes = <[u8; 32]>::from_hex(s.trim())?;
+    Ok(SigningKey::from_bytes(&bytes))
+}
+
+pub fn parse_vk(s: &str) -> eyre::Result<VerifyingKey> {
+    let bytes = <[u8; 32]>::from_hex(s.trim())?;
+    Ok(VerifyingKey::from_bytes(&bytes)?)
 }

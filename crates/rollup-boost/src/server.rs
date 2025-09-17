@@ -1,5 +1,5 @@
 use crate::debug_api::ExecutionMode;
-use crate::{BlockSelectionPolicy, EngineApiExt};
+use crate::{Authorization, BlockSelectionPolicy, EngineApiExt};
 use crate::{
     client::rpc::RpcClient,
     debug_api::DebugServer,
@@ -362,6 +362,19 @@ where
 
         Ok(module)
     }
+}
+
+#[rpc(client)]
+pub trait FlashblocksEngineApi {
+    /// When flashblocks is enabled
+    /// we add an additional parameter `authorization` to the FCU
+    #[method(name = "flashblocks_forkchoiceUpdatedV3")]
+    async fn flashblocks_fork_choice_updated_v3(
+        &self,
+        fork_choice_state: ForkchoiceState,
+        payload_attributes: Option<OpPayloadAttributes>,
+        authorization: Option<Authorization>,
+    ) -> RpcResult<ForkchoiceUpdated>;
 }
 
 #[rpc(server, client)]
@@ -752,8 +765,14 @@ pub mod tests {
             let (builder_server, builder_server_addr) = spawn_server(builder_mock.clone()).await;
 
             let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-            let l2_client =
-                RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
+            let l2_client = RpcClient::new(
+                l2_auth_rpc.clone(),
+                jwt_secret,
+                2000,
+                PayloadSource::L2,
+                None,
+            )
+            .unwrap();
 
             let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
             let builder_client = Arc::new(
@@ -762,6 +781,7 @@ pub mod tests {
                     jwt_secret,
                     2000,
                     PayloadSource::Builder,
+                    None,
                 )
                 .unwrap(),
             );
@@ -1113,7 +1133,7 @@ pub mod tests {
             .rpc_client
             .fork_choice_updated_v3(fcu, Some(payload_attributes.clone()))
             .await;
-        assert!(fcu_response.is_ok());
+        fcu_response.unwrap();
 
         // no tx pool is false so should return the builder payload
         let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
