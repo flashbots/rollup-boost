@@ -756,6 +756,14 @@ pub mod tests {
             l2_mock: Option<MockEngineServer>,
             builder_mock: Option<MockEngineServer>,
         ) -> Self {
+            Self::new_with_external_state_root(l2_mock, builder_mock, false).await
+        }
+
+        async fn new_with_external_state_root(
+            l2_mock: Option<MockEngineServer>,
+            builder_mock: Option<MockEngineServer>,
+            external_state_root: bool,
+        ) -> Self {
             let jwt_secret = JwtSecret::random();
 
             let l2_mock = l2_mock.unwrap_or(MockEngineServer::new());
@@ -790,7 +798,7 @@ pub mod tests {
                 execution_mode.clone(),
                 None,
                 probes.clone(),
-                false,
+                external_state_root,
                 true,
             );
 
@@ -1010,8 +1018,13 @@ pub mod tests {
                 get_payload_requests.push(params.0);
 
                 // If this is the second call and we have a second response configured, use it
-                if get_payload_requests.len() == 2 && mock_engine_server.get_payload_response_second.is_some() {
-                    mock_engine_server.get_payload_response_second.clone().unwrap()
+                if get_payload_requests.len() == 2
+                    && mock_engine_server.get_payload_response_second.is_some()
+                {
+                    mock_engine_server
+                        .get_payload_response_second
+                        .clone()
+                        .unwrap()
                 } else {
                     mock_engine_server.get_payload_response.clone()
                 }
@@ -1187,58 +1200,6 @@ pub mod tests {
         assert!(fcu_response.is_err());
     }
 
-    // Helper to create a test harness with custom external state root setting
-    async fn create_custom_test_harness(
-        l2_mock: MockEngineServer,
-        builder_mock: MockEngineServer,
-        external_state_root: bool,
-    ) -> (HttpClient, reqwest::Client, SocketAddr, ServerHandle) {
-        let jwt_secret = JwtSecret::random();
-        let l2_server_addr = {
-            let (server, addr) = spawn_server(l2_mock).await;
-            std::mem::forget(server);
-            addr
-        };
-        let builder_server_addr = {
-            let (server, addr) = spawn_server(builder_mock).await;
-            std::mem::forget(server);
-            addr
-        };
-
-        let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-        let l2_client = RpcClient::new(l2_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::L2).unwrap();
-        let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
-        let builder_client = Arc::new(
-            RpcClient::new(builder_auth_rpc.clone(), jwt_secret, 2000, PayloadSource::Builder).unwrap(),
-        );
-
-        let (probe_layer, probes) = ProbeLayer::new();
-        let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
-        probes.set_health(Health::Healthy);
-
-        let rollup_boost = RollupBoostServer::new(
-            l2_client, builder_client, execution_mode, None, probes.clone(), external_state_root, true,
-        );
-
-        let module: RpcModule<()> = rollup_boost.try_into().unwrap();
-        let http_middleware = tower::ServiceBuilder::new()
-            .layer(probe_layer)
-            .layer(ProxyLayer::new(l2_auth_rpc, jwt_secret, 1, builder_auth_rpc, jwt_secret, 1));
-
-        let server = Server::builder()
-            .set_http_middleware(http_middleware)
-            .build("127.0.0.1:0".parse::<SocketAddr>().unwrap())
-            .await
-            .unwrap();
-
-        let server_addr = server.local_addr().expect("missing server address");
-        let server_handle = server.start(module);
-        let rpc_client = HttpClient::builder().build(format!("http://{server_addr}")).unwrap();
-        let http_client = reqwest::Client::new();
-
-        (rpc_client, http_client, server_addr, server_handle)
-    }
-
     // Helper function to create mock servers and run a test scenario
     async fn run_health_test_scenario(
         l2_mock: MockEngineServer,
@@ -1247,73 +1208,49 @@ pub mod tests {
         external_state_root: bool,
         expect_l2_get_payload_success: bool,
     ) {
-        // Run the test flow
-        if external_state_root {
-            let (rpc_client, http_client, server_addr, server_handle) = 
-                create_custom_test_harness(l2_mock, builder_mock.unwrap(), true).await;
-            
-            let response = rpc_client
-                .fork_choice_updated_v3(
-                    ForkchoiceState {
-                        head_block_hash: FixedBytes::random(),
-                        safe_block_hash: FixedBytes::random(),
-                        finalized_block_hash: FixedBytes::random(),
-                    },
-                    Some(OpPayloadAttributes { gas_limit: Some(1000000), ..Default::default() }),
-                )
-                .await;
-            assert!(response.is_ok());
+        let test_harness = TestHarness::new_with_external_state_root(
+            Some(l2_mock),
+            builder_mock,
+            external_state_root,
+        )
+        .await;
 
-            let payload_id = response.unwrap().payload_id.unwrap();
-            let get_payload_response = rpc_client.get_payload_v3(payload_id).await;
-            if expect_l2_get_payload_success {
-                assert!(get_payload_response.is_ok());
-            } else {
-                assert!(get_payload_response.is_err());
-            }
+        let response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(
+                ForkchoiceState {
+                    head_block_hash: FixedBytes::random(),
+                    safe_block_hash: FixedBytes::random(),
+                    finalized_block_hash: FixedBytes::random(),
+                },
+                Some(OpPayloadAttributes {
+                    gas_limit: Some(1000000),
+                    ..Default::default()
+                }),
+            )
+            .await;
+        assert!(response.is_ok());
 
-            let health = http_client.get(format!("http://{server_addr}/healthz")).send().await.unwrap();
-            assert_eq!(health.status(), expected_health);
-
-            server_handle.stop().unwrap();
-            server_handle.stopped().await;
-            return;
+        let payload_id = response.unwrap().payload_id.unwrap();
+        let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
+        if expect_l2_get_payload_success {
+            assert!(get_payload_response.is_ok());
         } else {
-            let test_harness = TestHarness::new(Some(l2_mock), builder_mock).await;
-            
-            let response = test_harness
-                .rpc_client
-                .fork_choice_updated_v3(
-                    ForkchoiceState {
-                        head_block_hash: FixedBytes::random(),
-                        safe_block_hash: FixedBytes::random(),
-                        finalized_block_hash: FixedBytes::random(),
-                    },
-                    Some(OpPayloadAttributes { gas_limit: Some(1000000), ..Default::default() }),
-                )
-                .await;
-            assert!(response.is_ok());
-
-            let payload_id = response.unwrap().payload_id.unwrap();
-            let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
-            if expect_l2_get_payload_success {
-                assert!(get_payload_response.is_ok());
-            } else {
-                assert!(get_payload_response.is_err());
-            }
-
-            let health = test_harness.get("healthz").await;
-            assert_eq!(health.status(), expected_health);
-
-            test_harness.cleanup().await;
+            assert!(get_payload_response.is_err());
         }
+
+        let health = test_harness.get("healthz").await;
+        assert_eq!(health.status(), expected_health);
+
+        test_harness.cleanup().await;
     }
 
     #[tokio::test]
     async fn builder_api_failure_vs_processing_failure() {
         let payload_id = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]);
-        let valid_fcu = ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))
-            .with_payload_id(payload_id);
+        let valid_fcu =
+            ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))
+                .with_payload_id(payload_id);
 
         // Test 1: Builder API failure should mark as unhealthy
         {
@@ -1323,10 +1260,19 @@ pub mod tests {
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
             builder_mock.get_payload_response = Err(ErrorObject::owned(
-                INVALID_REQUEST_CODE, "Builder API failed", None::<String>,
+                INVALID_REQUEST_CODE,
+                "Builder API failed",
+                None::<String>,
             ));
 
-            run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::PARTIAL_CONTENT, false, true).await;
+            run_health_test_scenario(
+                l2_mock,
+                Some(builder_mock),
+                StatusCode::PARTIAL_CONTENT,
+                false,
+                true,
+            )
+            .await;
         }
 
         // Test 2: L2 validation failure
@@ -1334,17 +1280,28 @@ pub mod tests {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
             l2_mock.new_payload_response = Err(ErrorObject::owned(
-                INVALID_REQUEST_CODE, "L2 validation failed", None::<String>,
+                INVALID_REQUEST_CODE,
+                "L2 validation failed",
+                None::<String>,
             ));
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
-            builder_mock.get_payload_response = builder_mock.get_payload_response.clone().map(|mut p| {
-                p.block_value = U256::from(15); p
-            });
+            builder_mock.get_payload_response =
+                builder_mock.get_payload_response.clone().map(|mut p| {
+                    p.block_value = U256::from(15);
+                    p
+                });
 
             // no external state root, mark unhealthy
-            run_health_test_scenario(l2_mock.clone(), Some(builder_mock.clone()), StatusCode::PARTIAL_CONTENT, false, true).await;
+            run_health_test_scenario(
+                l2_mock.clone(),
+                Some(builder_mock.clone()),
+                StatusCode::PARTIAL_CONTENT,
+                false,
+                true,
+            )
+            .await;
 
             // with external state root, mark healthy
             run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::OK, true, true).await;
@@ -1355,16 +1312,20 @@ pub mod tests {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
             l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut p| {
-                p.block_value = U256::from(5); p
+                p.block_value = U256::from(5);
+                p
             });
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
-            builder_mock.get_payload_response = builder_mock.get_payload_response.clone().map(|mut p| {
-                p.block_value = U256::from(20); p
-            });
+            builder_mock.get_payload_response =
+                builder_mock.get_payload_response.clone().map(|mut p| {
+                    p.block_value = U256::from(20);
+                    p
+                });
 
-            run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::OK, false, true).await;
+            run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::OK, false, true)
+                .await;
         }
 
         // Test 4: Builder FCU fails (no payload tracked) - should mark as unhealthy
@@ -1372,15 +1333,25 @@ pub mod tests {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
             l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut p| {
-                p.block_value = U256::from(8); p
+                p.block_value = U256::from(8);
+                p
             });
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Err(ErrorObject::owned(
-                INVALID_REQUEST_CODE, "Builder FCU failed", None::<String>,
+                INVALID_REQUEST_CODE,
+                "Builder FCU failed",
+                None::<String>,
             ));
 
-            run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::PARTIAL_CONTENT, false, true).await;
+            run_health_test_scenario(
+                l2_mock,
+                Some(builder_mock),
+                StatusCode::PARTIAL_CONTENT,
+                false,
+                true,
+            )
+            .await;
         }
 
         // Test 5: External state root - L2 second call fails but builder API succeeded
@@ -1394,15 +1365,18 @@ pub mod tests {
             });
             // Second L2 get_payload call (for external state root) fails
             l2_mock.get_payload_response_second = Some(Err(ErrorObject::owned(
-                INVALID_REQUEST_CODE, "L2 external state root failed", None::<String>,
+                INVALID_REQUEST_CODE,
+                "L2 external state root failed",
+                None::<String>,
             )));
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
-            builder_mock.get_payload_response = builder_mock.get_payload_response.clone().map(|mut p| {
-                p.block_value = U256::from(30);
-                p
-            });
+            builder_mock.get_payload_response =
+                builder_mock.get_payload_response.clone().map(|mut p| {
+                    p.block_value = U256::from(30);
+                    p
+                });
 
             run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::OK, true, true).await;
         }
