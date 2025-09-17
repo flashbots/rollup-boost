@@ -190,23 +190,6 @@ impl RollupBoostArgs {
                 // Spawn the debug server
                 rollup_boost.start_debug_server(debug_addr.as_str()).await?;
                 (rollup_boost.try_into()?, health_handle)
-            } else if let Some(flashblocks_p2p) = self.flashblocks_p2p {
-                let rollup_boost = RollupBoostServer::new(
-                    l2_client,
-                    Arc::new(builder_client),
-                    execution_mode.clone(),
-                    self.block_selection_policy,
-                    probes.clone(),
-                    self.external_state_root,
-                    self.ignore_unhealthy_builders,
-                );
-
-                let health_handle = rollup_boost
-                    .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
-
-                // Spawn the debug server
-                rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-                (rollup_boost.try_into()?, health_handle)
             } else {
                 let rollup_boost = RollupBoostServer::new(
                     l2_client,
@@ -347,7 +330,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-ws",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",
@@ -355,9 +338,9 @@ pub mod tests {
         ])?;
 
         let flashblocks = args
-            .flashblocks
+            .flashblocks_ws
             .expect("flashblocks should be Some when flag is passed");
-        assert!(flashblocks.flashblocks);
+        assert!(flashblocks.flashblocks_ws);
 
         Ok(())
     }
@@ -370,7 +353,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-ws",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",
@@ -417,7 +400,7 @@ pub mod tests {
             "6666",
             "--execution-mode",
             "disabled",
-            "--flashblocks",
+            "--flashblocks-ws",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",
@@ -464,7 +447,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-ws",
             "--flashblocks-authorizer-sk",
             "invalid_hex",
             "--flashblocks-builder-vk",
@@ -482,7 +465,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-ws",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",

@@ -14,6 +14,8 @@ mod outbound;
 mod args;
 pub use args::*;
 
+mod metrics;
+
 mod error;
 
 mod p2p;
