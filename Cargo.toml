@@ -1,16 +1,10 @@
 [workspace]
 resolver = "3"
 
-members = [
-    "crates/rollup-boost",
-    "crates/flashblocks-rpc",
-    "crates/flashblocks-p2p",
-    "crates/flashblocks-node",
-]
+members = ["crates/rollup-boost", "crates/flashblocks-rpc"]
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
-flashblocks-p2p = { path = "crates/flashblocks-p2p" }
 flashblocks-rpc = { path = "crates/flashblocks-rpc" }
 
 tracing = "0.1.4"

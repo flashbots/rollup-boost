@@ -1,10 +1,12 @@
+use alloy_consensus::BlockHeader;
 use alloy_consensus::Transaction as _;
-use alloy_consensus::TxReceipt as _;
+use alloy_consensus::TxReceipt;
 use alloy_consensus::transaction::SignerRecoverable;
 use alloy_consensus::transaction::TransactionMeta;
 use alloy_primitives::{Address, Sealable, TxHash, U256};
 use alloy_rpc_types::Withdrawals;
 use alloy_rpc_types::{BlockTransactions, Header, TransactionInfo};
+use arc_swap::ArcSwap;
 use op_alloy_consensus::OpTxEnvelope;
 use op_alloy_network::Optimism;
 use op_alloy_rpc_types::OpTransactionReceipt;
@@ -24,11 +26,7 @@ use rollup_boost::{
 };
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::{
-    collections::HashMap,
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Metadata {
@@ -37,40 +35,46 @@ pub struct Metadata {
     pub block_number: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FlashblocksCache {
-    inner: Arc<Mutex<FlashblocksCacheInner>>,
+    inner: Arc<ArcSwap<FlashblocksCacheInner>>,
+    // TODO: add arc_swap::Cache to speed it up even more
 }
 
 impl FlashblocksCache {
     pub fn new(chain_spec: Arc<OpChainSpec>) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(FlashblocksCacheInner::new(chain_spec))),
+            inner: Arc::new(ArcSwap::from_pointee(FlashblocksCacheInner::new(
+                chain_spec,
+            ))),
         }
     }
 
     pub fn get_block(&self, full: bool) -> Option<RpcBlock<Optimism>> {
-        self.inner.lock().unwrap().get_block(full)
+        ArcSwap::load(&self.inner).get_block(full)
     }
 
     pub fn get_transaction_count(&self, address: Address) -> Option<u64> {
-        self.inner.lock().unwrap().get_nonce(address)
+        ArcSwap::load(&self.inner).get_nonce(address)
     }
 
     pub fn get_balance(&self, address: Address) -> Option<U256> {
-        self.inner.lock().unwrap().get_balance(address)
+        ArcSwap::load(&self.inner).get_balance(address)
     }
 
     pub fn get_receipt(&self, tx_hash: &TxHash) -> Option<RpcReceipt<Optimism>> {
-        self.inner.lock().unwrap().get_receipt(tx_hash)
+        ArcSwap::load(&self.inner).get_receipt(tx_hash)
     }
 
     pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
-        self.inner.lock().unwrap().process_payload(payload)
+        let mut new_state = FlashblocksCacheInner::clone(&self.inner.load_full());
+        new_state.process_payload(payload)?;
+        self.inner.store(Arc::new(new_state));
+        Ok(())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct FlashblocksCacheInner {
     chain_spec: Arc<OpChainSpec>,
     builder: FlashblockBuilder,
@@ -200,31 +204,38 @@ impl FlashblocksCacheInner {
             // The first transaction in an Op block is the L1 info transaction.
             let mut l1_block_info =
                 extract_l1_info(&block.body).expect("failed to extract l1 info");
+            let block_number = block.number();
+            let base_fee = block.base_fee_per_gas();
+            let block_hash = block.hash_slow();
+            let excess_blob_gas = block.excess_blob_gas();
+            let timestamp = block.timestamp();
+            let mut gas_used = 0;
+            let mut next_log_index = 0;
 
             // build the receipts
-            for (idx, tx) in block.body.transactions.iter().cloned().enumerate() {
+            for (indx, tx) in block.body.transactions.iter().enumerate() {
                 let receipt = all_receipts
-                    .get(idx)
+                    .get(indx)
                     .expect("Receipt should exist for transaction");
-
-                let meta = TransactionMeta::default();
-                let mut next_log_index = 0;
-                let mut gas_used = 0;
-                if meta.index > 0 {
-                    for receipt in all_receipts.iter().take(meta.index as usize) {
-                        gas_used = receipt.cumulative_gas_used();
-                        next_log_index += receipt.logs().len();
-                    }
-                }
-                let tx = tx.try_into_recovered_unchecked()?;
-
+                let meta = TransactionMeta {
+                    tx_hash: tx.tx_hash(),
+                    index: indx as u64,
+                    block_hash,
+                    block_number,
+                    base_fee,
+                    excess_blob_gas,
+                    timestamp,
+                };
                 let input: ConvertReceiptInput<'_, OpPrimitives> = ConvertReceiptInput {
-                    tx: tx.as_recovered_ref(),
+                    receipt: Cow::Borrowed(receipt),
+                    tx: tx.try_to_recovered_ref()?,
                     gas_used: receipt.cumulative_gas_used() - gas_used,
-                    receipt: Cow::Owned(receipt.clone()),
                     next_log_index,
                     meta,
                 };
+
+                gas_used = receipt.cumulative_gas_used();
+                next_log_index += receipt.logs().len();
 
                 let rpc_receipt =
                     OpReceiptBuilder::new(&self.chain_spec.clone(), input, &mut l1_block_info)
