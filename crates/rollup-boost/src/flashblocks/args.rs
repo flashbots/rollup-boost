@@ -3,12 +3,48 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 
 use hex::FromHex;
 
-#[derive(Args, Clone, Debug)]
-#[group(requires = "flashblocks")]
-pub struct FlashblocksArgs {
+#[derive(Parser, Clone, Debug)]
+#[group(requires = "flashblocks_ws")]
+pub struct FlashblocksWsArgs {
     /// Enable Flashblocks client
-    #[arg(long, env, required = false)]
-    pub flashblocks: bool,
+    #[arg(
+        long,
+        id = "flashblocks_ws",
+        conflicts = "flashblocks_p2p",
+        env,
+        default_value = "false"
+    )]
+    pub flashblocks_ws: bool,
+
+    /// Flashblocks Builder WebSocket URL
+    #[arg(long, env, default_value = "ws://127.0.0.1:1111")]
+    pub flashblocks_builder_url: Url,
+
+    /// Flashblocks WebSocket host for outbound connections
+    #[arg(long, env, default_value = "127.0.0.1")]
+    pub flashblocks_host: String,
+
+    /// Flashblocks WebSocket port for outbound connections
+    #[arg(long, env, default_value = "1112")]
+    pub flashblocks_port: u16,
+
+    /// Time used for timeout if builder disconnected
+    #[arg(long, env, default_value = "5000")]
+    pub flashblock_builder_ws_reconnect_ms: u64,
+}
+
+#[derive(Args, Clone, Debug)]
+#[group(requires = "flashblocks_p2p")]
+pub struct FlashblocksP2PArgs {
+    /// Enable Flashblocks client
+    #[arg(
+        long,
+        id = "flashblocks_p2p",
+        conflicts = "flashblocks_ws",
+        env,
+        required = false
+    )]
+    pub flashblocks_p2p: bool,
 
     #[arg(
         long,
