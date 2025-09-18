@@ -1,6 +1,6 @@
 ![Rollup Boost banner](./assets/Rollup-Boost_brand-assets/rollup-boost_banner.png)
 
-[![Test status](https://github.com/flashbots/rollup-boost/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/flashbots/rollup-boost/actions?query=workflow%3A%22Tests%22)
+[![Test status](https://github.com/flashbots/rollup-boost/actions/workflows/integration.yml/badge.svg)](https://github.com/flashbots/rollup-boost/actions)
 
 # Rollup Boost
 
