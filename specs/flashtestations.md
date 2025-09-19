@@ -248,10 +248,10 @@ class TDReport():
 
 **Field descriptions:**
 
-- `TEETCBSVN`: TEE Trusted Computing Base Security Version Numbers (SVNs); indicates platform patch level. Checked against onchain pcs.
-- `MRSEAM`: Measurement of the TDX SEAM module itself. Checked against onchain pcs.
-- `SEAMATTRIBUTES`: TDX SEAM module attributes. All zeroes in production mode.
-- `MRSIGNERSEAM`: Measurement of the TDX SEAM module's signer (Intel). Not considered.
+- `TEETCBSVN`: TEE Trusted Computing Base Security Version Numbers (SVNs); indicates platform patch level. Checked against onchain collateral.
+- `MRSEAM`: Measurement of the TDX SEAM module itself. Checked against onchain collateral.
+- `SEAMATTRIBUTES`: TDX SEAM module attributes. All zeroes in production mode, checked against onchain collateral.
+- `MRSIGNERSEAM`: Measurement of the TDX SEAM module's signer (Intel). Checked against onchain collateral.
 - `MRTD`: Initial TD measurement (boot loader, initial data). Should be part of the WorkloadId.
 - `RTMR`: Runtime measurements (linux kernel, initramfs, etc.). Should be part of the WorkloadId.
 - `MROWNER`: Measurement register that takes arbitrary information and can be set by the TEE infrastructure operator before the startup of the VM. Currently not used.
