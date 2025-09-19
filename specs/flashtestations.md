@@ -233,9 +233,9 @@ The TD Report includes the core information used for attestation of the TDX Quot
 ```python
 class TDReport():
     TEETCBSVN: Bytes16
-    MRSEAMSVN: uint16
-    MRSIGNERSEAM: Bytes48
     MRSEAM: Bytes48
+    SEAMATTRIBUTES: bytes8
+    MRSIGNERSEAM: Bytes48
     MRTD: Bytes48
     RTMR: List[Bytes48, size=4]
     MROWNER: Bytes48
@@ -248,17 +248,17 @@ class TDReport():
 
 **Field descriptions:**
 
-- `TEETCBSVN`: TEE Trusted Computing Base Security Version Numbers (SVNs); indicates platform patch level.
-- `MRSEAMSVN`: Security Version Number of the TDX module (SEAM).
-- `MRSIGNERSEAM`: Measurement of the TDX SEAM module's signer (Intel).
-- `MRSEAM`: Measurement of the TDX SEAM module itself.
-- `MRTD`: Initial TD measurement (boot loader, initial data).
-- `RTMR`: Runtime measurements (linux kernel, initramfs, etc.).
-- `MROWNER`: Measurement register that takes arbitrary information and can be set by the TEE infrastructure operator before the startup of the VM
+- `TEETCBSVN`: TEE Trusted Computing Base Security Version Numbers (SVNs); indicates platform patch level. Checked against onchain pcs.
+- `MRSEAM`: Measurement of the TDX SEAM module itself. Checked against onchain pcs.
+- `SEAMATTRIBUTES`: TDX SEAM module attributes. All zeroes in production mode.
+- `MRSIGNERSEAM`: Measurement of the TDX SEAM module's signer (Intel). Not considered.
+- `MRTD`: Initial TD measurement (boot loader, initial data). Should be part of the WorkloadId.
+- `RTMR`: Runtime measurements (linux kernel, initramfs, etc.). Should be part of the WorkloadId.
+- `MROWNER`: Measurement register that takes arbitrary information and can be set by the TEE infrastructure operator before the startup of the VM. Currently not used.
 - `MROWNERCONFIG`: same as `MROWNER`
 - `MRCONFIGID`: same as `MROWNER`
-- `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain.
-- `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain.
+- `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain. It's important to verify debug and performance measurements flags are not set.
+- `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain. It's important to verify which flags are set.
 - `ReportData`: Confidential-VM defined data included in the report (e.g., public key hash).
 
 ### **`DCAPEndorsements`**
