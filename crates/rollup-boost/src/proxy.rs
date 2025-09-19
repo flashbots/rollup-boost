@@ -1,15 +1,14 @@
-use crate::client::http::HttpClient;
+use crate::RpcProxyClient;
 use crate::payload::PayloadSource;
-use crate::{Request, Response, from_buffered_request, into_buffered_request};
 use alloy_rpc_types_engine::JwtSecret;
 use http::Uri;
-use http_body_util::BodyExt as _;
-use jsonrpsee::core::BoxError;
-use jsonrpsee::server::HttpBody;
-use std::task::{Context, Poll};
-use std::{future::Future, pin::Pin};
-use tower::{Layer, Service};
-use tracing::info;
+use jsonrpsee::MethodResponse;
+use jsonrpsee::core::middleware::{Batch, Notification, RpcServiceT};
+use jsonrpsee_types::{ErrorCode, ErrorObject};
+use reth_rpc_eth_types::error::ToRpcError;
+use std::future::Future;
+use tower::Layer;
+use tracing::error;
 
 const ENGINE_METHOD: &str = "engine_";
 
@@ -57,14 +56,14 @@ impl<S> Layer<S> for ProxyLayer {
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        let l2_client = HttpClient::new(
+        let l2_client = RpcProxyClient::new(
             self.l2_auth_rpc.clone(),
             self.l2_auth_secret,
             PayloadSource::L2,
             self.l2_timeout,
         );
 
-        let builder_client = HttpClient::new(
+        let builder_client = RpcProxyClient::new(
             self.builder_auth_rpc.clone(),
             self.builder_auth_secret,
             PayloadSource::Builder,
@@ -82,83 +81,102 @@ impl<S> Layer<S> for ProxyLayer {
 #[derive(Clone)]
 pub struct ProxyService<S> {
     inner: S,
-    l2_client: HttpClient,
-    builder_client: HttpClient,
+    l2_client: RpcProxyClient,
+    builder_client: RpcProxyClient,
 }
 
-// Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
-impl<S> Service<Request> for ProxyService<S>
-where
-    S: Service<Request, Response = Response> + Send + Sync + Clone + 'static,
-    S::Response: 'static,
-    S::Error: Into<BoxError> + 'static,
-    S::Future: Send + 'static,
-{
-    type Response = Response;
-    type Error = BoxError;
-    type Future =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+impl<S> ProxyService<S> {
+    pub fn maybe_proxy_to_builder(&self, request: jsonrpsee::types::Request<'_>) {
+        if FORWARD_REQUESTS.contains(&request.method_name()) {
+            let method = request.method_name().to_string();
+            let params = request.params.map(|p| p.clone().to_string());
+            let builder_client = self.builder_client.clone();
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(Into::into)
-    }
-
-    fn call(&mut self, req: Request) -> Self::Future {
-        #[derive(serde::Deserialize, Debug)]
-        struct RpcRequest<'a> {
-            #[serde(borrow)]
-            method: &'a str,
+            tokio::spawn(async move {
+                let params_str = params.unwrap_or(String::from("[]"));
+                let params = serde_json::from_str::<serde_json::Value>(params_str.as_str());
+                let params = match params {
+                    Ok(params) => params,
+                    Err(err) => {
+                        error!("Failed to parse params from request: {}", err);
+                        return;
+                    }
+                };
+                // We handle the error inside request
+                let _ = builder_client
+                    .request::<_, serde_json::Value>(method.as_str(), params)
+                    .await;
+            });
         }
+    }
+    pub async fn proxy_to_el(&self, request: jsonrpsee::types::Request<'_>) -> MethodResponse {
+        let params = request.params();
+        let params_str = params.as_str().unwrap_or("[]");
 
-        // See https://github.com/tower-rs/tower/blob/abb375d08cf0ba34c1fe76f66f1aba3dc4341013/tower-service/src/lib.rs#L276
-        // for an explanation of this pattern
-        let mut service = self.clone();
-        service.inner = std::mem::replace(&mut self.inner, service.inner);
-
-        let fut = async move {
-            let buffered = into_buffered_request(req).await?;
-            let body_bytes = buffered.clone().collect().await?.to_bytes();
-
-            // Deserialize the bytes to find the method
-            let method = serde_json::from_slice::<RpcRequest>(&body_bytes)?
-                .method
-                .to_string();
-
-            // If the request is an Engine API method, call the inner RollupBoostServer
-            if method.starts_with(ENGINE_METHOD) {
-                info!(target: "proxy::call", message = "proxying request to rollup-boost server", ?method);
-                return service
-                    .inner
-                    .call(from_buffered_request(buffered))
-                    .await
-                    .map_err(|e| e.into());
+        let params = serde_json::from_str::<serde_json::Value>(params_str);
+        let params = match params {
+            Ok(params) => params,
+            Err(_e) => {
+                return MethodResponse::error(
+                    request.id.clone(),
+                    ErrorObject::from(ErrorCode::ParseError),
+                );
             }
-
-            if FORWARD_REQUESTS.contains(&method.as_str()) {
-                // If the request should be forwarded, send to both the
-                // default execution client and the builder
-                let method_clone = method.clone();
-                let buffered_clone = buffered.clone();
-                let mut builder_client = service.builder_client.clone();
-
-                // Fire and forget the builder request
-                tokio::spawn(async move {
-                    let _ = builder_client.forward(buffered_clone, method_clone).await;
-                });
-            }
-
-            // Return the response from the L2 client
-            service
-                .l2_client
-                .forward(buffered, method)
-                .await
-                .map(|res| res.map(HttpBody::new))
         };
-
-        Box::pin(fut)
+        let raw = self
+            .l2_client
+            .request::<_, serde_json::Value>(request.method_name(), params)
+            .await;
+        match raw {
+            Ok(raw) => {
+                let payload = jsonrpsee_types::ResponsePayload::success(raw).into();
+                MethodResponse::response(request.id.clone(), payload, usize::MAX)
+            }
+            Err(e) => {
+                MethodResponse::error(request.id.clone(), ErrorObject::from(e.to_rpc_error()))
+            }
+        }
     }
 }
 
+impl<S> RpcServiceT for ProxyService<S>
+where
+    S: RpcServiceT<MethodResponse = MethodResponse> + Send + Sync + Clone + 'static,
+{
+    type MethodResponse = S::MethodResponse;
+    type NotificationResponse = S::NotificationResponse;
+    type BatchResponse = S::BatchResponse;
+
+    fn call<'a>(
+        &self,
+        request: jsonrpsee::types::Request<'a>,
+    ) -> impl Future<Output = Self::MethodResponse> + Send + 'a {
+        // Workaround for lifetime issues
+        let service = self.clone();
+        Box::pin(async move {
+            if request.method_name().starts_with(ENGINE_METHOD) {
+                return service.inner.call(request).await;
+            }
+            // Proxy request to builder if needed
+            service.maybe_proxy_to_builder(request.clone());
+            service.proxy_to_el(request.clone()).await
+        })
+    }
+
+    fn batch<'a>(
+        &self,
+        requests: Batch<'a>,
+    ) -> impl Future<Output = Self::BatchResponse> + Send + 'a {
+        self.inner.batch(requests)
+    }
+
+    fn notification<'a>(
+        &self,
+        n: Notification<'a>,
+    ) -> impl Future<Output = Self::NotificationResponse> + Send + 'a {
+        self.inner.notification(n)
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::probe::ProbeLayer;
@@ -182,6 +200,7 @@ mod tests {
         rpc_params,
         server::{ServerBuilder, ServerHandle},
     };
+    use jsonrpsee_core::middleware::RpcServiceBuilder;
     use serde_json::json;
     use std::{
         net::{IpAddr, SocketAddr},
@@ -212,7 +231,7 @@ mod tests {
         async fn new() -> eyre::Result<Self> {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
-            let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
+            let middleware = RpcServiceBuilder::new().layer(ProxyLayer::new(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
                 1,
@@ -226,7 +245,7 @@ mod tests {
             drop(temp_listener);
 
             let server = Server::builder()
-                .set_http_middleware(middleware.clone())
+                .set_rpc_middleware(middleware.clone())
                 .build(server_addr)
                 .await?;
 
@@ -484,11 +503,8 @@ mod tests {
 
         // Create a layered server
         let server = ServerBuilder::default()
-            .set_http_middleware(
-                tower::ServiceBuilder::new()
-                    .layer(probe_layer)
-                    .layer(proxy_layer),
-            )
+            .set_http_middleware(tower::ServiceBuilder::new().layer(probe_layer))
+            .set_rpc_middleware(RpcServiceBuilder::new().layer(proxy_layer))
             .build(addr.parse::<SocketAddr>().unwrap())
             .await
             .unwrap();
