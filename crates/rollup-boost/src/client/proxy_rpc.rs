@@ -6,18 +6,15 @@ use crate::payload::PayloadSource;
 use alloy_json_rpc::{RpcError, RpcRecv, RpcSend};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::JwtSecret;
-use alloy_transport::{IntoBoxTransport, TransportResult};
+use alloy_transport::TransportResult;
 use alloy_transport_http::{Http, HyperClient};
 use http::Uri;
-use http_body_util::{BodyExt, Full};
-use hyper::body::Incoming;
+use http_body_util::Full;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use opentelemetry::trace::SpanKind;
 use tower::util::MapErrLayer;
 use tower::{BoxError, ServiceBuilder};
-use tower_http::decompression::{DecompressionBody, DecompressionLayer};
-use tower_http::map_response_body::MapResponseBodyLayer;
 use tracing::{debug, error, instrument};
 
 #[derive(Clone, Debug)]
@@ -40,7 +37,6 @@ impl RpcProxyClient {
         let client =
             Client::builder(TokioExecutor::new()).build::<_, Full<hyper::body::Bytes>>(connector);
 
-        // TODO: DecompressionLayer was removed, because there is no easy way to intergrate it with alloy_rpc_client::Client
         let service = ServiceBuilder::new()
             // This layer formats error, because timeout layer erases error types and we need it for alloy
             .layer(MapErrLayer::new(|e: BoxError| restore_error(e)))
