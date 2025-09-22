@@ -6,15 +6,18 @@ use crate::payload::PayloadSource;
 use alloy_json_rpc::{RpcError, RpcRecv, RpcSend};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::JwtSecret;
-use alloy_transport::TransportResult;
+use alloy_transport::{IntoBoxTransport, TransportResult};
 use alloy_transport_http::{Http, HyperClient};
 use http::Uri;
-use http_body_util::Full;
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use opentelemetry::trace::SpanKind;
 use tower::util::MapErrLayer;
 use tower::{BoxError, ServiceBuilder};
+use tower_http::decompression::{DecompressionBody, DecompressionLayer};
+use tower_http::map_response_body::MapResponseBodyLayer;
 use tracing::{debug, error, instrument};
 
 #[derive(Clone, Debug)]
@@ -37,18 +40,11 @@ impl RpcProxyClient {
         let client =
             Client::builder(TokioExecutor::new()).build::<_, Full<hyper::body::Bytes>>(connector);
 
+        // TODO: DecompressionLayer was removed, because there is no easy way to intergrate it with alloy_rpc_client::Client
         let service = ServiceBuilder::new()
             // This layer formats error, because timeout layer erases error types and we need it for alloy
             .layer(MapErrLayer::new(|e: BoxError| restore_error(e)))
-            // We need this layer because DecompressionLayer modifies responses and alloy rpc client requires it to be Incoming
-            // TODO: removing it for now until figured out
-            // .layer(MapResponseBodyLayer::new(
-            //     |a: DecompressionBody<Incoming>|  {
-            // Into inner does not decode the body
-            //         a.into_inner()
-            //     }
-            // ))
-            // .layer(DecompressionLayer::new())
+            // TODO: Add DecompressionLayer
             .layer(AuthLayer::new(secret))
             .timeout(Duration::from_secs(timeout))
             .service(client);
