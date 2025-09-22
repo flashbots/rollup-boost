@@ -1,8 +1,8 @@
-use crate::EngineApiExt;
 use crate::client::auth::AuthLayer;
 use crate::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion};
 use crate::server::EngineApiClient;
 use crate::version::{CARGO_PKG_VERSION, VERGEN_GIT_SHA};
+use crate::{Authorization, EngineApiExt, FlashblocksEngineApiClient};
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret, PayloadId,
@@ -10,6 +10,7 @@ use alloy_rpc_types_engine::{
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use clap::{Parser, arg};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use http::{HeaderMap, Uri};
 use jsonrpsee::core::async_trait;
 use jsonrpsee::core::middleware::layer::RpcLogger;
@@ -22,6 +23,7 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use paste::paste;
+use reth_optimism_payload_builder::payload_id_optimism;
 use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
@@ -97,6 +99,14 @@ impl From<RpcClientError> for ErrorObjectOwned {
     }
 }
 
+#[derive(Clone)]
+pub struct FlashblocksP2PKeys {
+    /// Flashblocks Authorization Secret
+    pub authorization_sk: SigningKey,
+    /// Flashblocks builder vk
+    pub builder_pk: VerifyingKey,
+}
+
 /// Client interface for interacting with execution layer node's Engine API.
 ///
 /// - **Engine API** calls are faciliated via the `auth_client` (requires JWT authentication).
@@ -109,6 +119,10 @@ pub struct RpcClient {
     auth_rpc: Uri,
     /// The source of the payload
     payload_source: PayloadSource,
+    /// Flashblocks keys
+    ///
+    /// `None` if p2p flashblocks are disabled
+    flashblocks_p2p_keys: Option<FlashblocksP2PKeys>,
 }
 
 impl RpcClient {
@@ -118,6 +132,7 @@ impl RpcClient {
         auth_rpc_jwt_secret: JwtSecret,
         timeout: u64,
         payload_source: PayloadSource,
+        flashblocks_p2p_keys: Option<FlashblocksP2PKeys>,
     ) -> Result<Self, RpcClientError> {
         let version = format!("{CARGO_PKG_VERSION}-{VERGEN_GIT_SHA}");
         let mut headers = HeaderMap::new();
@@ -134,6 +149,7 @@ impl RpcClient {
             auth_client,
             auth_rpc,
             payload_source,
+            flashblocks_p2p_keys,
         })
     }
 
@@ -155,11 +171,30 @@ impl RpcClient {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
-        let res = self
-            .auth_client
-            .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
-            .await
-            .set_code()?;
+        let res = match (&payload_attributes, &self.flashblocks_p2p_keys) {
+            (Some(attrs), Some(flashblocks)) => {
+                let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attrs, 3);
+                let authorization = Authorization::new(
+                    payload_id,
+                    attrs.payload_attributes.timestamp,
+                    &flashblocks.authorization_sk,
+                    flashblocks.builder_pk.clone(),
+                );
+                self.auth_client
+                    .flashblocks_fork_choice_updated_v3(
+                        fork_choice_state,
+                        payload_attributes.clone(),
+                        Some(authorization),
+                    )
+                    .await
+                    .set_code()?
+            }
+            _ => self
+                .auth_client
+                .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone())
+                .await
+                .set_code()?,
+        };
 
         if let Some(payload_id) = res.payload_id {
             tracing::Span::current().record("payload_id", payload_id.to_string());
@@ -457,7 +492,7 @@ pub mod tests {
         let port = get_available_port();
         let secret = JwtSecret::from_hex(SECRET).unwrap();
         let auth_rpc = Uri::from_str(&format!("http://{}:{}", AUTH_ADDR, port)).unwrap();
-        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2).unwrap();
+        let client = RpcClient::new(auth_rpc, secret, 1000, PayloadSource::L2, None).unwrap();
         let response = send_request(client.auth_client, port).await;
         assert!(response.is_ok());
         assert_eq!(response.unwrap(), "You are the dark lord");

@@ -17,6 +17,7 @@ tokio.workspace = true
 eyre.workspace = true
 url.workspace = true
 sha2.workspace = true
+arbitrary.workspace = true
 
 reth-optimism-payload-builder.workspace = true
 op-alloy-rpc-types-engine.workspace = true
@@ -24,6 +25,7 @@ alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
 alloy-primitives.workspace = true
 alloy-serde.workspace = true
+alloy-rlp.workspace = true
 
 tokio-tungstenite.workspace = true
 metrics-derive.workspace = true
@@ -66,7 +68,14 @@ parking_lot = "0.12.3"
 tokio-util = { version = "0.7.13" }
 dashmap = "6.1.0"
 
+ed25519-dalek = { version = "2", features = ["serde"] }
+blake3 = "1"                                            # fast hashing for payload IDs
+hex = "0.4"
+bytes = "1.2"
+
 [dev-dependencies]
+reth-rpc-layer.workspace = true
+tempfile = "3.20.0"
 rand = "0.9.0"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
 op-alloy-consensus.workspace = true
@@ -76,8 +85,6 @@ anyhow = "1.0"
 assert_cmd = "2.0.10"
 predicates = "3.1.2"
 tokio-util = { version = "0.7.13" }
-bytes = "1.2"
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.4.7" }
 ctor = "0.4.1"
 reqwest = "0.12.15"
 
