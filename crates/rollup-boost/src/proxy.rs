@@ -8,7 +8,7 @@ use jsonrpsee_types::{ErrorCode, ErrorObject};
 use reth_rpc_eth_types::error::ToRpcError;
 use std::future::Future;
 use tower::Layer;
-use tracing::error;
+use tracing::{error, info};
 
 const ENGINE_METHOD: &str = "engine_";
 
@@ -155,6 +155,7 @@ where
         let service = self.clone();
         Box::pin(async move {
             if request.method_name().starts_with(ENGINE_METHOD) {
+                info!(target: "proxy::call", message = "proxying request to rollup-boost server", method = request.method_name());
                 return service.inner.call(request).await;
             }
             // Proxy request to builder if needed
