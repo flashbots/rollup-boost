@@ -15,7 +15,7 @@ use hyper_util::rt::TokioExecutor;
 use opentelemetry::trace::SpanKind;
 use tower::util::MapErrLayer;
 use tower::{BoxError, ServiceBuilder};
-use tracing::{debug, error, instrument};
+use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
 pub struct RpcProxyClient {
@@ -66,7 +66,7 @@ impl RpcProxyClient {
             method,
             code,
         ),
-        err(Debug)
+        err(Display)
     )]
     pub async fn request<Params: RpcSend, Resp: RpcRecv>(
         &self,
@@ -80,10 +80,6 @@ impl RpcProxyClient {
             .request::<Params, Resp>(method.to_string(), params)
             .await
             .inspect_err(|err| {
-                error!(
-                    %err,
-                    "HTTP request to proxy failed"
-                );
                 if let RpcError::ErrorResp(err) = err {
                     tracing::Span::current().record("code", err.code);
                 }
