@@ -53,7 +53,6 @@ hyper = { version = "1.4.1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 hyper-rustls = { version = "0.27.0", features = ["ring"] }
 rustls = { version = "0.23.23", features = ["ring"] }
-reqwest = {workspace = true, features = ["native-tls", "deflate", "brotli", "zstd", "gzip", "json"]}
 opentelemetry = { version = "0.28.0", features = ["trace"] }
 opentelemetry-otlp = { version = "0.28.0", features = [
     "http-proto",
