@@ -41,7 +41,6 @@ pub enum FlashblocksError {
     MissingPayload,
 }
 
-
 // Simplify actor messages to just handle shutdown
 #[derive(Debug)]
 enum FlashblocksEngineMessage {

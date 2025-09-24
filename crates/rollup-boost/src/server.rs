@@ -913,9 +913,7 @@ pub mod tests {
         let new_payload_response = test_harness
             .rpc_client
             .new_payload_v3(
-                test_harness
-                    .l2_mock
-                    .get_payload_responses[0]
+                test_harness.l2_mock.get_payload_responses[0]
                     .clone()
                     .unwrap()
                     .execution_payload
@@ -937,9 +935,7 @@ pub mod tests {
                 new_payload_requests_mu.first().unwrap();
             assert_eq!(
                 req.0,
-                test_harness
-                    .l2_mock
-                    .get_payload_responses[0]
+                test_harness.l2_mock.get_payload_responses[0]
                     .clone()
                     .unwrap()
                     .execution_payload
@@ -987,10 +983,11 @@ pub mod tests {
             };
             status
         });
-        l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut payload| {
-            payload.block_value = U256::from(10);
-            payload
-        });
+        l2_mock.get_payload_responses[0] =
+            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                payload.block_value = U256::from(10);
+                payload
+            });
         let test_harness = TestHarness::new(Some(l2_mock), None).await;
 
         // test get_payload_v3 return l2 payload if builder payload is invalid
@@ -1039,14 +1036,17 @@ pub mod tests {
                     mock_engine_server.get_payload_responses[response_index].clone()
                 } else {
                     // If we have more calls than responses, use the last response
-                    mock_engine_server.get_payload_responses
+                    mock_engine_server
+                        .get_payload_responses
                         .last()
                         .cloned()
-                        .unwrap_or_else(|| Err(ErrorObject::owned(
-                            INVALID_REQUEST_CODE,
-                            "No response configured",
-                            None::<String>,
-                        )))
+                        .unwrap_or_else(|| {
+                            Err(ErrorObject::owned(
+                                INVALID_REQUEST_CODE,
+                                "No response configured",
+                                None::<String>,
+                            ))
+                        })
                 }
             })
             .unwrap();
@@ -1130,10 +1130,11 @@ pub mod tests {
             PayloadStatusEnum::Valid,
         ))
         .with_payload_id(payload_id));
-        l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut payload| {
-            payload.block_value = U256::from(10);
-            payload
-        });
+        l2_mock.get_payload_responses[0] =
+            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                payload.block_value = U256::from(10);
+                payload
+            });
 
         let mut builder_mock = MockEngineServer::new();
         builder_mock.fcu_response = Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(
@@ -1141,8 +1142,7 @@ pub mod tests {
         ))
         .with_payload_id(payload_id));
         builder_mock.get_payload_responses[0] =
-            builder_mock
-                .get_payload_responses[0]
+            builder_mock.get_payload_responses[0]
                 .clone()
                 .map(|mut payload| {
                     payload.block_value = U256::from(15);
@@ -1328,10 +1328,11 @@ pub mod tests {
         {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
-            l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut p| {
-                p.block_value = U256::from(5);
-                p
-            });
+            l2_mock.get_payload_responses[0] =
+                l2_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(5);
+                    p
+                });
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
@@ -1349,10 +1350,11 @@ pub mod tests {
         {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
-            l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut p| {
-                p.block_value = U256::from(8);
-                p
-            });
+            l2_mock.get_payload_responses[0] =
+                l2_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(8);
+                    p
+                });
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Err(ErrorObject::owned(
@@ -1376,10 +1378,11 @@ pub mod tests {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
             // First L2 get_payload call succeeds
-            l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut p| {
-                p.block_value = U256::from(5);
-                p
-            });
+            l2_mock.get_payload_responses[0] =
+                l2_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(5);
+                    p
+                });
             // Second L2 get_payload call (for external state root) fails
             l2_mock.get_payload_responses.push(Err(ErrorObject::owned(
                 INVALID_REQUEST_CODE,
