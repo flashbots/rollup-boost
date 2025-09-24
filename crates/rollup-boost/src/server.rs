@@ -44,8 +44,13 @@ pub type Response = HttpResponse;
 pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
 pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
-// Returns (payload_option, builder_api_failed)
-pub type BuilderResult = Result<(Option<OpExecutionPayloadEnvelope>, bool), ErrorObject<'static>>;
+#[derive(Debug)]
+pub struct BuilderPayloadResult {
+    pub payload: Option<OpExecutionPayloadEnvelope>,
+    pub builder_api_failed: bool,
+}
+
+pub type BuilderResult = Result<BuilderPayloadResult, ErrorObject<'static>>;
 
 #[derive(Clone)]
 pub struct RollupBoostServer<T: EngineApiExt> {
@@ -191,7 +196,10 @@ where
             {
                 info!(message = "builder has no payload, skipping get_payload call to builder");
                 tracing::Span::current().record("builder_has_payload", false);
-                return BuilderResult::Ok((None, true));
+                return BuilderResult::Ok(BuilderPayloadResult {
+                    payload: None,
+                    builder_api_failed: true,
+                });
             }
 
             // Get payload and validate with the local l2 client
@@ -202,7 +210,10 @@ where
                 Ok(payload) => payload,
                 Err(e) => {
                     error!(message = "error getting payload from builder", error = %e);
-                    return BuilderResult::Ok((None, true));
+                    return BuilderResult::Ok(BuilderPayloadResult {
+                        payload: None,
+                        builder_api_failed: true,
+                    });
                 }
             };
 
@@ -212,12 +223,19 @@ where
                     .new_payload(NewPayload::from(payload.clone()))
                     .await?;
 
-                return BuilderResult::Ok((Some(payload), false));
+                return BuilderResult::Ok(BuilderPayloadResult {
+                    payload: Some(payload),
+                    builder_api_failed: false,
+                });
             }
 
-            return self
+            let external_payload = self
                 .calculate_external_state_root(payload, payload_id, version)
-                .await;
+                .await?;
+            BuilderResult::Ok(BuilderPayloadResult {
+                payload: external_payload,
+                builder_api_failed: false,
+            })
         };
 
         let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
@@ -231,7 +249,7 @@ where
             // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
             // If there's an error, log it and return None instead.
             let (builder_payload, builder_api_failed) = match builder_payload {
-                Ok((payload, api_failed)) => (payload, api_failed),
+                Ok(result) => (result.payload, result.builder_api_failed),
                 Err(e) => {
                     error!(message = "error getting payload from builder", error = %e);
                     (None, true)
@@ -303,7 +321,7 @@ where
         builder_payload: OpExecutionPayloadEnvelope,
         payload_id: PayloadId,
         version: PayloadVersion,
-    ) -> BuilderResult {
+    ) -> Result<Option<OpExecutionPayloadEnvelope>, ErrorObject<'static>> {
         let fcu_info = self.payload_to_fcu_request.remove(&payload_id).unwrap().1;
 
         let new_payload_attrs = match fcu_info.1.as_ref() {
@@ -342,17 +360,17 @@ where
                         message = "received new state root payload from l2",
                         payload = ?new_payload,
                     );
-                    return BuilderResult::Ok((Some(new_payload), false));
+                    return Ok(Some(new_payload));
                 }
 
                 Err(e) => {
                     error!(message = "error getting new state root payload from l2", error = %e);
-                    return BuilderResult::Ok((None, false));
+                    return Ok(None);
                 }
             }
         }
 
-        BuilderResult::Ok((None, false))
+        Ok(None)
     }
 }
 
