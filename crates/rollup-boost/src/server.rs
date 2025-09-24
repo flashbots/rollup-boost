@@ -704,8 +704,7 @@ pub mod tests {
         pub get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
-        get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
-        get_payload_response_second: Option<RpcResult<OpExecutionPayloadEnvelopeV3>>,
+        get_payload_responses: Vec<RpcResult<OpExecutionPayloadEnvelopeV3>>,
         new_payload_response: RpcResult<PayloadStatus>,
 
         pub override_payload_id: Option<PayloadId>,
@@ -718,7 +717,7 @@ pub mod tests {
                 get_payload_requests: Arc::new(Mutex::new(vec![])),
                 new_payload_requests: Arc::new(Mutex::new(vec![])),
                 fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))),
-                get_payload_response: Ok(OpExecutionPayloadEnvelopeV3{
+                get_payload_responses: vec![Ok(OpExecutionPayloadEnvelopeV3{
                     execution_payload: ExecutionPayloadV3 {
                             payload_inner: ExecutionPayloadV2 {
                                 payload_inner: ExecutionPayloadV1 {
@@ -750,8 +749,7 @@ pub mod tests {
                     },
                 should_override_builder: false,
                 parent_beacon_block_root: B256::ZERO,
-            }),
-            get_payload_response_second: None,
+            })],
             override_payload_id: None,
             new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
         }
@@ -917,7 +915,7 @@ pub mod tests {
             .new_payload_v3(
                 test_harness
                     .l2_mock
-                    .get_payload_response
+                    .get_payload_responses[0]
                     .clone()
                     .unwrap()
                     .execution_payload
@@ -941,7 +939,7 @@ pub mod tests {
                 req.0,
                 test_harness
                     .l2_mock
-                    .get_payload_response
+                    .get_payload_responses[0]
                     .clone()
                     .unwrap()
                     .execution_payload
@@ -989,7 +987,7 @@ pub mod tests {
             };
             status
         });
-        l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut payload| {
+        l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut payload| {
             payload.block_value = U256::from(10);
             payload
         });
@@ -1035,16 +1033,20 @@ pub mod tests {
                 let mut get_payload_requests = mock_engine_server.get_payload_requests.lock();
                 get_payload_requests.push(params.0);
 
-                // If this is the second call and we have a second response configured, use it
-                if get_payload_requests.len() == 2
-                    && mock_engine_server.get_payload_response_second.is_some()
-                {
-                    mock_engine_server
-                        .get_payload_response_second
-                        .clone()
-                        .unwrap()
+                // Return the response based on the call index, or the last one if we exceed the list
+                let response_index = get_payload_requests.len().saturating_sub(1);
+                if response_index < mock_engine_server.get_payload_responses.len() {
+                    mock_engine_server.get_payload_responses[response_index].clone()
                 } else {
-                    mock_engine_server.get_payload_response.clone()
+                    // If we have more calls than responses, use the last response
+                    mock_engine_server.get_payload_responses
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| Err(ErrorObject::owned(
+                            INVALID_REQUEST_CODE,
+                            "No response configured",
+                            None::<String>,
+                        )))
                 }
             })
             .unwrap();
@@ -1128,7 +1130,7 @@ pub mod tests {
             PayloadStatusEnum::Valid,
         ))
         .with_payload_id(payload_id));
-        l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut payload| {
+        l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut payload| {
             payload.block_value = U256::from(10);
             payload
         });
@@ -1138,9 +1140,9 @@ pub mod tests {
             PayloadStatusEnum::Syncing,
         ))
         .with_payload_id(payload_id));
-        builder_mock.get_payload_response =
+        builder_mock.get_payload_responses[0] =
             builder_mock
-                .get_payload_response
+                .get_payload_responses[0]
                 .clone()
                 .map(|mut payload| {
                     payload.block_value = U256::from(15);
@@ -1277,7 +1279,7 @@ pub mod tests {
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
-            builder_mock.get_payload_response = Err(ErrorObject::owned(
+            builder_mock.get_payload_responses[0] = Err(ErrorObject::owned(
                 INVALID_REQUEST_CODE,
                 "Builder API failed",
                 None::<String>,
@@ -1305,8 +1307,8 @@ pub mod tests {
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
-            builder_mock.get_payload_response =
-                builder_mock.get_payload_response.clone().map(|mut p| {
+            builder_mock.get_payload_responses[0] =
+                builder_mock.get_payload_responses[0].clone().map(|mut p| {
                     p.block_value = U256::from(15);
                     p
                 });
@@ -1326,15 +1328,15 @@ pub mod tests {
         {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
-            l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut p| {
+            l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut p| {
                 p.block_value = U256::from(5);
                 p
             });
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
-            builder_mock.get_payload_response =
-                builder_mock.get_payload_response.clone().map(|mut p| {
+            builder_mock.get_payload_responses[0] =
+                builder_mock.get_payload_responses[0].clone().map(|mut p| {
                     p.block_value = U256::from(20);
                     p
                 });
@@ -1347,7 +1349,7 @@ pub mod tests {
         {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
-            l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut p| {
+            l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut p| {
                 p.block_value = U256::from(8);
                 p
             });
@@ -1374,12 +1376,12 @@ pub mod tests {
             let mut l2_mock = MockEngineServer::new();
             l2_mock.fcu_response = Ok(valid_fcu.clone());
             // First L2 get_payload call succeeds
-            l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut p| {
+            l2_mock.get_payload_responses[0] = l2_mock.get_payload_responses[0].clone().map(|mut p| {
                 p.block_value = U256::from(5);
                 p
             });
             // Second L2 get_payload call (for external state root) fails
-            l2_mock.get_payload_response_second = Some(Err(ErrorObject::owned(
+            l2_mock.get_payload_responses.push(Err(ErrorObject::owned(
                 INVALID_REQUEST_CODE,
                 "L2 external state root failed",
                 None::<String>,
@@ -1387,8 +1389,8 @@ pub mod tests {
 
             let mut builder_mock = MockEngineServer::new();
             builder_mock.fcu_response = Ok(valid_fcu.clone());
-            builder_mock.get_payload_response =
-                builder_mock.get_payload_response.clone().map(|mut p| {
+            builder_mock.get_payload_responses[0] =
+                builder_mock.get_payload_responses[0].clone().map(|mut p| {
                     p.block_value = U256::from(30);
                     p
                 });
