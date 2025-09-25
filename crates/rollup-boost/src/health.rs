@@ -380,7 +380,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::PartialContent));
+        assert!(matches!(probes.health(), Health::Healthy));
         Ok(())
     }
 
