@@ -1,6 +1,7 @@
 use crate::RpcProxyClient;
 use crate::payload::PayloadSource;
 use alloy_rpc_types_engine::JwtSecret;
+use futures::FutureExt;
 use http::Uri;
 use jsonrpsee::MethodResponse;
 use jsonrpsee::core::middleware::{Batch, Notification, RpcServiceT};
@@ -151,17 +152,19 @@ where
         &self,
         request: jsonrpsee::types::Request<'a>,
     ) -> impl Future<Output = Self::MethodResponse> + Send + 'a {
+        if request.method_name().starts_with(ENGINE_METHOD) {
+            info!(target: "proxy::call", message = "proxying request to rollup-boost server", method = request.method_name());
+            return self.inner.call(request).boxed();
+        }
         // Workaround for lifetime issues
-        let service = self.clone();
-        Box::pin(async move {
-            if request.method_name().starts_with(ENGINE_METHOD) {
-                info!(target: "proxy::call", message = "proxying request to rollup-boost server", method = request.method_name());
-                return service.inner.call(request).await;
-            }
+        let l2_client = self.l2_client.clone();
+        let builder_client = self.builder_client.clone();
+        async move {
             // Proxy request to builder if needed
-            service.maybe_proxy_to_builder(request.clone());
-            service.proxy_to_el(request.clone()).await
-        })
+            maybe_proxy_to_builder(builder_client, &request);
+            proxy_to_el(l2_client, request).await
+        }
+        .boxed()
     }
 
     fn batch<'a>(
@@ -178,6 +181,62 @@ where
         self.inner.notification(n)
     }
 }
+
+pub async fn proxy_to_el(
+    l2_client: RpcProxyClient,
+    request: jsonrpsee::types::Request<'_>,
+) -> MethodResponse {
+    let params = request.params();
+    let params_str = params.as_str().unwrap_or("[]");
+
+    let params = serde_json::from_str::<serde_json::Value>(params_str);
+    let params = match params {
+        Ok(params) => params,
+        Err(_e) => {
+            return MethodResponse::error(
+                request.id.clone(),
+                ErrorObject::from(ErrorCode::ParseError),
+            );
+        }
+    };
+    let raw = l2_client
+        .request::<_, serde_json::Value>(request.method_name(), params)
+        .await;
+    match raw {
+        Ok(raw) => {
+            let payload = jsonrpsee_types::ResponsePayload::success(raw).into();
+            MethodResponse::response(request.id.clone(), payload, usize::MAX)
+        }
+        Err(e) => MethodResponse::error(request.id.clone(), ErrorObject::from(e.to_rpc_error())),
+    }
+}
+
+pub fn maybe_proxy_to_builder(
+    builder_client: RpcProxyClient,
+    request: &jsonrpsee::types::Request<'_>,
+) {
+    if FORWARD_REQUESTS.contains(&request.method_name()) {
+        let method = request.method_name().to_string();
+        let params = request.params.clone().map(|p| p.to_string());
+
+        tokio::spawn(async move {
+            let params_str = params.unwrap_or(String::from("[]"));
+            let params = serde_json::from_str::<serde_json::Value>(params_str.as_str());
+            let params = match params {
+                Ok(params) => params,
+                Err(err) => {
+                    error!("Failed to parse params from request: {}", err);
+                    return;
+                }
+            };
+            // We handle the error inside request
+            let _ = builder_client
+                .request::<_, serde_json::Value>(method.as_str(), params)
+                .await;
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::probe::ProbeLayer;
