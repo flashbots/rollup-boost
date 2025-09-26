@@ -666,6 +666,7 @@ pub mod tests {
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
+    use jsonrpsee_core::middleware::RpcServiceBuilder;
     use parking_lot::Mutex;
     use std::net::SocketAddr;
     use std::str::FromStr;
@@ -786,20 +787,18 @@ pub mod tests {
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
 
-            let http_middleware =
-                tower::ServiceBuilder::new()
-                    .layer(probe_layer)
-                    .layer(ProxyLayer::new(
-                        l2_auth_rpc,
-                        jwt_secret,
-                        1,
-                        builder_auth_rpc,
-                        jwt_secret,
-                        1,
-                    ));
-
+            let http_middleware = tower::ServiceBuilder::new().layer(probe_layer);
+            let rpc_middleware = RpcServiceBuilder::new().layer(ProxyLayer::new(
+                l2_auth_rpc,
+                jwt_secret,
+                1,
+                builder_auth_rpc,
+                jwt_secret,
+                1,
+            ));
             let server = Server::builder()
                 .set_http_middleware(http_middleware)
+                .set_rpc_middleware(rpc_middleware)
                 .build("127.0.0.1:0".parse::<SocketAddr>().unwrap())
                 .await
                 .unwrap();
