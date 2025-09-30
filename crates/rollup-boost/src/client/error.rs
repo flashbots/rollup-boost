@@ -37,11 +37,11 @@ impl error::Error for HyperError {
     }
 }
 
-// We have 2 possible errors, one is hyper::Error by all layers except for timeout and another is timeout error.
-// If another layers with custom errors are added this function need to be extended
-pub fn restore_error(error: BoxError) -> HyperError {
-    error
-        .downcast::<hyper::Error>()
-        .map(HyperError::Hyper)
-        .unwrap_or_else(|_| HyperError::Timeout)
+impl From<BoxError> for HyperError {
+    fn from(value: BoxError) -> Self {
+        value
+            .downcast::<hyper::Error>()
+            .map(HyperError::Hyper)
+            .unwrap_or_else(|_| HyperError::Timeout)
+    }
 }

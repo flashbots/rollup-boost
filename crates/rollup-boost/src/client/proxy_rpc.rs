@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::AuthLayer;
-use crate::client::error::restore_error;
+use crate::client::error::HyperError;
 use crate::payload::PayloadSource;
 use alloy_json_rpc::{RpcError, RpcRecv, RpcSend};
 use alloy_rpc_client::RpcClient;
@@ -14,7 +14,7 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use opentelemetry::trace::SpanKind;
 use tower::util::MapErrLayer;
-use tower::{BoxError, ServiceBuilder};
+use tower::ServiceBuilder;
 use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
@@ -28,7 +28,7 @@ impl RpcProxyClient {
     pub fn new(url: Uri, secret: JwtSecret, target: PayloadSource, timeout: u64) -> Self {
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
-            .expect("no native root CA certificates found")
+            .expect("can find native root CA certificates")
             .https_or_http()
             .enable_http1()
             .enable_http2()
@@ -39,7 +39,7 @@ impl RpcProxyClient {
 
         let service = ServiceBuilder::new()
             // This layer formats error, because timeout layer erases error types and we need it for alloy
-            .layer(MapErrLayer::new(|e: BoxError| restore_error(e)))
+            .layer(MapErrLayer::new(HyperError::from))
             // TODO: Add DecompressionLayer
             .layer(AuthLayer::new(secret))
             .timeout(Duration::from_secs(timeout))
