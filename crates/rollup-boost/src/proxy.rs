@@ -86,60 +86,6 @@ pub struct ProxyService<S> {
     builder_client: RpcProxyClient,
 }
 
-impl<S> ProxyService<S> {
-    pub fn maybe_proxy_to_builder(&self, request: jsonrpsee::types::Request<'_>) {
-        if FORWARD_REQUESTS.contains(&request.method_name()) {
-            let method = request.method_name().to_string();
-            let params = request.params.map(|p| p.clone().to_string());
-            let builder_client = self.builder_client.clone();
-
-            tokio::spawn(async move {
-                let params_str = params.unwrap_or(String::from("[]"));
-                let params = serde_json::from_str::<serde_json::Value>(params_str.as_str());
-                let params = match params {
-                    Ok(params) => params,
-                    Err(err) => {
-                        error!("Failed to parse params from request: {}", err);
-                        return;
-                    }
-                };
-                // We handle the error inside request
-                let _ = builder_client
-                    .request::<_, serde_json::Value>(method.as_str(), params)
-                    .await;
-            });
-        }
-    }
-    pub async fn proxy_to_el(&self, request: jsonrpsee::types::Request<'_>) -> MethodResponse {
-        let params = request.params();
-        let params_str = params.as_str().unwrap_or("[]");
-
-        let params = serde_json::from_str::<serde_json::Value>(params_str);
-        let params = match params {
-            Ok(params) => params,
-            Err(_e) => {
-                return MethodResponse::error(
-                    request.id.clone(),
-                    ErrorObject::from(ErrorCode::ParseError),
-                );
-            }
-        };
-        let raw = self
-            .l2_client
-            .request::<_, serde_json::Value>(request.method_name(), params)
-            .await;
-        match raw {
-            Ok(raw) => {
-                let payload = jsonrpsee_types::ResponsePayload::success(raw).into();
-                MethodResponse::response(request.id.clone(), payload, usize::MAX)
-            }
-            Err(e) => {
-                MethodResponse::error(request.id.clone(), ErrorObject::from(e.to_rpc_error()))
-            }
-        }
-    }
-}
-
 impl<S> RpcServiceT for ProxyService<S>
 where
     S: RpcServiceT<MethodResponse = MethodResponse> + Send + Sync + Clone + 'static,
@@ -156,7 +102,6 @@ where
             info!(target: "proxy::call", message = "proxying request to rollup-boost server", method = request.method_name());
             return self.inner.call(request).boxed();
         }
-        // Workaround for lifetime issues
         let l2_client = self.l2_client.clone();
         let builder_client = self.builder_client.clone();
         async move {
