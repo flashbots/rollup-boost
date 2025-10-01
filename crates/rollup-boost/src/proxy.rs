@@ -1,8 +1,5 @@
 use crate::RpcProxyClient;
-use crate::payload::PayloadSource;
-use alloy_rpc_types_engine::JwtSecret;
 use futures::FutureExt;
-use http::Uri;
 use jsonrpsee::MethodResponse;
 use jsonrpsee::core::middleware::{Batch, Notification, RpcServiceT};
 use jsonrpsee_types::{ErrorCode, ErrorObject};
@@ -25,30 +22,15 @@ const FORWARD_REQUESTS: [&str; 6] = [
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
-    l2_auth_rpc: Uri,
-    l2_auth_secret: JwtSecret,
-    l2_timeout: u64,
-    builder_auth_rpc: Uri,
-    builder_auth_secret: JwtSecret,
-    builder_timeout: u64,
+    l2_client: RpcProxyClient,
+    builder_client: RpcProxyClient,
 }
 
 impl ProxyLayer {
-    pub fn new(
-        l2_auth_rpc: Uri,
-        l2_auth_secret: JwtSecret,
-        l2_timeout: u64,
-        builder_auth_rpc: Uri,
-        builder_auth_secret: JwtSecret,
-        builder_timeout: u64,
-    ) -> Self {
+    pub fn new(l2_client: RpcProxyClient, builder_client: RpcProxyClient) -> Self {
         ProxyLayer {
-            l2_auth_rpc,
-            l2_auth_secret,
-            l2_timeout,
-            builder_auth_rpc,
-            builder_auth_secret,
-            builder_timeout,
+            l2_client,
+            builder_client,
         }
     }
 }
@@ -57,24 +39,10 @@ impl<S> Layer<S> for ProxyLayer {
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        let l2_client = RpcProxyClient::new(
-            self.l2_auth_rpc.clone(),
-            self.l2_auth_secret,
-            PayloadSource::L2,
-            self.l2_timeout,
-        );
-
-        let builder_client = RpcProxyClient::new(
-            self.builder_auth_rpc.clone(),
-            self.builder_auth_secret,
-            PayloadSource::Builder,
-            self.builder_timeout,
-        );
-
         ProxyService {
             inner,
-            l2_client,
-            builder_client,
+            l2_client: self.l2_client.clone(),
+            builder_client: self.builder_client.clone(),
         }
     }
 }
@@ -236,14 +204,18 @@ mod tests {
         async fn new() -> eyre::Result<Self> {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
-            let middleware = RpcServiceBuilder::new().layer(ProxyLayer::new(
+            let l2_client = RpcProxyClient::new_l2(
                 format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
                 1,
+            );
+            let builder_client = RpcProxyClient::new_builder(
                 format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
                 JwtSecret::random(),
                 1,
-            ));
+            );
+            let middleware =
+                RpcServiceBuilder::new().layer(ProxyLayer::new(l2_client, builder_client));
 
             let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
             let server_addr = temp_listener.local_addr()?;
@@ -504,7 +476,10 @@ mod tests {
         .unwrap();
 
         let (probe_layer, _) = ProbeLayer::new();
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, 1, l2_auth_uri, jwt, 1);
+        let l2_client = RpcProxyClient::new_l2(l2_auth_uri.clone(), jwt, 1);
+        let builder_client = RpcProxyClient::new_builder(l2_auth_uri, jwt, 1);
+
+        let proxy_layer = ProxyLayer::new(l2_client, builder_client);
 
         // Create a layered server
         let server = ServerBuilder::default()

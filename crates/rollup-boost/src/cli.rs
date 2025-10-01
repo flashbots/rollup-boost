@@ -15,6 +15,7 @@ use tracing::{Level, info};
 
 use crate::{
     BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
+    RpcProxyClient,
     client::rpc::{BuilderArgs, L2ClientArgs},
     debug_api::ExecutionMode,
     get_version, init_metrics,
@@ -203,14 +204,18 @@ impl RollupBoostArgs {
         info!("Starting server on :{}", self.rpc_port);
 
         let http_middleware = tower::ServiceBuilder::new().layer(probe_layer);
-        let rpc_middleware = RpcServiceBuilder::new().layer(ProxyLayer::new(
-            l2_client_args.l2_url,
+        let l2_client = RpcProxyClient::new_l2(
+            l2_client_args.l2_url.clone(),
             l2_auth_jwt,
             l2_client_args.l2_timeout,
-            builder_args.builder_url,
+        );
+        let builder_client = RpcProxyClient::new_builder(
+            builder_args.builder_url.clone(),
             builder_auth_jwt,
             builder_args.builder_timeout,
-        ));
+        );
+        let rpc_middleware =
+            RpcServiceBuilder::new().layer(ProxyLayer::new(l2_client, builder_client));
 
         let server = Server::builder()
             .set_http_middleware(http_middleware)

@@ -13,8 +13,8 @@ use http_body_util::Full;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use opentelemetry::trace::SpanKind;
-use tower::util::MapErrLayer;
 use tower::ServiceBuilder;
+use tower::util::MapErrLayer;
 use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
@@ -47,14 +47,22 @@ impl RpcProxyClient {
 
         let layer_transport = HyperClient::with_service(service);
         let http = Http::with_client(layer_transport, url.to_string().parse().unwrap());
-
-        let client = RpcClient::new(http, true);
+        let local = http.guess_local();
+        let client = RpcClient::new(http, local);
 
         Self {
             client,
             url,
             target,
         }
+    }
+
+    pub fn new_l2(url: Uri, secret: JwtSecret, timeout: u64) -> Self {
+        Self::new(url, secret, PayloadSource::L2, timeout)
+    }
+
+    pub fn new_builder(url: Uri, secret: JwtSecret, timeout: u64) -> Self {
+        Self::new(url, secret, PayloadSource::Builder, timeout)
     }
 
     /// Forwards a JSON-RPC request to the endpoint
