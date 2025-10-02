@@ -60,7 +60,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 #
 # Runtime container
 #
-FROM gcr.io/distroless/cc-debian12
+FROM ubuntu
 WORKDIR /app
 
 ARG SERVICE_NAME
