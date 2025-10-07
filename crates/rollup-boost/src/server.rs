@@ -117,6 +117,14 @@ where
         *self.execution_mode.lock()
     }
 
+    pub fn set_execution_mode(&self, mode: ExecutionMode) {
+        *self.execution_mode.lock() = mode;
+    }
+
+    pub fn probes(&self) -> &Arc<Probes> {
+        &self.probes
+    }
+
     async fn new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
         let execution_payload = ExecutionPayload::from(new_payload.clone());
         let block_hash = execution_payload.block_hash();

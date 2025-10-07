@@ -1,22 +1,38 @@
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use std::net::SocketAddr;
 
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use eyre::Result;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use metrics::gauge;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use metrics_exporter_prometheus::PrometheusBuilder;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use metrics_util::layers::{PrefixLayer, Stack};
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use tokio::net::TcpListener;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use tracing::{error, info};
 
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use http::StatusCode;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use hyper::service::service_fn;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use hyper::{Request, Response, server::conn::http1};
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use hyper_util::rt::TokioIo;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use jsonrpsee::http_client::HttpBody;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use metrics_exporter_prometheus::PrometheusHandle;
 
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use crate::ExecutionMode;
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 use crate::cli::RollupBoostArgs;
 
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 pub fn init_metrics(args: &RollupBoostArgs) -> Result<()> {
     if args.metrics {
         let recorder = PrometheusBuilder::new().build_recorder();
@@ -34,6 +50,7 @@ pub fn init_metrics(args: &RollupBoostArgs) -> Result<()> {
     Ok(())
 }
 
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("Metrics server running on {}", addr);
@@ -72,6 +89,7 @@ async fn init_metrics_server(addr: SocketAddr, handle: PrometheusHandle) -> eyre
     }
 }
 
+#[cfg(all(feature = "server", feature = "metrics-exporter-prometheus"))]
 /// Update the execution_mode prometheus metric
 pub fn update_execution_mode_gauge(execution_mode: ExecutionMode) {
     let gauge = gauge!("rollup_boost_execution_mode");
