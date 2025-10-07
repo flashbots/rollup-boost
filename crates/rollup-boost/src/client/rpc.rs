@@ -442,6 +442,7 @@ pub mod tests {
         }
     }
 
+    #[cfg(feature = "server")]
     #[test]
     fn test_invalid_args() {
         let mut cmd = Command::cargo_bin("rollup-boost").unwrap();

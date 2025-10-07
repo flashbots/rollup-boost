@@ -16,7 +16,7 @@ use tracing::info;
 
 use crate::{Request, Response};
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum Health {
     /// Indicates that the builder is building blocks
     #[default]
