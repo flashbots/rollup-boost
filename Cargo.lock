@@ -5476,11 +5476,11 @@ dependencies = [
 
 [[package]]
 name = "nu-ansi-term"
-version = "0.50.1"
+version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4a28e057d01f97e61255210fcff094d74ed0466038633e95017f5beb68e4399"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5738,9 +5738,9 @@ dependencies = [
 
 [[package]]
 name = "op-revm"
-version = "11.0.0"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb8cb3ecd7aaff3a18e15a155665b1e9b1979dff93d3ccf12161a85682237dbc"
+checksum = "23a2811256cd65560453ea6f7174b1b6caa7909cb5652cf05dc7d8144c5e4b38"
 dependencies = [
  "auto_impl",
  "revm",
@@ -6022,12 +6022,12 @@ dependencies = [
 
 [[package]]
 name = "pem"
-version = "3.0.5"
+version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38af38e8470ac9dee3ce1bae1af9c1671fffc44ddfd8bd1d0a3445bf349a8ef3"
+checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
 dependencies = [
  "base64 0.22.1",
- "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -6856,7 +6856,7 @@ checksum = "6b3789b30bd25ba102de4beabd95d21ac45b69b1be7d14522bab988c526d6799"
 [[package]]
 name = "reth-basic-payload-builder"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -6880,7 +6880,7 @@ dependencies = [
 [[package]]
 name = "reth-chain-state"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -6911,7 +6911,7 @@ dependencies = [
 [[package]]
 name = "reth-chainspec"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -6931,7 +6931,7 @@ dependencies = [
 [[package]]
 name = "reth-cli"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-genesis",
  "clap",
@@ -6945,7 +6945,7 @@ dependencies = [
 [[package]]
 name = "reth-cli-commands"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -7020,7 +7020,7 @@ dependencies = [
 [[package]]
 name = "reth-cli-runner"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "reth-tasks",
  "tokio",
@@ -7030,7 +7030,7 @@ dependencies = [
 [[package]]
 name = "reth-cli-util"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -7047,7 +7047,7 @@ dependencies = [
 [[package]]
 name = "reth-codecs"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7067,7 +7067,7 @@ dependencies = [
 [[package]]
 name = "reth-codecs-derive"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -7078,7 +7078,7 @@ dependencies = [
 [[package]]
 name = "reth-config"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "eyre",
  "humantime-serde",
@@ -7093,7 +7093,7 @@ dependencies = [
 [[package]]
 name = "reth-consensus"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -7106,7 +7106,7 @@ dependencies = [
 [[package]]
 name = "reth-consensus-common"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7118,7 +7118,7 @@ dependencies = [
 [[package]]
 name = "reth-consensus-debug-client"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7144,7 +7144,7 @@ dependencies = [
 [[package]]
 name = "reth-db"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "derive_more",
@@ -7170,7 +7170,7 @@ dependencies = [
 [[package]]
 name = "reth-db-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-genesis",
@@ -7198,7 +7198,7 @@ dependencies = [
 [[package]]
 name = "reth-db-common"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-genesis",
@@ -7228,7 +7228,7 @@ dependencies = [
 [[package]]
 name = "reth-db-models"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -7243,7 +7243,7 @@ dependencies = [
 [[package]]
 name = "reth-discv4"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -7269,7 +7269,7 @@ dependencies = [
 [[package]]
 name = "reth-discv5"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -7293,7 +7293,7 @@ dependencies = [
 [[package]]
 name = "reth-dns-discovery"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "data-encoding",
@@ -7317,7 +7317,7 @@ dependencies = [
 [[package]]
 name = "reth-downloaders"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7352,7 +7352,7 @@ dependencies = [
 [[package]]
 name = "reth-e2e-test-utils"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7409,7 +7409,7 @@ dependencies = [
 [[package]]
 name = "reth-ecies"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "aes",
  "alloy-primitives",
@@ -7440,7 +7440,7 @@ dependencies = [
 [[package]]
 name = "reth-engine-local"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -7464,7 +7464,7 @@ dependencies = [
 [[package]]
 name = "reth-engine-primitives"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7489,7 +7489,7 @@ dependencies = [
 [[package]]
 name = "reth-engine-service"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "futures",
  "pin-project",
@@ -7512,7 +7512,7 @@ dependencies = [
 [[package]]
 name = "reth-engine-tree"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7566,7 +7566,7 @@ dependencies = [
 [[package]]
 name = "reth-engine-util"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-rpc-types-engine",
@@ -7594,7 +7594,7 @@ dependencies = [
 [[package]]
 name = "reth-era"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7610,7 +7610,7 @@ dependencies = [
 [[package]]
 name = "reth-era-downloader"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "bytes",
@@ -7625,7 +7625,7 @@ dependencies = [
 [[package]]
 name = "reth-era-utils"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -7647,7 +7647,7 @@ dependencies = [
 [[package]]
 name = "reth-errors"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "reth-consensus",
  "reth-execution-errors",
@@ -7658,7 +7658,7 @@ dependencies = [
 [[package]]
 name = "reth-eth-wire"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-chains",
  "alloy-primitives",
@@ -7686,7 +7686,7 @@ dependencies = [
 [[package]]
 name = "reth-eth-wire-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -7707,7 +7707,7 @@ dependencies = [
 [[package]]
 name = "reth-ethereum-consensus"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7723,7 +7723,7 @@ dependencies = [
 [[package]]
 name = "reth-ethereum-engine-primitives"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -7741,7 +7741,7 @@ dependencies = [
 [[package]]
 name = "reth-ethereum-forks"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eip2124",
  "alloy-hardforks",
@@ -7754,7 +7754,7 @@ dependencies = [
 [[package]]
 name = "reth-ethereum-payload-builder"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7783,7 +7783,7 @@ dependencies = [
 [[package]]
 name = "reth-ethereum-primitives"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7803,7 +7803,7 @@ dependencies = [
 [[package]]
 name = "reth-etl"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "rayon",
  "reth-db-api",
@@ -7813,7 +7813,7 @@ dependencies = [
 [[package]]
 name = "reth-evm"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7836,7 +7836,7 @@ dependencies = [
 [[package]]
 name = "reth-evm-ethereum"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7856,7 +7856,7 @@ dependencies = [
 [[package]]
 name = "reth-execution-errors"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
@@ -7869,7 +7869,7 @@ dependencies = [
 [[package]]
 name = "reth-execution-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7887,7 +7887,7 @@ dependencies = [
 [[package]]
 name = "reth-exex"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7925,7 +7925,7 @@ dependencies = [
 [[package]]
 name = "reth-exex-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -7939,7 +7939,7 @@ dependencies = [
 [[package]]
 name = "reth-fs-util"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "serde",
  "serde_json",
@@ -7949,7 +7949,7 @@ dependencies = [
 [[package]]
 name = "reth-invalid-block-hooks"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -7976,7 +7976,7 @@ dependencies = [
 [[package]]
 name = "reth-ipc"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "bytes",
  "futures",
@@ -7996,7 +7996,7 @@ dependencies = [
 [[package]]
 name = "reth-libmdbx"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "bitflags 2.9.4",
  "byteorder",
@@ -8012,7 +8012,7 @@ dependencies = [
 [[package]]
 name = "reth-mdbx-sys"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "bindgen 0.71.1",
  "cc",
@@ -8021,7 +8021,7 @@ dependencies = [
 [[package]]
 name = "reth-metrics"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "futures",
  "metrics",
@@ -8033,7 +8033,7 @@ dependencies = [
 [[package]]
 name = "reth-net-banlist"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
 ]
@@ -8041,7 +8041,7 @@ dependencies = [
 [[package]]
 name = "reth-net-nat"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "futures-util",
  "if-addrs",
@@ -8055,7 +8055,7 @@ dependencies = [
 [[package]]
 name = "reth-network"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8110,7 +8110,7 @@ dependencies = [
 [[package]]
 name = "reth-network-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -8135,7 +8135,7 @@ dependencies = [
 [[package]]
 name = "reth-network-p2p"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8158,7 +8158,7 @@ dependencies = [
 [[package]]
 name = "reth-network-peers"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -8173,7 +8173,7 @@ dependencies = [
 [[package]]
 name = "reth-network-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eip2124",
  "humantime-serde",
@@ -8187,7 +8187,7 @@ dependencies = [
 [[package]]
 name = "reth-nippy-jar"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -8204,7 +8204,7 @@ dependencies = [
 [[package]]
 name = "reth-node-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-rpc-types-engine",
  "eyre",
@@ -8228,7 +8228,7 @@ dependencies = [
 [[package]]
 name = "reth-node-builder"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8296,7 +8296,7 @@ dependencies = [
 [[package]]
 name = "reth-node-core"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8348,7 +8348,7 @@ dependencies = [
 [[package]]
 name = "reth-node-ethereum"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-network",
@@ -8386,7 +8386,7 @@ dependencies = [
 [[package]]
 name = "reth-node-ethstats"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -8410,7 +8410,7 @@ dependencies = [
 [[package]]
 name = "reth-node-events"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8434,7 +8434,7 @@ dependencies = [
 [[package]]
 name = "reth-node-metrics"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "eyre",
  "http",
@@ -8454,7 +8454,7 @@ dependencies = [
 [[package]]
 name = "reth-node-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "reth-chainspec",
  "reth-db-api",
@@ -8466,7 +8466,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-chainspec"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -8494,7 +8494,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-cli"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8542,7 +8542,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-consensus"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8567,7 +8567,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-evm"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8595,7 +8595,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-flashblocks"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8630,7 +8630,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-forks"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-op-hardforks",
  "alloy-primitives",
@@ -8641,7 +8641,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-node"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -8687,7 +8687,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-payload-builder"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8726,7 +8726,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-primitives"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8746,7 +8746,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-rpc"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8808,7 +8808,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-storage"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "reth-optimism-primitives",
@@ -8818,7 +8818,7 @@ dependencies = [
 [[package]]
 name = "reth-optimism-txpool"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8854,7 +8854,7 @@ dependencies = [
 [[package]]
 name = "reth-payload-builder"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -8875,7 +8875,7 @@ dependencies = [
 [[package]]
 name = "reth-payload-builder-primitives"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "pin-project",
  "reth-payload-primitives",
@@ -8887,7 +8887,7 @@ dependencies = [
 [[package]]
 name = "reth-payload-primitives"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -8907,7 +8907,7 @@ dependencies = [
 [[package]]
 name = "reth-payload-util"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -8917,7 +8917,7 @@ dependencies = [
 [[package]]
 name = "reth-payload-validator"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-rpc-types-engine",
@@ -8927,7 +8927,7 @@ dependencies = [
 [[package]]
 name = "reth-primitives"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "c-kzg",
@@ -8941,7 +8941,7 @@ dependencies = [
 [[package]]
 name = "reth-primitives-traits"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -8974,7 +8974,7 @@ dependencies = [
 [[package]]
 name = "reth-provider"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9019,7 +9019,7 @@ dependencies = [
 [[package]]
 name = "reth-prune"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9047,7 +9047,7 @@ dependencies = [
 [[package]]
 name = "reth-prune-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "arbitrary",
@@ -9061,7 +9061,7 @@ dependencies = [
 [[package]]
 name = "reth-revm"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "reth-primitives-traits",
@@ -9074,7 +9074,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -9153,7 +9153,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-genesis",
@@ -9181,7 +9181,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-builder"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-network",
  "alloy-provider",
@@ -9220,7 +9220,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-convert"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-json-rpc",
@@ -9247,7 +9247,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-engine-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -9277,7 +9277,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-eth-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -9321,7 +9321,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-eth-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9382,7 +9382,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-layer"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-rpc-types-engine",
  "http",
@@ -9396,7 +9396,7 @@ dependencies = [
 [[package]]
 name = "reth-rpc-server-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -9412,7 +9412,7 @@ dependencies = [
 [[package]]
 name = "reth-stages"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9460,7 +9460,7 @@ dependencies = [
 [[package]]
 name = "reth-stages-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -9487,7 +9487,7 @@ dependencies = [
 [[package]]
 name = "reth-stages-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "arbitrary",
@@ -9501,7 +9501,7 @@ dependencies = [
 [[package]]
 name = "reth-static-file"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "parking_lot",
@@ -9521,7 +9521,7 @@ dependencies = [
 [[package]]
 name = "reth-static-file-types"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "clap",
@@ -9533,7 +9533,7 @@ dependencies = [
 [[package]]
 name = "reth-storage-api"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9556,7 +9556,7 @@ dependencies = [
 [[package]]
 name = "reth-storage-errors"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -9572,7 +9572,7 @@ dependencies = [
 [[package]]
 name = "reth-tasks"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "auto_impl",
  "dyn-clone",
@@ -9590,7 +9590,7 @@ dependencies = [
 [[package]]
 name = "reth-testing-utils"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9606,7 +9606,7 @@ dependencies = [
 [[package]]
 name = "reth-tokio-util"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "tokio",
  "tokio-stream",
@@ -9616,7 +9616,7 @@ dependencies = [
 [[package]]
 name = "reth-tracing"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "clap",
  "eyre",
@@ -9631,7 +9631,7 @@ dependencies = [
 [[package]]
 name = "reth-transaction-pool"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9672,7 +9672,7 @@ dependencies = [
 [[package]]
 name = "reth-trie"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -9697,7 +9697,7 @@ dependencies = [
 [[package]]
 name = "reth-trie-common"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -9723,7 +9723,7 @@ dependencies = [
 [[package]]
 name = "reth-trie-db"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "reth-db-api",
@@ -9736,7 +9736,7 @@ dependencies = [
 [[package]]
 name = "reth-trie-parallel"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -9761,7 +9761,7 @@ dependencies = [
 [[package]]
 name = "reth-trie-sparse"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -9780,7 +9780,7 @@ dependencies = [
 [[package]]
 name = "reth-trie-sparse-parallel"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -9798,16 +9798,16 @@ dependencies = [
 [[package]]
 name = "reth-zstd-compressors"
 version = "1.8.2"
-source = "git+https://github.com/noot/reth?rev=69069f05addf64af04257a7414d83d74bd554de1#69069f05addf64af04257a7414d83d74bd554de1"
+source = "git+https://github.com/noot/reth?rev=a91ffc776b2be13b8a853875b4a95dd01b455bd2#a91ffc776b2be13b8a853875b4a95dd01b455bd2"
 dependencies = [
  "zstd",
 ]
 
 [[package]]
 name = "revm"
-version = "30.0.0"
+version = "30.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cafc7f271a0ff9b5bc52f4ee5c2ba0ea9e5a491919e9ed0ea4b80b8d87487e79"
+checksum = "cc57cfaa9b93f4bffc06810655f392fed97fe2cb18de4b169bf6da14c5e51e64"
 dependencies = [
  "revm-bytecode",
  "revm-context",
@@ -9836,9 +9836,9 @@ dependencies = [
 
 [[package]]
 name = "revm-context"
-version = "10.0.0"
+version = "10.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9453598455c34d8a3665d62ed4e4f578f03823194075d6fb713e4621a6494ad"
+checksum = "47fef31cd25235307ac03f2dee3c84bfd91b1e07f8dfe982b3f146952d37ff91"
 dependencies = [
  "bitvec",
  "cfg-if",
@@ -9853,9 +9853,9 @@ dependencies = [
 
 [[package]]
 name = "revm-context-interface"
-version = "11.0.0"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e340a0ae6cd19b90231a88c45608b2ed9851a7dd4fdb8ecf4e5e3e5ca7b6ed4"
+checksum = "e39af74fb179a86a008ac63aad507126326fa7e9e1398197327938ebcebb0320"
 dependencies = [
  "alloy-eip2930",
  "alloy-eip7702",
@@ -9869,9 +9869,9 @@ dependencies = [
 
 [[package]]
 name = "revm-database"
-version = "8.0.0"
+version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef14e9bfb8ce40515fb0c7e1bea5f941136ab850ae2b761835fc6790d2e99348"
+checksum = "af90df047aa50e698b8aaae3b3bfb83b34f2727cb01ae0f4f293218cb88b9371"
 dependencies = [
  "alloy-eips",
  "revm-bytecode",
@@ -9883,9 +9883,9 @@ dependencies = [
 
 [[package]]
 name = "revm-database-interface"
-version = "8.0.0"
+version = "8.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330203b2f1d4de6ccd8bd6493158ff171d8ac88cce82cf2e4d60554b63e6923a"
+checksum = "f22c782d5e181241072d9cfc4868bc83d55a3627de00d6a0bfa58fa0c311531b"
 dependencies = [
  "auto_impl",
  "either",
@@ -9896,9 +9896,9 @@ dependencies = [
 
 [[package]]
 name = "revm-handler"
-version = "11.0.0"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b02883e8ea5d1c35e25ea04ddbcdf048ebdab4d329223d7798c5676c575b3b68"
+checksum = "fe3275f0fb87b025025a2e066abb786d82d2af1d17b5f2512e62f44bcfc9b624"
 dependencies = [
  "auto_impl",
  "derive-where",
@@ -9915,9 +9915,9 @@ dependencies = [
 
 [[package]]
 name = "revm-inspector"
-version = "11.0.0"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dd956c37c3fb40843d6ae78092fd5cf211a17812e9dd0176663f4dc3c37cf68"
+checksum = "e8cd4057652b524ad8fa45afe4e8f21e309efdafab34f4dec8406457deeff8a1"
 dependencies = [
  "auto_impl",
  "either",
@@ -9950,9 +9950,9 @@ dependencies = [
 
 [[package]]
 name = "revm-interpreter"
-version = "26.0.0"
+version = "27.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3600bda3a01929495d6c3a36a713de2e3c4aac9e001dcd3f6211213b5c30205"
+checksum = "5609ef834a1882cd49c0e4c282b6632b0b04598aa08f2154be142aa2a999910f"
 dependencies = [
  "revm-bytecode",
  "revm-context-interface",
@@ -9963,9 +9963,9 @@ dependencies = [
 
 [[package]]
 name = "revm-precompile"
-version = "28.0.0"
+version = "28.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73ba7917ca5dae8de3265adcb2a305dce4ca33b68e601aa06b281000d5ae9947"
+checksum = "176169b39beb1f57b11f2ea3900c404b8498a56dfd8394e66f4d24f66cea368e"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
