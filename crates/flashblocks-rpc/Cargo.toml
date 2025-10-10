@@ -7,27 +7,27 @@ license = "MIT"
 [dependencies]
 rollup-boost.workspace = true
 
-reth-optimism-node = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-optimism-cli = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-rpc-eth-api = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-optimism-primitives = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-optimism-chainspec = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-optimism-rpc = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-optimism-evm = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-optimism-forks = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-provider = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-primitives = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-primitives-traits = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-node-builder = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2", features = [
+reth-optimism-node = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-optimism-cli = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-rpc-eth-api = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-optimism-primitives = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-optimism-chainspec = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-optimism-rpc = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-optimism-evm = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-optimism-forks = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-provider = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-primitives = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-primitives-traits = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-node-builder = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96", features = [
     "test-utils",
 ] }
-reth-e2e-test-utils = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-node-api = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-tasks = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-node-core = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-db = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-tracing = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
-reth-rpc-server-types = { git = "https://github.com/noot/reth", rev = "a91ffc776b2be13b8a853875b4a95dd01b455bd2" }
+reth-e2e-test-utils = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-node-api = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-tasks = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-node-core = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-db = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-tracing = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
+reth-rpc-server-types = { git = "https://github.com/noot/reth", rev = "4583795e749565f64f2ab8a6187502a2408d3f96" }
 
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
