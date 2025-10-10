@@ -3367,19 +3367,19 @@ dependencies = [
  "reth-node-api",
  "reth-node-builder",
  "reth-node-core",
- "reth-optimism-chainspec",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-optimism-cli",
- "reth-optimism-evm",
- "reth-optimism-forks",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-optimism-node",
- "reth-optimism-primitives",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-optimism-rpc",
  "reth-primitives",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-rpc-eth-api",
- "reth-rpc-server-types",
- "reth-tasks",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
  "rollup-boost",
  "serde",
@@ -6856,6 +6856,30 @@ checksum = "6b3789b30bd25ba102de4beabd95d21ac45b69b1be7d14522bab988c526d6799"
 [[package]]
 name = "reth-basic-payload-builder"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "futures-core",
+ "futures-util",
+ "metrics",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reth-basic-payload-builder"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-consensus",
@@ -6864,16 +6888,42 @@ dependencies = [
  "futures-core",
  "futures-util",
  "metrics",
- "reth-chain-state",
- "reth-metrics",
- "reth-payload-builder",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
- "reth-primitives-traits",
- "reth-revm",
- "reth-storage-api",
- "reth-tasks",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reth-chain-state"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "derive_more",
+ "metrics",
+ "parking_lot",
+ "pin-project",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-database",
+ "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
@@ -6892,20 +6942,40 @@ dependencies = [
  "parking_lot",
  "pin-project",
  "rand 0.9.2",
- "reth-chainspec",
- "reth-errors",
- "reth-ethereum-primitives",
- "reth-execution-types",
- "reth-metrics",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-trie",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-database",
  "revm-state",
  "serde",
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "reth-chainspec"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-chains",
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-evm",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-trie",
+ "auto_impl",
+ "derive_more",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde_json",
 ]
 
 [[package]]
@@ -6922,9 +6992,9 @@ dependencies = [
  "alloy-trie",
  "auto_impl",
  "derive_more",
- "reth-ethereum-forks",
- "reth-network-peers",
- "reth-primitives-traits",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde_json",
 ]
 
@@ -6965,13 +7035,13 @@ dependencies = [
  "lz4",
  "ratatui",
  "reqwest",
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-cli",
  "reth-cli-runner",
  "reth-cli-util",
- "reth-codecs",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-config",
- "reth-consensus",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
  "reth-db-api",
  "reth-db-common",
@@ -6984,27 +7054,27 @@ dependencies = [
  "reth-era-utils",
  "reth-eth-wire",
  "reth-etl",
- "reth-evm",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-exex",
- "reth-fs-util",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-net-nat",
  "reth-network",
- "reth-network-p2p",
- "reth-network-peers",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
  "reth-node-builder",
  "reth-node-core",
  "reth-node-events",
  "reth-node-metrics",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-prune",
- "reth-revm",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-stages",
  "reth-static-file",
- "reth-static-file-types",
- "reth-trie",
- "reth-trie-common",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-trie-db",
  "secp256k1 0.30.0",
  "serde",
@@ -7022,7 +7092,7 @@ name = "reth-cli-runner"
 version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
- "reth-tasks",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
  "tracing",
 ]
@@ -7038,10 +7108,28 @@ dependencies = [
  "eyre",
  "libc",
  "rand 0.8.5",
- "reth-fs-util",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "secp256k1 0.30.0",
  "serde",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "reth-codecs"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-trie",
+ "bytes",
+ "modular-bitfield",
+ "op-alloy-consensus",
+ "reth-codecs-derive 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-zstd-compressors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
 ]
 
 [[package]]
@@ -7058,10 +7146,21 @@ dependencies = [
  "bytes",
  "modular-bitfield",
  "op-alloy-consensus",
- "reth-codecs-derive",
- "reth-zstd-compressors",
+ "reth-codecs-derive 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-zstd-compressors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "visibility",
+]
+
+[[package]]
+name = "reth-codecs-derive"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -7082,12 +7181,25 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "eyre",
  "humantime-serde",
- "reth-network-types",
- "reth-prune-types",
- "reth-stages-types",
+ "reth-network-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "toml",
  "url",
+]
+
+[[package]]
+name = "reth-consensus"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-primitives",
+ "auto_impl",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7098,9 +7210,21 @@ dependencies = [
  "alloy-consensus",
  "alloy-primitives",
  "auto_impl",
- "reth-execution-types",
- "reth-primitives-traits",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "reth-consensus-common"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
 ]
 
 [[package]]
@@ -7110,9 +7234,9 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
- "reth-chainspec",
- "reth-consensus",
- "reth-primitives-traits",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
 ]
 
 [[package]]
@@ -7133,7 +7257,7 @@ dependencies = [
  "futures",
  "reqwest",
  "reth-node-api",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
  "ringbuffer",
  "serde",
@@ -7153,12 +7277,12 @@ dependencies = [
  "page_size",
  "parking_lot",
  "reth-db-api",
- "reth-fs-util",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-libmdbx",
- "reth-metrics",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-nippy-jar",
- "reth-static-file-types",
- "reth-storage-errors",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
  "rustc-hash 2.1.1",
  "strum 0.27.2",
@@ -7182,15 +7306,15 @@ dependencies = [
  "modular-bitfield",
  "parity-scale-codec",
  "proptest",
- "reth-codecs",
- "reth-db-models",
- "reth-ethereum-primitives",
- "reth-optimism-primitives",
- "reth-primitives-traits",
- "reth-prune-types",
- "reth-stages-types",
- "reth-storage-errors",
- "reth-trie-common",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-db-models 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "roaring",
  "serde",
 ]
@@ -7205,24 +7329,34 @@ dependencies = [
  "alloy-primitives",
  "boyer-moore-magiclen",
  "eyre",
- "reth-chainspec",
- "reth-codecs",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-config",
  "reth-db-api",
  "reth-etl",
- "reth-execution-errors",
- "reth-fs-util",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-types",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-stages-types",
- "reth-static-file-types",
- "reth-trie",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-trie-db",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
  "tracing",
+]
+
+[[package]]
+name = "reth-db-models"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-eips",
+ "alloy-primitives",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
 ]
 
 [[package]]
@@ -7235,8 +7369,8 @@ dependencies = [
  "arbitrary",
  "bytes",
  "modular-bitfield",
- "reth-codecs",
- "reth-primitives-traits",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
 ]
 
@@ -7253,10 +7387,10 @@ dependencies = [
  "itertools 0.14.0",
  "parking_lot",
  "rand 0.8.5",
- "reth-ethereum-forks",
- "reth-net-banlist",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-net-banlist 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-net-nat",
- "reth-network-peers",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "schnellru",
  "secp256k1 0.30.0",
  "serde",
@@ -7280,10 +7414,10 @@ dependencies = [
  "itertools 0.14.0",
  "metrics",
  "rand 0.9.2",
- "reth-chainspec",
- "reth-ethereum-forks",
- "reth-metrics",
- "reth-network-peers",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "secp256k1 0.30.0",
  "thiserror 2.0.17",
  "tokio",
@@ -7301,9 +7435,9 @@ dependencies = [
  "hickory-resolver",
  "linked_hash_set",
  "parking_lot",
- "reth-ethereum-forks",
- "reth-network-peers",
- "reth-tokio-util",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "schnellru",
  "secp256k1 0.30.0",
  "serde",
@@ -7330,16 +7464,16 @@ dependencies = [
  "pin-project",
  "rayon",
  "reth-config",
- "reth-consensus",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
  "reth-db-api",
- "reth-ethereum-primitives",
- "reth-metrics",
- "reth-network-p2p",
- "reth-network-peers",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-tasks",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-testing-utils",
  "tempfile",
  "thiserror 2.0.17",
@@ -7368,34 +7502,34 @@ dependencies = [
  "eyre",
  "futures-util",
  "jsonrpsee",
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-cli-commands",
  "reth-config",
- "reth-consensus",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
  "reth-db-common",
  "reth-engine-local",
- "reth-ethereum-primitives",
- "reth-network-api",
- "reth-network-p2p",
- "reth-network-peers",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
  "reth-node-builder",
  "reth-node-core",
  "reth-node-ethereum",
- "reth-payload-builder",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-primitives",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-rpc-api",
  "reth-rpc-builder",
  "reth-rpc-eth-api",
- "reth-rpc-server-types",
- "reth-stages-types",
- "reth-tasks",
- "reth-tokio-util",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
  "revm",
  "serde_json",
@@ -7425,7 +7559,7 @@ dependencies = [
  "hmac",
  "pin-project",
  "rand 0.8.5",
- "reth-network-peers",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "secp256k1 0.30.0",
  "sha2",
  "sha3",
@@ -7448,17 +7582,40 @@ dependencies = [
  "eyre",
  "futures-util",
  "op-alloy-rpc-types-engine",
- "reth-chainspec",
- "reth-engine-primitives",
- "reth-ethereum-engine-primitives",
- "reth-optimism-chainspec",
- "reth-payload-builder",
- "reth-payload-primitives",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-transaction-pool",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "reth-engine-primitives"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rpc-types-engine",
+ "auto_impl",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7472,15 +7629,15 @@ dependencies = [
  "alloy-rpc-types-engine",
  "auto_impl",
  "futures",
- "reth-chain-state",
- "reth-errors",
- "reth-ethereum-primitives",
- "reth-evm",
- "reth-execution-types",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
- "reth-primitives-traits",
- "reth-trie-common",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
  "tokio",
@@ -7493,19 +7650,19 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "futures",
  "pin-project",
- "reth-chainspec",
- "reth-consensus",
- "reth-engine-primitives",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-engine-tree",
- "reth-ethereum-primitives",
- "reth-evm",
- "reth-network-p2p",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-types",
- "reth-payload-builder",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-prune",
  "reth-stages-api",
- "reth-tasks",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "thiserror 2.0.17",
 ]
 
@@ -7526,33 +7683,33 @@ dependencies = [
  "mini-moka",
  "parking_lot",
  "rayon",
- "reth-chain-state",
- "reth-chainspec",
- "reth-consensus",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
- "reth-engine-primitives",
- "reth-errors",
- "reth-ethereum-primitives",
- "reth-evm",
- "reth-execution-types",
- "reth-metrics",
- "reth-network-p2p",
- "reth-payload-builder",
- "reth-payload-primitives",
- "reth-primitives-traits",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-prune",
- "reth-prune-types",
- "reth-revm",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-stages",
  "reth-stages-api",
  "reth-static-file",
- "reth-tasks",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
- "reth-trie",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-trie-db",
  "reth-trie-parallel",
- "reth-trie-sparse",
+ "reth-trie-sparse 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-trie-sparse-parallel",
  "revm",
  "revm-primitives",
@@ -7574,16 +7731,16 @@ dependencies = [
  "futures",
  "itertools 0.14.0",
  "pin-project",
- "reth-chainspec",
- "reth-engine-primitives",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-engine-tree",
- "reth-errors",
- "reth-evm",
- "reth-fs-util",
- "reth-payload-primitives",
- "reth-primitives-traits",
- "reth-revm",
- "reth-storage-api",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "serde_json",
  "tokio",
@@ -7602,7 +7759,7 @@ dependencies = [
  "alloy-rlp",
  "ethereum_ssz",
  "ethereum_ssz_derive",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "snap",
  "thiserror 2.0.17",
 ]
@@ -7617,7 +7774,7 @@ dependencies = [
  "eyre",
  "futures-util",
  "reqwest",
- "reth-fs-util",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "sha2",
  "tokio",
 ]
@@ -7635,11 +7792,11 @@ dependencies = [
  "reth-era",
  "reth-era-downloader",
  "reth-etl",
- "reth-fs-util",
- "reth-primitives-traits",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-stages-types",
- "reth-storage-api",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
  "tracing",
 ]
@@ -7647,11 +7804,22 @@ dependencies = [
 [[package]]
 name = "reth-errors"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "reth-errors"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
- "reth-consensus",
- "reth-execution-errors",
- "reth-storage-errors",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "thiserror 2.0.17",
 ]
 
@@ -7667,13 +7835,13 @@ dependencies = [
  "derive_more",
  "futures",
  "pin-project",
- "reth-codecs",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-ecies",
- "reth-eth-wire-types",
- "reth-ethereum-forks",
- "reth-metrics",
- "reth-network-peers",
- "reth-primitives-traits",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "snap",
  "thiserror 2.0.17",
@@ -7681,6 +7849,27 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "reth-eth-wire-types"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-chains",
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-hardforks",
+ "alloy-primitives",
+ "alloy-rlp",
+ "bytes",
+ "derive_more",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-codecs-derive 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7696,10 +7885,10 @@ dependencies = [
  "alloy-rlp",
  "bytes",
  "derive_more",
- "reth-chainspec",
- "reth-codecs-derive",
- "reth-ethereum-primitives",
- "reth-primitives-traits",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-codecs-derive 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
 ]
@@ -7712,12 +7901,30 @@ dependencies = [
  "alloy-consensus",
  "alloy-eips",
  "alloy-primitives",
- "reth-chainspec",
- "reth-consensus",
- "reth-consensus-common",
- "reth-execution-types",
- "reth-primitives-traits",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tracing",
+]
+
+[[package]]
+name = "reth-ethereum-engine-primitives"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-engine",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7729,13 +7936,26 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "alloy-rpc-types-engine",
- "reth-engine-primitives",
- "reth-ethereum-primitives",
- "reth-payload-primitives",
- "reth-primitives-traits",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "sha2",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "reth-ethereum-forks"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-eip2124",
+ "alloy-hardforks",
+ "alloy-primitives",
+ "auto_impl",
+ "once_cell",
+ "rustc-hash 2.1.1",
 ]
 
 [[package]]
@@ -7761,23 +7981,40 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "alloy-rpc-types-engine",
- "reth-basic-payload-builder",
- "reth-chainspec",
- "reth-consensus-common",
- "reth-errors",
- "reth-ethereum-primitives",
- "reth-evm",
+ "reth-basic-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-evm-ethereum",
- "reth-payload-builder",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
- "reth-payload-validator",
- "reth-primitives-traits",
- "reth-revm",
- "reth-storage-api",
- "reth-transaction-pool",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-validator 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "tracing",
+]
+
+[[package]]
+name = "reth-ethereum-primitives"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-eth",
+ "alloy-serde",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-zstd-compressors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
+ "serde_with",
 ]
 
 [[package]]
@@ -7793,9 +8030,9 @@ dependencies = [
  "alloy-serde",
  "arbitrary",
  "modular-bitfield",
- "reth-codecs",
- "reth-primitives-traits",
- "reth-zstd-compressors",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-zstd-compressors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "serde_with",
 ]
@@ -7813,6 +8050,27 @@ dependencies = [
 [[package]]
 name = "reth-evm"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-evm",
+ "alloy-primitives",
+ "auto_impl",
+ "derive_more",
+ "futures-util",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm",
+]
+
+[[package]]
+name = "reth-evm"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-consensus",
@@ -7823,13 +8081,13 @@ dependencies = [
  "derive_more",
  "futures-util",
  "metrics",
- "reth-execution-errors",
- "reth-execution-types",
- "reth-metrics",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-storage-errors",
- "reth-trie-common",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
 ]
 
@@ -7843,14 +8101,27 @@ dependencies = [
  "alloy-evm",
  "alloy-primitives",
  "alloy-rpc-types-engine",
- "reth-chainspec",
- "reth-ethereum-forks",
- "reth-ethereum-primitives",
- "reth-evm",
- "reth-execution-types",
- "reth-primitives-traits",
- "reth-storage-errors",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
+]
+
+[[package]]
+name = "reth-execution-errors"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-evm",
+ "alloy-primitives",
+ "alloy-rlp",
+ "nybbles",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7862,8 +8133,26 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "nybbles",
- "reth-storage-errors",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "reth-execution-types"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-evm",
+ "alloy-primitives",
+ "derive_more",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm",
+ "serde",
+ "serde_with",
 ]
 
 [[package]]
@@ -7876,9 +8165,9 @@ dependencies = [
  "alloy-evm",
  "alloy-primitives",
  "derive_more",
- "reth-ethereum-primitives",
- "reth-primitives-traits",
- "reth-trie-common",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "serde",
  "serde_with",
@@ -7897,23 +8186,23 @@ dependencies = [
  "itertools 0.14.0",
  "metrics",
  "parking_lot",
- "reth-chain-state",
- "reth-chainspec",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-config",
- "reth-ethereum-primitives",
- "reth-evm",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-exex-types",
- "reth-fs-util",
- "reth-metrics",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
  "reth-node-core",
- "reth-payload-builder",
- "reth-primitives-traits",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-prune-types",
- "reth-revm",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-stages-api",
- "reth-tasks",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
  "rmp-serde",
  "thiserror 2.0.17",
@@ -7929,11 +8218,21 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
- "reth-chain-state",
- "reth-execution-types",
- "reth-primitives-traits",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "serde_with",
+]
+
+[[package]]
+name = "reth-fs-util"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7959,14 +8258,14 @@ dependencies = [
  "futures",
  "jsonrpsee",
  "pretty_assertions",
- "reth-engine-primitives",
- "reth-evm",
- "reth-primitives-traits",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-revm",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-api",
  "reth-tracing",
- "reth-trie",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-bytecode",
  "revm-database",
  "serde",
@@ -8021,6 +8320,15 @@ dependencies = [
 [[package]]
 name = "reth-metrics"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "metrics",
+ "metrics-derive",
+]
+
+[[package]]
+name = "reth-metrics"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "futures",
@@ -8028,6 +8336,14 @@ dependencies = [
  "metrics-derive",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "reth-net-banlist"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-primitives",
 ]
 
 [[package]]
@@ -8073,28 +8389,28 @@ dependencies = [
  "pin-project",
  "rand 0.8.5",
  "rand 0.9.2",
- "reth-chainspec",
- "reth-consensus",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-discv4",
  "reth-discv5",
  "reth-dns-discovery",
  "reth-ecies",
  "reth-eth-wire",
- "reth-eth-wire-types",
- "reth-ethereum-forks",
- "reth-ethereum-primitives",
- "reth-fs-util",
- "reth-metrics",
- "reth-net-banlist",
- "reth-network-api",
- "reth-network-p2p",
- "reth-network-peers",
- "reth-network-types",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-tasks",
- "reth-tokio-util",
- "reth-transaction-pool",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-net-banlist 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "rustc-hash 2.1.1",
  "schnellru",
  "secp256k1 0.30.0",
@@ -8110,6 +8426,30 @@ dependencies = [
 [[package]]
 name = "reth-network-api"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-primitives",
+ "alloy-rpc-types-admin",
+ "alloy-rpc-types-eth",
+ "auto_impl",
+ "derive_more",
+ "enr",
+ "futures",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
+name = "reth-network-api"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-consensus",
@@ -8120,16 +8460,38 @@ dependencies = [
  "derive_more",
  "enr",
  "futures",
- "reth-eth-wire-types",
- "reth-ethereum-forks",
- "reth-network-p2p",
- "reth-network-peers",
- "reth-network-types",
- "reth-tokio-util",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
  "tokio",
  "tokio-stream",
+]
+
+[[package]]
+name = "reth-network-p2p"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "auto_impl",
+ "derive_more",
+ "futures",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8144,15 +8506,28 @@ dependencies = [
  "derive_more",
  "futures",
  "parking_lot",
- "reth-consensus",
- "reth-eth-wire-types",
- "reth-ethereum-primitives",
- "reth-network-peers",
- "reth-network-types",
- "reth-primitives-traits",
- "reth-storage-errors",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reth-network-peers"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-primitives",
+ "alloy-rlp",
+ "secp256k1 0.30.0",
+ "serde_with",
+ "thiserror 2.0.17",
+ "url",
 ]
 
 [[package]]
@@ -8173,12 +8548,24 @@ dependencies = [
 [[package]]
 name = "reth-network-types"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-eip2124",
+ "reth-net-banlist 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "reth-network-types"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-eip2124",
  "humantime-serde",
- "reth-net-banlist",
- "reth-network-peers",
+ "reth-net-banlist 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "serde_json",
  "tracing",
@@ -8194,7 +8581,7 @@ dependencies = [
  "derive_more",
  "lz4_flex",
  "memmap2",
- "reth-fs-util",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
  "tracing",
@@ -8208,21 +8595,21 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "alloy-rpc-types-engine",
  "eyre",
- "reth-basic-payload-builder",
- "reth-consensus",
+ "reth-basic-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db-api",
- "reth-engine-primitives",
- "reth-evm",
- "reth-network-api",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-core",
  "reth-node-types",
- "reth-payload-builder",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-tasks",
- "reth-tokio-util",
- "reth-transaction-pool",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
 ]
 
 [[package]]
@@ -8242,50 +8629,50 @@ dependencies = [
  "futures",
  "jsonrpsee",
  "rayon",
- "reth-basic-payload-builder",
- "reth-chain-state",
- "reth-chainspec",
+ "reth-basic-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-cli-util",
  "reth-config",
- "reth-consensus",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-consensus-debug-client",
  "reth-db",
  "reth-db-api",
  "reth-db-common",
  "reth-downloaders",
  "reth-engine-local",
- "reth-engine-primitives",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-engine-service",
  "reth-engine-tree",
  "reth-engine-util",
- "reth-evm",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-exex",
- "reth-fs-util",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-invalid-block-hooks",
  "reth-network",
- "reth-network-api",
- "reth-network-p2p",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
  "reth-node-core",
  "reth-node-ethstats",
  "reth-node-events",
  "reth-node-metrics",
- "reth-payload-builder",
- "reth-primitives-traits",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-prune",
  "reth-rpc",
  "reth-rpc-api",
  "reth-rpc-builder",
  "reth-rpc-engine-api",
- "reth-rpc-eth-types",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-layer 1.8.2",
  "reth-stages",
  "reth-static-file",
- "reth-tasks",
- "reth-tokio-util",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
- "reth-transaction-pool",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "secp256k1 0.30.0",
  "serde_json",
  "tokio",
@@ -8309,30 +8696,30 @@ dependencies = [
  "futures",
  "humantime",
  "rand 0.9.2",
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-cli-util",
  "reth-config",
- "reth-consensus",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
  "reth-discv4",
  "reth-discv5",
  "reth-engine-local",
- "reth-engine-primitives",
- "reth-ethereum-forks",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-net-nat",
  "reth-network",
- "reth-network-p2p",
- "reth-network-peers",
- "reth-primitives-traits",
- "reth-prune-types",
- "reth-rpc-convert",
- "reth-rpc-eth-types",
- "reth-rpc-server-types",
- "reth-stages-types",
- "reth-storage-api",
- "reth-storage-errors",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-convert 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
- "reth-transaction-pool",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "secp256k1 0.30.0",
  "serde",
  "shellexpand",
@@ -8355,30 +8742,30 @@ dependencies = [
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
  "eyre",
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-engine-local",
- "reth-engine-primitives",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-ethereum-consensus",
- "reth-ethereum-engine-primitives",
+ "reth-ethereum-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-ethereum-payload-builder",
- "reth-ethereum-primitives",
- "reth-evm",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-evm-ethereum",
  "reth-network",
  "reth-node-api",
  "reth-node-builder",
- "reth-payload-primitives",
- "reth-primitives-traits",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-revm",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc",
  "reth-rpc-api",
  "reth-rpc-builder",
  "reth-rpc-eth-api",
- "reth-rpc-eth-types",
- "reth-rpc-server-types",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
- "reth-transaction-pool",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "tokio",
 ]
@@ -8392,11 +8779,11 @@ dependencies = [
  "alloy-primitives",
  "chrono",
  "futures-util",
- "reth-chain-state",
- "reth-network-api",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-transaction-pool",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -8420,13 +8807,13 @@ dependencies = [
  "futures",
  "humantime",
  "pin-project",
- "reth-engine-primitives",
- "reth-network-api",
- "reth-primitives-traits",
- "reth-prune-types",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-stages",
- "reth-static-file-types",
- "reth-storage-api",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
  "tracing",
 ]
@@ -8444,8 +8831,8 @@ dependencies = [
  "metrics-process",
  "metrics-util 0.19.1",
  "procfs 0.17.0",
- "reth-metrics",
- "reth-tasks",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
  "tower 0.5.2",
  "tracing",
@@ -8456,11 +8843,34 @@ name = "reth-node-types"
 version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db-api",
- "reth-engine-primitives",
- "reth-payload-primitives",
- "reth-primitives-traits",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+]
+
+[[package]]
+name = "reth-optimism-chainspec"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-chains",
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-hardforks",
+ "alloy-primitives",
+ "derive_more",
+ "op-alloy-consensus",
+ "op-alloy-rpc-types",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde_json",
 ]
 
 [[package]]
@@ -8479,12 +8889,12 @@ dependencies = [
  "op-alloy-consensus",
  "op-alloy-rpc-types",
  "paste",
- "reth-chainspec",
- "reth-ethereum-forks",
- "reth-network-peers",
- "reth-optimism-forks",
- "reth-optimism-primitives",
- "reth-primitives-traits",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "serde_json",
  "tar-no-std",
@@ -8505,37 +8915,62 @@ dependencies = [
  "eyre",
  "futures-util",
  "op-alloy-consensus",
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-cli",
  "reth-cli-commands",
  "reth-cli-runner",
- "reth-consensus",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
  "reth-db-api",
  "reth-db-common",
  "reth-downloaders",
- "reth-execution-types",
- "reth-fs-util",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-builder",
  "reth-node-core",
  "reth-node-events",
  "reth-node-metrics",
- "reth-optimism-chainspec",
- "reth-optimism-consensus",
- "reth-optimism-evm",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-optimism-node",
- "reth-optimism-primitives",
- "reth-primitives-traits",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-prune",
- "reth-rpc-server-types",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-stages",
  "reth-static-file",
- "reth-static-file-types",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
  "serde",
  "tokio",
  "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "reth-optimism-consensus"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-trie",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-consensus-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm",
+ "thiserror 2.0.17",
  "tracing",
 ]
 
@@ -8548,20 +8983,47 @@ dependencies = [
  "alloy-eips",
  "alloy-primitives",
  "alloy-trie",
- "reth-chainspec",
- "reth-consensus",
- "reth-consensus-common",
- "reth-execution-types",
- "reth-optimism-chainspec",
- "reth-optimism-forks",
- "reth-optimism-primitives",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-storage-errors",
- "reth-trie-common",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "thiserror 2.0.17",
  "tracing",
+]
+
+[[package]]
+name = "reth-optimism-evm"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-evm",
+ "alloy-op-evm",
+ "alloy-primitives",
+ "op-alloy-consensus",
+ "op-alloy-rpc-types-engine",
+ "op-revm",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-consensus 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -8577,17 +9039,17 @@ dependencies = [
  "op-alloy-consensus",
  "op-alloy-rpc-types-engine",
  "op-revm",
- "reth-chainspec",
- "reth-evm",
- "reth-execution-errors",
- "reth-execution-types",
- "reth-optimism-chainspec",
- "reth-optimism-consensus",
- "reth-optimism-forks",
- "reth-optimism-primitives",
- "reth-primitives-traits",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-eth-api",
- "reth-storage-errors",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "thiserror 2.0.17",
 ]
@@ -8605,19 +9067,19 @@ dependencies = [
  "brotli",
  "eyre",
  "futures-util",
- "reth-chain-state",
- "reth-errors",
- "reth-evm",
- "reth-execution-types",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
- "reth-optimism-evm",
- "reth-optimism-payload-builder",
- "reth-optimism-primitives",
- "reth-primitives-traits",
- "reth-revm",
- "reth-rpc-eth-types",
- "reth-storage-api",
- "reth-tasks",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "ringbuffer",
  "serde",
  "serde_json",
@@ -8630,12 +9092,23 @@ dependencies = [
 [[package]]
 name = "reth-optimism-forks"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-op-hardforks",
+ "alloy-primitives",
+ "once_cell",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+]
+
+[[package]]
+name = "reth-optimism-forks"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-op-hardforks",
  "alloy-primitives",
  "once_cell",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
 ]
 
 [[package]]
@@ -8652,36 +9125,75 @@ dependencies = [
  "op-alloy-consensus",
  "op-alloy-rpc-types-engine",
  "op-revm",
- "reth-chainspec",
- "reth-consensus",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-engine-local",
- "reth-evm",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-network",
  "reth-node-api",
  "reth-node-builder",
  "reth-node-core",
- "reth-optimism-chainspec",
- "reth-optimism-consensus",
- "reth-optimism-evm",
- "reth-optimism-forks",
- "reth-optimism-payload-builder",
- "reth-optimism-primitives",
+ "reth-optimism-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-optimism-rpc",
  "reth-optimism-storage",
- "reth-optimism-txpool",
- "reth-payload-builder",
- "reth-primitives-traits",
+ "reth-optimism-txpool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-rpc-api",
  "reth-rpc-engine-api",
- "reth-rpc-server-types",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-tracing",
- "reth-transaction-pool",
- "reth-trie-common",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "serde",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "reth-optimism-payload-builder"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-debug",
+ "alloy-rpc-types-engine",
+ "derive_more",
+ "op-alloy-consensus",
+ "op-alloy-rpc-types-engine",
+ "reth-basic-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-txpool 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-util 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-validator 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+ "tracing",
 ]
 
 [[package]]
@@ -8698,29 +9210,42 @@ dependencies = [
  "derive_more",
  "op-alloy-consensus",
  "op-alloy-rpc-types-engine",
- "reth-basic-payload-builder",
- "reth-chain-state",
- "reth-chainspec",
- "reth-evm",
- "reth-execution-types",
- "reth-optimism-evm",
- "reth-optimism-forks",
- "reth-optimism-primitives",
- "reth-optimism-txpool",
- "reth-payload-builder",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
- "reth-payload-util",
- "reth-payload-validator",
- "reth-primitives-traits",
- "reth-revm",
- "reth-storage-api",
- "reth-transaction-pool",
+ "reth-basic-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-txpool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-validator 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "serde",
  "sha2",
  "thiserror 2.0.17",
  "tracing",
+]
+
+[[package]]
+name = "reth-optimism-primitives"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "op-alloy-consensus",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
 ]
 
 [[package]]
@@ -8736,9 +9261,9 @@ dependencies = [
  "bytes",
  "modular-bitfield",
  "op-alloy-consensus",
- "reth-codecs",
- "reth-primitives-traits",
- "reth-zstd-compressors",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-zstd-compressors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "serde_with",
 ]
@@ -8773,29 +9298,29 @@ dependencies = [
  "op-alloy-rpc-types-engine",
  "op-revm",
  "reqwest",
- "reth-chain-state",
- "reth-chainspec",
- "reth-evm",
- "reth-metrics",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
  "reth-node-builder",
- "reth-optimism-evm",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-optimism-flashblocks",
- "reth-optimism-forks",
- "reth-optimism-payload-builder",
- "reth-optimism-primitives",
- "reth-optimism-txpool",
- "reth-primitives-traits",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-txpool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc",
  "reth-rpc-api",
- "reth-rpc-convert",
+ "reth-rpc-convert 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-engine-api",
  "reth-rpc-eth-api",
- "reth-rpc-eth-types",
- "reth-rpc-server-types",
- "reth-storage-api",
- "reth-tasks",
- "reth-transaction-pool",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "serde_json",
  "thiserror 2.0.17",
@@ -8811,8 +9336,44 @@ version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-consensus",
- "reth-optimism-primitives",
- "reth-storage-api",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+]
+
+[[package]]
+name = "reth-optimism-txpool"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-json-rpc",
+ "alloy-primitives",
+ "alloy-rpc-client",
+ "alloy-rpc-types-eth",
+ "alloy-serde",
+ "c-kzg",
+ "derive_more",
+ "futures-util",
+ "metrics",
+ "op-alloy-consensus",
+ "op-alloy-flz",
+ "op-alloy-rpc-types",
+ "op-revm",
+ "parking_lot",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8836,18 +9397,39 @@ dependencies = [
  "op-alloy-rpc-types",
  "op-revm",
  "parking_lot",
- "reth-chain-state",
- "reth-chainspec",
- "reth-metrics",
- "reth-optimism-evm",
- "reth-optimism-forks",
- "reth-optimism-primitives",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-transaction-pool",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reth-payload-builder"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-primitives",
+ "alloy-rpc-types",
+ "futures-util",
+ "metrics",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
@@ -8861,12 +9443,24 @@ dependencies = [
  "alloy-rpc-types",
  "futures-util",
  "metrics",
- "reth-chain-state",
- "reth-ethereum-engine-primitives",
- "reth-metrics",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
- "reth-primitives-traits",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "reth-payload-builder-primitives"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "pin-project",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -8878,10 +9472,30 @@ version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "pin-project",
- "reth-payload-primitives",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "reth-payload-primitives"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rpc-types-engine",
+ "auto_impl",
+ "either",
+ "op-alloy-rpc-types-engine",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
+ "thiserror 2.0.17",
+ "tokio",
 ]
 
 [[package]]
@@ -8895,13 +9509,23 @@ dependencies = [
  "auto_impl",
  "either",
  "op-alloy-rpc-types-engine",
- "reth-chain-state",
- "reth-chainspec",
- "reth-errors",
- "reth-primitives-traits",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
  "tokio",
+]
+
+[[package]]
+name = "reth-payload-util"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-primitives",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
 ]
 
 [[package]]
@@ -8911,7 +9535,17 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
- "reth-transaction-pool",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+]
+
+[[package]]
+name = "reth-payload-validator"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-rpc-types-engine",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
 ]
 
 [[package]]
@@ -8921,7 +9555,7 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "alloy-consensus",
  "alloy-rpc-types-engine",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
 ]
 
 [[package]]
@@ -8932,10 +9566,37 @@ dependencies = [
  "alloy-consensus",
  "c-kzg",
  "once_cell",
- "reth-ethereum-forks",
- "reth-ethereum-primitives",
- "reth-primitives-traits",
- "reth-static-file-types",
+ "reth-ethereum-forks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+]
+
+[[package]]
+name = "reth-primitives-traits"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-eth",
+ "alloy-trie",
+ "auto_impl",
+ "bytes",
+ "derive_more",
+ "once_cell",
+ "op-alloy-consensus",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-bytecode",
+ "revm-primitives",
+ "revm-state",
+ "secp256k1 0.30.0",
+ "serde",
+ "serde_with",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -8961,7 +9622,7 @@ dependencies = [
  "proptest",
  "proptest-arbitrary-interop",
  "rayon",
- "reth-codecs",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-bytecode",
  "revm-primitives",
  "revm-state",
@@ -8987,27 +9648,27 @@ dependencies = [
  "notify",
  "parking_lot",
  "rayon",
- "reth-chain-state",
- "reth-chainspec",
- "reth-codecs",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
  "reth-db-api",
- "reth-errors",
- "reth-ethereum-engine-primitives",
- "reth-ethereum-primitives",
- "reth-evm",
- "reth-execution-types",
- "reth-fs-util",
- "reth-metrics",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-nippy-jar",
  "reth-node-types",
- "reth-primitives-traits",
- "reth-prune-types",
- "reth-stages-types",
- "reth-static-file-types",
- "reth-storage-api",
- "reth-storage-errors",
- "reth-trie",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-trie-db",
  "revm-database",
  "revm-state",
@@ -9027,21 +9688,32 @@ dependencies = [
  "itertools 0.14.0",
  "metrics",
  "rayon",
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-config",
  "reth-db-api",
- "reth-errors",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-exex-types",
- "reth-metrics",
- "reth-primitives-traits",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-prune-types",
- "reth-static-file-types",
- "reth-tokio-util",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "rustc-hash 2.1.1",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reth-prune-types"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-primitives",
+ "derive_more",
+ "serde",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -9053,9 +9725,22 @@ dependencies = [
  "arbitrary",
  "derive_more",
  "modular-bitfield",
- "reth-codecs",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "reth-revm"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-primitives",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm",
 ]
 
 [[package]]
@@ -9064,10 +9749,10 @@ version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-primitives",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-storage-errors",
- "reth-trie",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
 ]
 
@@ -9110,32 +9795,32 @@ dependencies = [
  "jsonwebtoken",
  "parking_lot",
  "pin-project",
- "reth-chain-state",
- "reth-chainspec",
- "reth-consensus",
- "reth-consensus-common",
- "reth-engine-primitives",
- "reth-errors",
- "reth-evm",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-evm-ethereum",
- "reth-execution-types",
- "reth-metrics",
- "reth-network-api",
- "reth-network-peers",
- "reth-network-types",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
- "reth-primitives-traits",
- "reth-revm",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-api",
- "reth-rpc-convert",
+ "reth-rpc-convert 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-engine-api",
  "reth-rpc-eth-api",
- "reth-rpc-eth-types",
- "reth-rpc-server-types",
- "reth-storage-api",
- "reth-tasks",
- "reth-transaction-pool",
- "reth-trie-common",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "revm-inspectors",
  "revm-primitives",
@@ -9171,11 +9856,11 @@ dependencies = [
  "alloy-rpc-types-txpool",
  "alloy-serde",
  "jsonrpsee",
- "reth-chain-state",
- "reth-engine-primitives",
- "reth-network-peers",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-peers 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-eth-api",
- "reth-trie-common",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
 ]
 
 [[package]]
@@ -9190,24 +9875,24 @@ dependencies = [
  "jsonrpsee",
  "metrics",
  "pin-project",
- "reth-chain-state",
- "reth-chainspec",
- "reth-consensus",
- "reth-evm",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-ipc",
- "reth-metrics",
- "reth-network-api",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-core",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc",
  "reth-rpc-api",
  "reth-rpc-eth-api",
- "reth-rpc-eth-types",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-layer 1.8.2",
- "reth-rpc-server-types",
- "reth-storage-api",
- "reth-tasks",
- "reth-transaction-pool",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
  "tokio",
@@ -9215,6 +9900,27 @@ dependencies = [
  "tower 0.5.2",
  "tower-http",
  "tracing",
+]
+
+[[package]]
+name = "reth-rpc-convert"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-json-rpc",
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-rpc-types-eth",
+ "alloy-signer",
+ "auto_impl",
+ "dyn-clone",
+ "jsonrpsee-types 0.26.0",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-context",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -9235,11 +9941,11 @@ dependencies = [
  "op-alloy-network",
  "op-alloy-rpc-types",
  "op-revm",
- "reth-ethereum-primitives",
- "reth-evm",
- "reth-optimism-primitives",
- "reth-primitives-traits",
- "reth-storage-api",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-optimism-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-context",
  "thiserror 2.0.17",
 ]
@@ -9257,17 +9963,17 @@ dependencies = [
  "jsonrpsee-types 0.26.0",
  "metrics",
  "parking_lot",
- "reth-chainspec",
- "reth-engine-primitives",
- "reth-metrics",
- "reth-payload-builder",
- "reth-payload-builder-primitives",
- "reth-payload-primitives",
- "reth-primitives-traits",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-engine-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-builder-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-payload-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-rpc-api",
- "reth-storage-api",
- "reth-tasks",
- "reth-transaction-pool",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "thiserror 2.0.17",
  "tokio",
@@ -9297,24 +10003,71 @@ dependencies = [
  "jsonrpsee",
  "jsonrpsee-types 0.26.0",
  "parking_lot",
- "reth-chain-state",
- "reth-chainspec",
- "reth-errors",
- "reth-evm",
- "reth-network-api",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-node-api",
- "reth-primitives-traits",
- "reth-revm",
- "reth-rpc-convert",
- "reth-rpc-eth-types",
- "reth-rpc-server-types",
- "reth-storage-api",
- "reth-tasks",
- "reth-transaction-pool",
- "reth-trie-common",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-convert 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "revm-inspectors",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reth-rpc-eth-types"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-evm",
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-rpc-client",
+ "alloy-rpc-types-eth",
+ "alloy-sol-types",
+ "alloy-transport",
+ "derive_more",
+ "futures",
+ "itertools 0.14.0",
+ "jsonrpsee-core 0.26.0",
+ "jsonrpsee-types 0.26.0",
+ "metrics",
+ "rand 0.9.2",
+ "reqwest",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-rpc-convert 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm",
+ "revm-inspectors",
+ "schnellru",
+ "serde",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
@@ -9340,21 +10093,21 @@ dependencies = [
  "metrics",
  "rand 0.9.2",
  "reqwest",
- "reth-chain-state",
- "reth-chainspec",
- "reth-errors",
- "reth-ethereum-primitives",
- "reth-evm",
- "reth-execution-types",
- "reth-metrics",
- "reth-primitives-traits",
- "reth-revm",
- "reth-rpc-convert",
- "reth-rpc-server-types",
- "reth-storage-api",
- "reth-tasks",
- "reth-transaction-pool",
- "reth-trie",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-convert 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-rpc-server-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-transaction-pool 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm",
  "revm-inspectors",
  "schnellru",
@@ -9396,6 +10149,22 @@ dependencies = [
 [[package]]
 name = "reth-rpc-server-types"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rpc-types-engine",
+ "jsonrpsee-core 0.26.0",
+ "jsonrpsee-types 0.26.0",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "serde",
+ "strum 0.27.2",
+]
+
+[[package]]
+name = "reth-rpc-server-types"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-eips",
@@ -9403,8 +10172,8 @@ dependencies = [
  "alloy-rpc-types-engine",
  "jsonrpsee-core 0.26.0",
  "jsonrpsee-types 0.26.0",
- "reth-errors",
- "reth-network-api",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
  "strum 0.27.2",
 ]
@@ -9424,32 +10193,32 @@ dependencies = [
  "num-traits",
  "rayon",
  "reqwest",
- "reth-chainspec",
- "reth-codecs",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-config",
- "reth-consensus",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db",
  "reth-db-api",
  "reth-era",
  "reth-era-downloader",
  "reth-era-utils",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-etl",
- "reth-evm",
- "reth-execution-types",
+ "reth-evm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-exex",
- "reth-fs-util",
- "reth-network-p2p",
- "reth-primitives-traits",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-prune",
- "reth-prune-types",
- "reth-revm",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-revm 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-stages-api",
- "reth-static-file-types",
- "reth-storage-errors",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-testing-utils",
- "reth-trie",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-trie-db",
  "tempfile",
  "thiserror 2.0.17",
@@ -9468,20 +10237,29 @@ dependencies = [
  "auto_impl",
  "futures-util",
  "metrics",
- "reth-consensus",
- "reth-errors",
- "reth-metrics",
- "reth-network-p2p",
- "reth-primitives-traits",
+ "reth-consensus 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-network-p2p 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
  "reth-prune",
- "reth-stages-types",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-static-file",
- "reth-static-file-types",
- "reth-tokio-util",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reth-stages-types"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-primitives",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
 ]
 
 [[package]]
@@ -9493,8 +10271,8 @@ dependencies = [
  "arbitrary",
  "bytes",
  "modular-bitfield",
- "reth-codecs",
- "reth-trie-common",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "serde",
 ]
 
@@ -9506,16 +10284,27 @@ dependencies = [
  "alloy-primitives",
  "parking_lot",
  "rayon",
- "reth-codecs",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db-api",
- "reth-primitives-traits",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-prune-types",
- "reth-stages-types",
- "reth-static-file-types",
- "reth-storage-errors",
- "reth-tokio-util",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tokio-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tracing",
+]
+
+[[package]]
+name = "reth-static-file-types"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-primitives",
+ "derive_more",
+ "serde",
+ "strum 0.27.2",
 ]
 
 [[package]]
@@ -9533,6 +10322,28 @@ dependencies = [
 [[package]]
 name = "reth-storage-api"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rpc-types-engine",
+ "auto_impl",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-db-models 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-database",
+]
+
+[[package]]
+name = "reth-storage-api"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-consensus",
@@ -9540,17 +10351,33 @@ dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-engine",
  "auto_impl",
- "reth-chainspec",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-db-api",
- "reth-db-models",
- "reth-ethereum-primitives",
- "reth-execution-types",
- "reth-primitives-traits",
- "reth-prune-types",
- "reth-stages-types",
- "reth-storage-errors",
- "reth-trie-common",
+ "reth-db-models 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-database",
+]
+
+[[package]]
+name = "reth-storage-errors"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "derive_more",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-database-interface",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -9562,11 +10389,27 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "derive_more",
- "reth-primitives-traits",
- "reth-prune-types",
- "reth-static-file-types",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-prune-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-static-file-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-database-interface",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "reth-tasks"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "auto_impl",
+ "dyn-clone",
+ "futures-util",
+ "metrics",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-futures",
 ]
 
 [[package]]
@@ -9580,7 +10423,7 @@ dependencies = [
  "metrics",
  "pin-project",
  "rayon",
- "reth-metrics",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -9598,9 +10441,19 @@ dependencies = [
  "alloy-primitives",
  "rand 0.8.5",
  "rand 0.9.2",
- "reth-ethereum-primitives",
- "reth-primitives-traits",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "secp256k1 0.30.0",
+]
+
+[[package]]
+name = "reth-tokio-util"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "tokio",
+ "tokio-stream",
+ "tracing",
 ]
 
 [[package]]
@@ -9631,6 +10484,45 @@ dependencies = [
 [[package]]
 name = "reth-transaction-pool"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "aquamarine",
+ "auto_impl",
+ "bitflags 2.9.4",
+ "futures-util",
+ "metrics",
+ "parking_lot",
+ "pin-project",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-interpreter",
+ "revm-primitives",
+ "rustc-hash 2.1.1",
+ "schnellru",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "reth-transaction-pool"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-consensus",
@@ -9646,16 +10538,16 @@ dependencies = [
  "paste",
  "pin-project",
  "rand 0.9.2",
- "reth-chain-state",
- "reth-chainspec",
- "reth-eth-wire-types",
- "reth-ethereum-primitives",
- "reth-execution-types",
- "reth-fs-util",
- "reth-metrics",
- "reth-primitives-traits",
- "reth-storage-api",
- "reth-tasks",
+ "reth-chain-state 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-chainspec 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-eth-wire-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-ethereum-primitives 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-execution-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-fs-util 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-api 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-tasks 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-interpreter",
  "revm-primitives",
  "rustc-hash 2.1.1",
@@ -9672,6 +10564,28 @@ dependencies = [
 [[package]]
 name = "reth-trie"
 version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-trie",
+ "auto_impl",
+ "itertools 0.14.0",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-sparse 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-database",
+ "tracing",
+]
+
+[[package]]
+name = "reth-trie"
+version = "1.8.2"
 source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96#4583795e749565f64f2ab8a6187502a2408d3f96"
 dependencies = [
  "alloy-consensus",
@@ -9682,16 +10596,38 @@ dependencies = [
  "auto_impl",
  "itertools 0.14.0",
  "metrics",
- "reth-execution-errors",
- "reth-metrics",
- "reth-primitives-traits",
- "reth-stages-types",
- "reth-storage-errors",
- "reth-trie-common",
- "reth-trie-sparse",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-stages-types 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-sparse 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-database",
  "tracing",
  "triehash",
+]
+
+[[package]]
+name = "reth-trie-common"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-consensus",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-eth",
+ "alloy-serde",
+ "alloy-trie",
+ "bytes",
+ "derive_more",
+ "itertools 0.14.0",
+ "nybbles",
+ "rayon",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "revm-database",
+ "serde",
+ "serde_with",
 ]
 
 [[package]]
@@ -9713,8 +10649,8 @@ dependencies = [
  "nybbles",
  "plain_hasher",
  "rayon",
- "reth-codecs",
- "reth-primitives-traits",
+ "reth-codecs 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "revm-database",
  "serde",
  "serde_with",
@@ -9727,9 +10663,9 @@ source = "git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a24
 dependencies = [
  "alloy-primitives",
  "reth-db-api",
- "reth-execution-errors",
- "reth-primitives-traits",
- "reth-trie",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "tracing",
 ]
 
@@ -9745,16 +10681,32 @@ dependencies = [
  "metrics",
  "rayon",
  "reth-db-api",
- "reth-execution-errors",
- "reth-metrics",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-provider",
- "reth-storage-errors",
- "reth-trie",
- "reth-trie-common",
+ "reth-storage-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "reth-trie-db",
- "reth-trie-sparse",
+ "reth-trie-sparse 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "thiserror 2.0.17",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reth-trie-sparse"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-trie",
+ "auto_impl",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "smallvec",
  "tracing",
 ]
 
@@ -9769,10 +10721,10 @@ dependencies = [
  "auto_impl",
  "metrics",
  "rayon",
- "reth-execution-errors",
- "reth-metrics",
- "reth-primitives-traits",
- "reth-trie-common",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-primitives-traits 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "smallvec",
  "tracing",
 ]
@@ -9787,12 +10739,20 @@ dependencies = [
  "alloy-trie",
  "metrics",
  "rayon",
- "reth-execution-errors",
- "reth-metrics",
- "reth-trie-common",
- "reth-trie-sparse",
+ "reth-execution-errors 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-metrics 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-common 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
+ "reth-trie-sparse 1.8.2 (git+https://github.com/noot/reth?rev=4583795e749565f64f2ab8a6187502a2408d3f96)",
  "smallvec",
  "tracing",
+]
+
+[[package]]
+name = "reth-zstd-compressors"
+version = "1.8.2"
+source = "git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702#00d352d37c3f3ba7c23f370964b92cd13ce08702"
+dependencies = [
+ "zstd",
 ]
 
 [[package]]
@@ -10157,8 +11117,8 @@ dependencies = [
  "predicates",
  "rand 0.9.2",
  "reqwest",
- "reth-optimism-payload-builder",
- "reth-rpc-eth-types",
+ "reth-optimism-payload-builder 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
+ "reth-rpc-eth-types 1.8.2 (git+https://github.com/noot/reth?rev=00d352d37c3f3ba7c23f370964b92cd13ce08702)",
  "reth-rpc-layer 1.4.7",
  "rustls",
  "serde",
