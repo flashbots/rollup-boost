@@ -10192,6 +10192,7 @@ dependencies = [
  "alloy-serde",
  "anyhow",
  "assert_cmd",
+ "backoff",
  "bytes",
  "clap",
  "ctor",
