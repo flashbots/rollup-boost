@@ -10217,6 +10217,7 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber 0.3.20",
  "url",
+ "uuid",
  "vergen",
  "vergen-git2",
 ]

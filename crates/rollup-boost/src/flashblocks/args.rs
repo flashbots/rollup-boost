@@ -1,6 +1,6 @@
-use std::time::Duration;
-use clap::Parser;
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
+use clap::Parser;
+use std::time::Duration;
 use url::Url;
 
 #[derive(Parser, Clone, Debug)]
@@ -26,7 +26,6 @@ pub struct FlashblocksArgs {
     pub flashblocks_ws_config: FlashblocksWebsocketConfig,
 }
 
-
 #[derive(Parser, Debug, Clone, Copy)]
 pub struct FlashblocksWebsocketConfig {
     /// Minimum time for exponential backoff for timeout if builder disconnected
@@ -42,12 +41,8 @@ pub struct FlashblocksWebsocketConfig {
     pub flashblock_builder_ws_ping_interval_ms: u64,
 
     /// Timeout in milliseconds to wait for pong responses from upstream servers before considering the connection dead
-    #[arg(long, env, default_value = "2000")]
-    pub flashblock_builder_ws_pong_timeout_ms: u64,
-
-    /// Timeout in milliseconds for reading data from upstream servers before considering the connection dead
     #[arg(long, env, default_value = "1500")]
-    pub flashblock_builder_ws_read_timeout_ms: u64,
+    pub flashblock_builder_ws_pong_timeout_ms: u64,
 }
 
 impl FlashblocksWebsocketConfig {
@@ -78,10 +73,5 @@ impl FlashblocksWebsocketConfig {
     /// Returns pong interval
     pub fn pong_interval(&self) -> Duration {
         Duration::from_millis(self.flashblock_builder_ws_pong_timeout_ms)
-    }
-
-    /// Returns read timeout
-    pub fn read_timeout(&self) -> Duration {
-        Duration::from_millis(self.flashblock_builder_ws_read_timeout_ms)
     }
 }
