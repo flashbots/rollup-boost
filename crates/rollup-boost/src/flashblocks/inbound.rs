@@ -5,6 +5,7 @@ use bytes::Bytes;
 use dashmap::DashSet;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
+use backoff::ExponentialBackoff;
 use tokio::{sync::mpsc, time::interval};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
@@ -62,7 +63,7 @@ impl FlashblocksReceiverService {
     pub async fn run(self) {
         let mut backoff = self.websocket_config.backoff();
         loop {
-            if let Err(e) = self.connect_and_handle().await {
+            if let Err(e) = self.connect_and_handle(&mut backoff).await {
                 let interval = backoff
                     .next_backoff()
                     .expect("max_elapsed_time not set, never None");
@@ -75,15 +76,17 @@ impl FlashblocksReceiverService {
                 self.metrics.connection_status.set(0);
                 tokio::time::sleep(interval).await;
             } else {
-                backoff.reset();
                 break;
             }
         }
     }
 
-    async fn connect_and_handle(&self) -> Result<(), FlashblocksReceiverError> {
+    async fn connect_and_handle(&self, backoff: &mut ExponentialBackoff) -> Result<(), FlashblocksReceiverError> {
         let (ws_stream, _) = connect_async(self.url.as_str()).await?;
         let (mut write, mut read) = ws_stream.split();
+
+        // if we have successfully connected - reset backoff
+        backoff.reset();
 
         info!("Connected to Flashblocks receiver at {}", self.url);
         self.metrics.connection_status.set(1);
