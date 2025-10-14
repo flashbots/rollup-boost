@@ -1,11 +1,11 @@
 use super::{metrics::FlashblocksWsInboundMetrics, primitives::FlashblocksPayloadV1};
 use crate::FlashblocksWebsocketConfig;
+use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use bytes::Bytes;
 use dashmap::DashSet;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
-use backoff::ExponentialBackoff;
 use tokio::{sync::mpsc, time::interval};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
@@ -81,7 +81,10 @@ impl FlashblocksReceiverService {
         }
     }
 
-    async fn connect_and_handle(&self, backoff: &mut ExponentialBackoff) -> Result<(), FlashblocksReceiverError> {
+    async fn connect_and_handle(
+        &self,
+        backoff: &mut ExponentialBackoff,
+    ) -> Result<(), FlashblocksReceiverError> {
         let (ws_stream, _) = connect_async(self.url.as_str()).await?;
         let (mut write, mut read) = ws_stream.split();
 
