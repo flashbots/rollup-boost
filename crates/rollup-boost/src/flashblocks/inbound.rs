@@ -168,9 +168,8 @@ impl FlashblocksReceiverService {
                                             if pong_set.remove(&uuid).is_some() {
                                                 pong_interval.reset();
                                             } else {
-                                                tracing::warn!("Received pong with unknown data {}", uuid);
+                                                tracing::warn!("Received pong with unknown data:{}", uuid);
                                             }
-
                                         }
                                         Err(e) => {
                                             tracing::warn!("Failed to parse pong: {e}");
@@ -219,6 +218,7 @@ mod tests {
 
     use super::*;
     use std::net::{SocketAddr, TcpListener};
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     async fn start(
         addr: SocketAddr,
@@ -303,6 +303,74 @@ mod tests {
         Ok((term_tx, send_tx, send_ping_rx, url))
     }
 
+    async fn start_ping_server(
+        addr: SocketAddr,
+        send_pongs: Arc<AtomicBool>
+    ) -> eyre::Result<(
+        watch::Receiver<bool>,
+        mpsc::Receiver<Bytes>,
+        url::Url,
+    )> {
+        let (term_tx, term_rx) = watch::channel(false);
+        let (send_ping_tx, send_ping_rx) = mpsc::channel(100);
+
+        let listener = TcpListener::bind(addr)?;
+        let url = Url::parse(&format!("ws://{addr}"))?;
+
+        listener
+            .set_nonblocking(true)
+            .expect("Failed to set TcpListener socket to non-blocking");
+
+        let listener = tokio::net::TcpListener::from_std(listener)
+            .expect("Failed to convert TcpListener to tokio TcpListener");
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    result = listener.accept() => {
+                        match result {
+                            Ok((connection, _addr)) => {
+                                match accept_async(connection).await {
+                                    Ok(ws_stream) => {
+                                        let (_, mut read) = ws_stream.split();
+                                        loop {
+                                            if send_pongs.load(Ordering::Relaxed) {
+                                                let msg = read.next().await;
+                                                match msg {
+                                                    // we need to read for the library to handle pong messages
+                                                    Some(Ok(Message::Ping(data))) => {
+                                                        send_ping_tx.send(data).await.unwrap();
+                                                    },
+                                                    _ => {}
+                                                }
+
+                                            } else {
+                                                tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Failed to accept WebSocket connection: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                // Optionally break or continue based on error type
+                                if e.kind() == std::io::ErrorKind::Interrupted {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                // If we have broken from the look it means reconnection occured
+                term_tx.send(true).expect("channel is up");
+            }
+        });
+
+        Ok((term_rx, send_ping_rx, url))
+    }
+
     #[tokio::test]
     async fn test_flashblocks_receiver_service() -> eyre::Result<()> {
         let addr = "127.0.0.1:8080".parse::<SocketAddr>().unwrap();
@@ -357,10 +425,11 @@ mod tests {
         // ping messages to test the connection periodically
 
         let addr = "127.0.0.1:8081".parse::<SocketAddr>().unwrap();
-        let (_term, _send_msg, mut ping_rx, url) = start(addr).await?;
+        let send_pongs = Arc::new(AtomicBool::new(true));
+        let (term, mut ping_rx, url) = start_ping_server(addr, send_pongs.clone()).await?;
         let config = FlashblocksWebsocketConfig {
             flashblock_builder_ws_initial_reconnect_ms: 100,
-            flashblock_builder_ws_max_reconnect_ms: 100,
+            flashblock_builder_ws_max_reconnect_ms: 1000,
             flashblock_builder_ws_ping_interval_ms: 500,
             flashblock_builder_ws_pong_timeout_ms: 2000,
         };
@@ -372,10 +441,23 @@ mod tests {
         });
 
         // even if we do not send any messages, we should receive pings to keep the connection alive
-        for _ in 0..10 {
+        for _ in 0..5 {
             ping_rx.recv().await.expect("Failed to receive ping");
         }
+        // Check that server hasn't reconnected because we have answered to pongs
+        let reconnected = term.has_changed().expect("channel not closed");
+        assert!(!reconnected, "reconnected when we answered to pings");
 
+        send_pongs.store(false, Ordering::Relaxed);
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        // After this we should be reconnected
+        let reconnected = term.has_changed().expect("channel not closed");
+        assert!(!reconnected, "haven't reconnected before deadline is reached");
+
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        // After this we should be reconnected
+        let reconnected = term.has_changed().expect("channel not closed");
+        assert!(reconnected, "have reconnected after deadline is reached");
         Ok(())
     }
 }
