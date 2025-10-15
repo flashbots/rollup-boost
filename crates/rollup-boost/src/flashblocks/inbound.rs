@@ -11,6 +11,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 use url::Url;
+use uuid::Timestamp;
 
 #[derive(Debug, thiserror::Error)]
 enum FlashblocksReceiverError {
@@ -97,9 +98,25 @@ impl FlashblocksReceiverService {
         let cancel_token = CancellationToken::new();
         let cancel_for_ping = cancel_token.clone();
 
-        let ping_map = Arc::new(DashSet::with_capacity(10));
-        let pong_map = ping_map.clone();
+        let ping_set = Arc::new(DashSet::with_capacity(10));
+        let pong_set = ping_set.clone();
+        let cleaning_set = ping_set.clone();
 
+        tokio::spawn(async move {
+            // clean up pings without pongs older than 60 seconds
+            loop {
+                // To simplify logic we just create uuid time timestamp now() - 60s, because they
+                // support comparison
+                let unix_now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() - 60;
+                let ts = Timestamp::from_unix(uuid::timestamp::context::NoContext, unix_now, 0);
+                let clean_before = uuid::Uuid::new_v7(ts);
+                cleaning_set.retain(|uuid| uuid > &clean_before);
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            }
+        });
         let mut ping_interval = interval(self.websocket_config.ping_interval());
         let ping_task = tokio::spawn(async move {
             loop {
@@ -109,7 +126,7 @@ impl FlashblocksReceiverService {
                         if write.send(Message::Ping(Bytes::copy_from_slice(uuid.as_bytes().as_slice()))).await.is_err() {
                             return Err(FlashblocksReceiverError::PingFailed);
                         }
-                        ping_map.insert(uuid);
+                        ping_set.insert(uuid);
                     }
                     _ = cancel_for_ping.cancelled() => {
                         tracing::debug!("Ping task cancelled");
@@ -148,7 +165,7 @@ impl FlashblocksReceiverService {
                                 Message::Pong(data) => {
                                     match uuid::Uuid::from_slice(data.as_ref()) {
                                         Ok(uuid) => {
-                                            if pong_map.remove(&uuid).is_some() {
+                                            if pong_set.remove(&uuid).is_some() {
                                                 pong_interval.reset();
                                             } else {
                                                 tracing::warn!("Received pong with unknown data {}", uuid);
