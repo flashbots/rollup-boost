@@ -110,7 +110,8 @@ impl FlashblocksReceiverService {
                 let unix_now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_secs() - 60;
+                    .as_secs()
+                    - 60;
                 let ts = Timestamp::from_unix(uuid::timestamp::context::NoContext, unix_now, 0);
                 let clean_before = uuid::Uuid::new_v7(ts);
                 cleaning_set.retain(|uuid| uuid > &clean_before);
@@ -308,12 +309,8 @@ mod tests {
 
     async fn start_ping_server(
         addr: SocketAddr,
-        send_pongs: Arc<AtomicBool>
-    ) -> eyre::Result<(
-        watch::Receiver<bool>,
-        mpsc::Receiver<Bytes>,
-        url::Url,
-    )> {
+        send_pongs: Arc<AtomicBool>,
+    ) -> eyre::Result<(watch::Receiver<bool>, mpsc::Receiver<Bytes>, url::Url)> {
         let (term_tx, term_rx) = watch::channel(false);
         let (send_ping_tx, send_ping_rx) = mpsc::channel(100);
 
