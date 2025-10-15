@@ -130,6 +130,9 @@ impl FlashblocksReceiverService {
                     }
                     _ = cancel_for_ping.cancelled() => {
                         tracing::debug!("Ping task cancelled");
+                        if let Err(e) = write.close().await {
+                            tracing::warn!("Failed to close builder ws connection: {}", e);
+                        }
                         return Ok(());
                     }
                 }
@@ -341,6 +344,7 @@ mod tests {
                                                     Some(Ok(Message::Ping(data))) => {
                                                         send_ping_tx.send(data).await.unwrap();
                                                     },
+                                                    Some(Err(_)) => {break;}
                                                     _ => {}
                                                 }
 
@@ -363,7 +367,7 @@ mod tests {
                         }
                     }
                 }
-                // If we have broken from the look it means reconnection occured
+                // If we have broken from the look it means reconnection occurred
                 term_tx.send(true).expect("channel is up");
             }
         });
@@ -446,18 +450,26 @@ mod tests {
         }
         // Check that server hasn't reconnected because we have answered to pongs
         let reconnected = term.has_changed().expect("channel not closed");
-        assert!(!reconnected, "reconnected when we answered to pings");
+        assert!(!reconnected, "not reconnected when we answered to pings");
 
         send_pongs.store(false, Ordering::Relaxed);
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        // After this we should be reconnected
+        send_pongs.store(true, Ordering::Relaxed);
+        // This sleep is to ensure that we will try to read socket and realise it closed
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // One second is not enough to break the connection
         let reconnected = term.has_changed().expect("channel not closed");
-        assert!(!reconnected, "haven't reconnected before deadline is reached");
+        assert!(!reconnected, "have reconnected before deadline is reached");
 
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        // After this we should be reconnected
+        send_pongs.store(false, Ordering::Relaxed);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        send_pongs.store(true, Ordering::Relaxed);
+        // This sleep is to ensure that we will try to read socket and realise it closed
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // 3 seconds will cause reconnect
         let reconnected = term.has_changed().expect("channel not closed");
-        assert!(reconnected, "have reconnected after deadline is reached");
+        assert!(reconnected, "haven't reconnected after deadline is reached");
         Ok(())
     }
 }
