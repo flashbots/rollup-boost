@@ -105,9 +105,7 @@ impl FlashblocksReceiverService {
         let cancel_for_ping = cancel_token.clone();
 
         // LRU cache with capacity of 60 pings - automatically evicts oldest entries
-        let ping_cache = Arc::new(Mutex::new(
-            LruCache::new(MAXIMUM_PINGS),
-        ));
+        let ping_cache = Arc::new(Mutex::new(LruCache::new(MAXIMUM_PINGS)));
         let pong_cache = ping_cache.clone();
         let mut ping_interval = interval(self.websocket_config.ping_interval());
         let ping_task = tokio::spawn(async move {
@@ -344,13 +342,15 @@ mod tests {
                                             // we need to read for the library to handle pong messages
                                             Some(Ok(Message::Ping(data))) => {
                                                 send_ping_tx.send(data).await.unwrap();
-                                            },
-                                            Some(Err(_)) => {break;}
+                                            }
+                                            Some(Err(_)) => {
+                                                break;
+                                            }
                                             _ => {}
                                         }
-
                                     } else {
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(1))
+                                            .await;
                                     }
                                 }
                             }
