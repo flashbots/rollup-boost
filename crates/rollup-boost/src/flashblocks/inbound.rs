@@ -151,12 +151,11 @@ impl FlashblocksReceiverService {
                             Some(Ok(msg)) => match msg {
                                 Message::Text(text) => {
                                     metrics.messages_received.increment(1);
-                                    if let Ok(flashblocks_msg) =
-                                        serde_json::from_str::<FlashblocksPayloadV1>(&text)
-                                    {
-                                        sender.send(flashblocks_msg).await.map_err(|e| {
-                                            FlashblocksReceiverError::SendError(Box::new(e))
-                                        })?;
+                                    match serde_json::from_str::<FlashblocksPayloadV1>(&text) {
+                                        Ok(flashblocks_msg) => sender.send(flashblocks_msg).await.map_err(|e| {
+                                                FlashblocksReceiverError::SendError(Box::new(e))
+                                            })?,
+                                        Err(e) => error!("Failed to process flashblock, error: {e}")
                                     }
                                 }
                                 Message::Close(_) => {
@@ -268,16 +267,16 @@ mod tests {
                                         loop {
                                             tokio::select! {
                                                 Some(msg) = send_rx.recv() => {
-                                                    let serialized = serde_json::to_string(&msg).unwrap();
+                                                    let serialized = serde_json::to_string(&msg).expect("message serialized");
                                                     let utf8_bytes = Utf8Bytes::from(serialized);
 
-                                                    write.send(Message::Text(utf8_bytes)).await.unwrap();
+                                                    write.send(Message::Text(utf8_bytes)).await.expect("message sent");
                                                 },
                                                 msg = read.next() => {
                                                     match msg {
                                                         // we need to read for the library to handle pong messages
                                                         Some(Ok(Message::Ping(_))) => {
-                                                            send_ping_tx.send(()).await.unwrap();
+                                                            send_ping_tx.send(()).await.expect("ping notification sent");
                                                         },
                                                         _ => {}
                                                     }
@@ -341,7 +340,10 @@ mod tests {
                                         match msg {
                                             // we need to read for the library to handle pong messages
                                             Some(Ok(Message::Ping(data))) => {
-                                                send_ping_tx.send(data).await.unwrap();
+                                                send_ping_tx
+                                                    .send(data)
+                                                    .await
+                                                    .expect("ping data sent");
                                             }
                                             Some(Err(_)) => {
                                                 break;
@@ -376,7 +378,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_flashblocks_receiver_service() -> eyre::Result<()> {
-        let addr = "127.0.0.1:8080".parse::<SocketAddr>().unwrap();
+        let addr = "127.0.0.1:8080"
+            .parse::<SocketAddr>()
+            .expect("valid socket address");
         let (term, send_msg, _, url) = start(addr).await?;
 
         let (tx, mut rx) = mpsc::channel(100);
@@ -396,14 +400,14 @@ mod tests {
         send_msg
             .send(FlashblocksPayloadV1::default())
             .await
-            .expect("Failed to send message");
+            .expect("message sent to websocket server");
 
-        let msg = rx.recv().await.expect("Failed to receive message");
+        let msg = rx.recv().await.expect("message received from websocket");
         assert_eq!(msg, FlashblocksPayloadV1::default());
 
         // Drop the websocket server and start another one with the same address
         // The FlashblocksReceiverService should reconnect to the new server
-        term.send(true).unwrap();
+        term.send(true).expect("termination signal sent");
 
         // sleep for 1 second to ensure the server is dropped
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -413,11 +417,11 @@ mod tests {
         send_msg
             .send(FlashblocksPayloadV1::default())
             .await
-            .expect("Failed to send message");
+            .expect("message sent to websocket server");
 
-        let msg = rx.recv().await.expect("Failed to receive message");
+        let msg = rx.recv().await.expect("message received from websocket");
         assert_eq!(msg, FlashblocksPayloadV1::default());
-        term.send(true).unwrap();
+        term.send(true).expect("termination signal sent");
 
         Ok(())
     }
@@ -427,7 +431,9 @@ mod tests {
         // test that if the builder is not sending any messages back, the service will send
         // ping messages to test the connection periodically
 
-        let addr = "127.0.0.1:8081".parse::<SocketAddr>().unwrap();
+        let addr = "127.0.0.1:8081"
+            .parse::<SocketAddr>()
+            .expect("valid socket address");
         let send_pongs = Arc::new(AtomicBool::new(true));
         let (term, mut ping_rx, url) = start_ping_server(addr, send_pongs.clone()).await?;
         let config = FlashblocksWebsocketConfig {
@@ -445,7 +451,7 @@ mod tests {
 
         // even if we do not send any messages, we should receive pings to keep the connection alive
         for _ in 0..5 {
-            ping_rx.recv().await.expect("Failed to receive ping");
+            ping_rx.recv().await.expect("ping received");
         }
         // Check that server hasn't reconnected because we have answered to pongs
         let reconnected = term.has_changed().expect("channel not closed");
