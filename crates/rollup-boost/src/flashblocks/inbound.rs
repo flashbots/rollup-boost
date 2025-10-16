@@ -3,15 +3,18 @@ use crate::FlashblocksWebsocketConfig;
 use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use bytes::Bytes;
-use dashmap::DashSet;
 use futures::{SinkExt, StreamExt};
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::{sync::mpsc, time::interval};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 use url::Url;
-use uuid::Timestamp;
+
+const MAXIMUM_PINGS: NonZeroUsize = NonZeroUsize::new(60).expect("positive number always non zero");
 
 #[derive(Debug, thiserror::Error)]
 enum FlashblocksReceiverError {
@@ -38,6 +41,9 @@ enum FlashblocksReceiverError {
 
     #[error("Failed to send message to sender: {0}")]
     SendError(#[from] Box<tokio::sync::mpsc::error::SendError<FlashblocksPayloadV1>>),
+
+    #[error("Ping mutex poisoned")]
+    MutexPoisoned,
 }
 
 pub struct FlashblocksReceiverService {
@@ -98,26 +104,11 @@ impl FlashblocksReceiverService {
         let cancel_token = CancellationToken::new();
         let cancel_for_ping = cancel_token.clone();
 
-        let ping_set = Arc::new(DashSet::with_capacity(10));
-        let pong_set = ping_set.clone();
-        let cleaning_set = ping_set.clone();
-
-        tokio::spawn(async move {
-            // clean up pings without pongs older than 60 seconds
-            loop {
-                // To simplify logic we just create uuid time timestamp now() - 60s, because they
-                // support comparison
-                let unix_now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    - 60;
-                let ts = Timestamp::from_unix(uuid::timestamp::context::NoContext, unix_now, 0);
-                let clean_before = uuid::Uuid::new_v7(ts);
-                cleaning_set.retain(|uuid| uuid > &clean_before);
-                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-            }
-        });
+        // LRU cache with capacity of 60 pings - automatically evicts oldest entries
+        let ping_cache = Arc::new(Mutex::new(
+            LruCache::new(MAXIMUM_PINGS),
+        ));
+        let pong_cache = ping_cache.clone();
         let mut ping_interval = interval(self.websocket_config.ping_interval());
         let ping_task = tokio::spawn(async move {
             loop {
@@ -127,7 +118,14 @@ impl FlashblocksReceiverService {
                         if write.send(Message::Ping(Bytes::copy_from_slice(uuid.as_bytes().as_slice()))).await.is_err() {
                             return Err(FlashblocksReceiverError::PingFailed);
                         }
-                        ping_set.insert(uuid);
+                        match ping_cache.lock() {
+                            Ok(mut cache) => {
+                                cache.put(uuid, ());
+                            }
+                            Err(_) => {
+                                return Err(FlashblocksReceiverError::MutexPoisoned);
+                            }
+                        }
                     }
                     _ = cancel_for_ping.cancelled() => {
                         tracing::debug!("Ping task cancelled");
@@ -169,10 +167,17 @@ impl FlashblocksReceiverService {
                                 Message::Pong(data) => {
                                     match uuid::Uuid::from_slice(data.as_ref()) {
                                         Ok(uuid) => {
-                                            if pong_set.remove(&uuid).is_some() {
-                                                pong_interval.reset();
-                                            } else {
-                                                tracing::warn!("Received pong with unknown data:{}", uuid);
+                                            match pong_cache.lock() {
+                                                Ok(mut cache) => {
+                                                    if cache.pop(&uuid).is_some() {
+                                                        pong_interval.reset();
+                                                    } else {
+                                                        tracing::warn!("Received pong with unknown data:{}", uuid);
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    return Err(FlashblocksReceiverError::MutexPoisoned);
+                                                }
                                             }
                                         }
                                         Err(e) => {
@@ -319,52 +324,49 @@ mod tests {
 
         listener
             .set_nonblocking(true)
-            .expect("Failed to set TcpListener socket to non-blocking");
+            .expect("can set TcpListener socket to non-blocking");
 
         let listener = tokio::net::TcpListener::from_std(listener)
-            .expect("Failed to convert TcpListener to tokio TcpListener");
+            .expect("can convert TcpListener to tokio TcpListener");
 
         tokio::spawn(async move {
             loop {
-                tokio::select! {
-                    result = listener.accept() => {
-                        match result {
-                            Ok((connection, _addr)) => {
-                                match accept_async(connection).await {
-                                    Ok(ws_stream) => {
-                                        let (_, mut read) = ws_stream.split();
-                                        loop {
-                                            if send_pongs.load(Ordering::Relaxed) {
-                                                let msg = read.next().await;
-                                                match msg {
-                                                    // we need to read for the library to handle pong messages
-                                                    Some(Ok(Message::Ping(data))) => {
-                                                        send_ping_tx.send(data).await.unwrap();
-                                                    },
-                                                    Some(Err(_)) => {break;}
-                                                    _ => {}
-                                                }
-
-                                            } else {
-                                                tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-                                            }
+                let result = listener.accept().await;
+                match result {
+                    Ok((connection, _addr)) => {
+                        match accept_async(connection).await {
+                            Ok(ws_stream) => {
+                                let (_, mut read) = ws_stream.split();
+                                loop {
+                                    if send_pongs.load(Ordering::Relaxed) {
+                                        let msg = read.next().await;
+                                        match msg {
+                                            // we need to read for the library to handle pong messages
+                                            Some(Ok(Message::Ping(data))) => {
+                                                send_ping_tx.send(data).await.unwrap();
+                                            },
+                                            Some(Err(_)) => {break;}
+                                            _ => {}
                                         }
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Failed to accept WebSocket connection: {}", e);
+
+                                    } else {
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
                                     }
                                 }
                             }
                             Err(e) => {
-                                // Optionally break or continue based on error type
-                                if e.kind() == std::io::ErrorKind::Interrupted {
-                                    break;
-                                }
+                                eprintln!("Failed to accept WebSocket connection: {}", e);
                             }
                         }
                     }
+                    Err(e) => {
+                        // Optionally break or continue based on error type
+                        if e.kind() == std::io::ErrorKind::Interrupted {
+                            break;
+                        }
+                    }
                 }
-                // If we have broken from the look it means reconnection occurred
+                // If we have broken from the loop it means reconnection occurred
                 term_tx.send(true).expect("channel is up");
             }
         });
