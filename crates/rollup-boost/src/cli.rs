@@ -1,24 +1,14 @@
-use alloy_rpc_types_engine::JwtSecret;
 use clap::Parser;
-use eyre::bail;
 use jsonrpsee::{RpcModule, server::Server};
-use parking_lot::Mutex;
 use std::{
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
     path::PathBuf,
-    str::FromStr,
-    sync::Arc,
 };
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tracing::{Level, info};
 
 use crate::{
-    BlockSelectionPolicy, Flashblocks, FlashblocksArgs, ProxyLayer, RollupBoostServer, RpcClient,
-    client::rpc::{BuilderArgs, L2ClientArgs},
-    debug_api::ExecutionMode,
-    get_version, init_metrics,
-    payload::PayloadSource,
-    probe::ProbeLayer,
+    client::rpc::{BuilderArgs, L2ClientArgs}, debug_api::ExecutionMode, get_version, init_metrics, probe::ProbeLayer, BlockSelectionPolicy, ClientArgs, FlashblocksArgs, PayloadSource, ProxyLayer, RollupBoostServer
 };
 
 #[derive(Clone, Parser, Debug)]
@@ -112,91 +102,21 @@ impl RollupBoostArgs {
         init_metrics(&self)?;
 
         let debug_addr = format!("{}:{}", self.debug_host, self.debug_server_port);
-        let l2_client_args = self.l2_client;
+        let l2_client_args: ClientArgs = self.l2_client.clone().into();
+        let l2_http_client = l2_client_args.new_http_client(PayloadSource::L2)?;
 
-        let l2_auth_jwt = if let Some(secret) = l2_client_args.l2_jwt_token {
-            secret
-        } else if let Some(path) = l2_client_args.l2_jwt_path.as_ref() {
-            JwtSecret::from_file(path)?
-        } else {
-            bail!("Missing L2 Client JWT secret");
-        };
-
-        let l2_client = RpcClient::new(
-            l2_client_args.l2_url.clone(),
-            l2_auth_jwt,
-            l2_client_args.l2_timeout,
-            PayloadSource::L2,
-        )?;
-
-        let builder_args = self.builder;
-        let builder_auth_jwt = if let Some(secret) = builder_args.builder_jwt_token {
-            secret
-        } else if let Some(path) = builder_args.builder_jwt_path.as_ref() {
-            JwtSecret::from_file(path)?
-        } else {
-            bail!("Missing Builder JWT secret");
-        };
-
-        let builder_client = RpcClient::new(
-            builder_args.builder_url.clone(),
-            builder_auth_jwt,
-            builder_args.builder_timeout,
-            PayloadSource::Builder,
-        )?;
+        let builder_client_args: ClientArgs = self.builder.clone().into();
+        let builder_http_client = builder_client_args.new_http_client(PayloadSource::Builder)?;
 
         let (probe_layer, probes) = ProbeLayer::new();
-        let execution_mode = Arc::new(Mutex::new(self.execution_mode));
+        let rollup_boost = RollupBoostServer::new_from_args(self.clone(), probes.clone())?;
 
-        let (rpc_module, health_handle): (RpcModule<()>, _) = if self.flashblocks.flashblocks {
-            let flashblocks_args = self.flashblocks;
-            let inbound_url = flashblocks_args.flashblocks_builder_url;
-            let outbound_addr = SocketAddr::new(
-                IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
-                flashblocks_args.flashblocks_port,
-            );
+        let health_handle = rollup_boost
+            .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
 
-            let builder_client = Arc::new(Flashblocks::run(
-                builder_client.clone(),
-                inbound_url,
-                outbound_addr,
-                flashblocks_args.flashblock_builder_ws_reconnect_ms,
-            )?);
-
-            let rollup_boost = RollupBoostServer::new(
-                l2_client,
-                builder_client,
-                execution_mode.clone(),
-                self.block_selection_policy,
-                probes.clone(),
-                self.external_state_root,
-                self.ignore_unhealthy_builders,
-            );
-
-            let health_handle = rollup_boost
-                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
-
-            // Spawn the debug server
-            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-            (rollup_boost.try_into()?, health_handle)
-        } else {
-            let rollup_boost = RollupBoostServer::new(
-                l2_client,
-                Arc::new(builder_client),
-                execution_mode.clone(),
-                self.block_selection_policy,
-                probes.clone(),
-                self.external_state_root,
-                self.ignore_unhealthy_builders,
-            );
-
-            let health_handle = rollup_boost
-                .spawn_health_check(self.health_check_interval, self.max_unsafe_interval);
-
-            // Spawn the debug server
-            rollup_boost.start_debug_server(debug_addr.as_str()).await?;
-            (rollup_boost.try_into()?, health_handle)
-        };
+        // Spawn the debug server
+        rollup_boost.start_debug_server(debug_addr.as_str()).await?;
+        let rpc_module: RpcModule<()> = rollup_boost.try_into()?;
 
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);
@@ -205,12 +125,8 @@ impl RollupBoostArgs {
             tower::ServiceBuilder::new()
                 .layer(probe_layer)
                 .layer(ProxyLayer::new(
-                    l2_client_args.l2_url,
-                    l2_auth_jwt,
-                    l2_client_args.l2_timeout,
-                    builder_args.builder_url,
-                    builder_auth_jwt,
-                    builder_args.builder_timeout,
+                    l2_http_client.clone(),
+                    builder_http_client.clone(),
                 ));
 
         let server = Server::builder()

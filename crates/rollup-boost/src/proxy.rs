@@ -1,8 +1,5 @@
 use crate::client::http::HttpClient;
-use crate::payload::PayloadSource;
-use crate::{Request, Response, from_buffered_request, into_buffered_request};
-use alloy_rpc_types_engine::JwtSecret;
-use http::Uri;
+use crate::{from_buffered_request, into_buffered_request, Request, Response};
 use http_body_util::BodyExt as _;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
@@ -25,30 +22,18 @@ const FORWARD_REQUESTS: [&str; 6] = [
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
-    l2_auth_rpc: Uri,
-    l2_auth_secret: JwtSecret,
-    l2_timeout: u64,
-    builder_auth_rpc: Uri,
-    builder_auth_secret: JwtSecret,
-    builder_timeout: u64,
+    l2_client: HttpClient,
+    builder_client: HttpClient,
 }
 
 impl ProxyLayer {
     pub fn new(
-        l2_auth_rpc: Uri,
-        l2_auth_secret: JwtSecret,
-        l2_timeout: u64,
-        builder_auth_rpc: Uri,
-        builder_auth_secret: JwtSecret,
-        builder_timeout: u64,
+        l2_client: HttpClient,
+        builder_client: HttpClient,
     ) -> Self {
         ProxyLayer {
-            l2_auth_rpc,
-            l2_auth_secret,
-            l2_timeout,
-            builder_auth_rpc,
-            builder_auth_secret,
-            builder_timeout,
+            l2_client,
+            builder_client,
         }
     }
 }
@@ -57,24 +42,10 @@ impl<S> Layer<S> for ProxyLayer {
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        let l2_client = HttpClient::new(
-            self.l2_auth_rpc.clone(),
-            self.l2_auth_secret,
-            PayloadSource::L2,
-            self.l2_timeout,
-        );
-
-        let builder_client = HttpClient::new(
-            self.builder_auth_rpc.clone(),
-            self.builder_auth_secret,
-            PayloadSource::Builder,
-            self.builder_timeout,
-        );
-
         ProxyService {
             inner,
-            l2_client,
-            builder_client,
+            l2_client: self.l2_client.clone(),
+            builder_client: self.builder_client.clone(),
         }
     }
 }
@@ -162,12 +133,13 @@ where
 #[cfg(test)]
 mod tests {
     use crate::probe::ProbeLayer;
+    use crate::{ClientArgs, PayloadSource};
 
     use super::*;
     use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
-    use http::StatusCode;
+    use http::{StatusCode, Uri};
     use http_body_util::{BodyExt, Full};
     use hyper::service::service_fn;
     use hyper_util::client::legacy::Client;
@@ -213,12 +185,18 @@ mod tests {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-                format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
-                1,
-                format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
-                1,
+                ClientArgs {
+                    url: format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
+                    jwt_token: Some(JwtSecret::random()),
+                    jwt_path: None,
+                    timeout: 1,
+                }.new_http_client(PayloadSource::L2).unwrap(),
+                ClientArgs {
+                    url: format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
+                    jwt_token: Some(JwtSecret::random()),
+                    jwt_path: None,
+                    timeout: 1,
+                }.new_http_client(PayloadSource::Builder)?,
             ));
 
             let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -480,7 +458,20 @@ mod tests {
         .unwrap();
 
         let (probe_layer, _) = ProbeLayer::new();
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, 1, l2_auth_uri, jwt, 1);
+        let proxy_layer = ProxyLayer::new(
+            ClientArgs {
+                url: l2_auth_uri.clone(),
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 1,
+            }.new_http_client(PayloadSource::L2).unwrap(),
+            ClientArgs {
+                url: l2_auth_uri.clone(),
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 1,
+            }.new_http_client(PayloadSource::Builder).unwrap(),
+        );
 
         // Create a layered server
         let server = ServerBuilder::default()
