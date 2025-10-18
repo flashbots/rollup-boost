@@ -1,8 +1,5 @@
 use crate::client::http::HttpClient;
-use crate::payload::PayloadSource;
 use crate::{Request, Response, from_buffered_request, into_buffered_request};
-use alloy_rpc_types_engine::JwtSecret;
-use http::Uri;
 use http_body_util::BodyExt as _;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
@@ -25,30 +22,15 @@ const FORWARD_REQUESTS: [&str; 6] = [
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
-    l2_auth_rpc: Uri,
-    l2_auth_secret: JwtSecret,
-    l2_timeout: u64,
-    builder_auth_rpc: Uri,
-    builder_auth_secret: JwtSecret,
-    builder_timeout: u64,
+    l2_client: HttpClient,
+    builder_client: HttpClient,
 }
 
 impl ProxyLayer {
-    pub fn new(
-        l2_auth_rpc: Uri,
-        l2_auth_secret: JwtSecret,
-        l2_timeout: u64,
-        builder_auth_rpc: Uri,
-        builder_auth_secret: JwtSecret,
-        builder_timeout: u64,
-    ) -> Self {
+    pub fn new(l2_client: HttpClient, builder_client: HttpClient) -> Self {
         ProxyLayer {
-            l2_auth_rpc,
-            l2_auth_secret,
-            l2_timeout,
-            builder_auth_rpc,
-            builder_auth_secret,
-            builder_timeout,
+            l2_client,
+            builder_client,
         }
     }
 }
@@ -57,24 +39,10 @@ impl<S> Layer<S> for ProxyLayer {
     type Service = ProxyService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        let l2_client = HttpClient::new(
-            self.l2_auth_rpc.clone(),
-            self.l2_auth_secret,
-            PayloadSource::L2,
-            self.l2_timeout,
-        );
-
-        let builder_client = HttpClient::new(
-            self.builder_auth_rpc.clone(),
-            self.builder_auth_secret,
-            PayloadSource::Builder,
-            self.builder_timeout,
-        );
-
         ProxyService {
             inner,
-            l2_client,
-            builder_client,
+            l2_client: self.l2_client.clone(),
+            builder_client: self.builder_client.clone(),
         }
     }
 }
@@ -162,12 +130,13 @@ where
 #[cfg(test)]
 mod tests {
     use crate::probe::ProbeLayer;
+    use crate::{ClientArgs, PayloadSource};
 
     use super::*;
     use alloy_primitives::{B256, Bytes, U64, U128, hex};
     use alloy_rpc_types_engine::JwtSecret;
     use alloy_rpc_types_eth::erc4337::TransactionConditional;
-    use http::StatusCode;
+    use http::{StatusCode, Uri};
     use http_body_util::{BodyExt, Full};
     use hyper::service::service_fn;
     use hyper_util::client::legacy::Client;
@@ -183,10 +152,7 @@ mod tests {
         server::{ServerBuilder, ServerHandle},
     };
     use serde_json::json;
-    use std::{
-        net::SocketAddr,
-        sync::Arc,
-    };
+    use std::{net::SocketAddr, sync::Arc};
     use tokio::net::TcpListener;
     use tokio::task::JoinHandle;
 
@@ -213,12 +179,22 @@ mod tests {
             let builder = MockHttpServer::serve().await?;
             let l2 = MockHttpServer::serve().await?;
             let middleware = tower::ServiceBuilder::new().layer(ProxyLayer::new(
-                format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
-                1,
-                format!("http://{}:{}", builder.addr.ip(), builder.addr.port()).parse::<Uri>()?,
-                JwtSecret::random(),
-                1,
+                ClientArgs {
+                    url: format!("http://{}:{}", l2.addr.ip(), l2.addr.port()).parse::<Uri>()?,
+                    jwt_token: Some(JwtSecret::random()),
+                    jwt_path: None,
+                    timeout: 1,
+                }
+                .new_http_client(PayloadSource::L2)
+                .unwrap(),
+                ClientArgs {
+                    url: format!("http://{}:{}", builder.addr.ip(), builder.addr.port())
+                        .parse::<Uri>()?,
+                    jwt_token: Some(JwtSecret::random()),
+                    jwt_path: None,
+                    timeout: 1,
+                }
+                .new_http_client(PayloadSource::Builder)?,
             ));
 
             let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -285,7 +261,10 @@ mod tests {
             Self::serve_with_listener(listener, actual_addr).await
         }
 
-        async fn serve_with_listener(listener: TcpListener, addr: SocketAddr) -> eyre::Result<Self> {
+        async fn serve_with_listener(
+            listener: TcpListener,
+            addr: SocketAddr,
+        ) -> eyre::Result<Self> {
             let requests = Arc::new(tokio::sync::Mutex::new(vec![]));
             let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
             let connections: Arc<tokio::sync::Mutex<Vec<JoinHandle<()>>>> =
@@ -494,10 +473,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         drop(listener);
-        let server = ServerBuilder::default()
-            .build(addr)
-            .await
-            .unwrap();
+        let server = ServerBuilder::default().build(addr).await.unwrap();
 
         // Create a mock rpc module
         let mut module = RpcModule::new(());
@@ -515,12 +491,27 @@ mod tests {
         drop(listener);
 
         let jwt = JwtSecret::random();
-        let l2_auth_uri = format!("http://{}", l2_addr)
-            .parse::<Uri>()
-            .unwrap();
+        let l2_auth_uri = format!("http://{}", l2_addr).parse::<Uri>().unwrap();
 
         let (probe_layer, _) = ProbeLayer::new();
-        let proxy_layer = ProxyLayer::new(l2_auth_uri.clone(), jwt, 1, l2_auth_uri, jwt, 1);
+        let proxy_layer = ProxyLayer::new(
+            ClientArgs {
+                url: l2_auth_uri.clone(),
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 1,
+            }
+            .new_http_client(PayloadSource::L2)
+            .unwrap(),
+            ClientArgs {
+                url: l2_auth_uri.clone(),
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 1,
+            }
+            .new_http_client(PayloadSource::Builder)
+            .unwrap(),
+        );
 
         // Create a layered server
         let server = ServerBuilder::default()
@@ -806,7 +797,7 @@ mod tests {
         let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
         let l2_addr = temp_listener.local_addr()?;
         drop(temp_listener);
-        
+
         // Wait for port to be fully released
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -814,16 +805,25 @@ mod tests {
         let builder = MockHttpServer::serve().await?;
         let builder_addr = builder.addr;
         let jwt = JwtSecret::random();
-        
+
         // Create proxy layer with L2 client pointing to a non-existent server
         // Use a short timeout to fail quickly
         let proxy_layer = ProxyLayer::new(
-            format!("http://{}:{}", l2_addr.ip(), l2_addr.port()).parse::<Uri>()?,
-            jwt,
-            1,
-            format!("http://{}:{}", builder_addr.ip(), builder_addr.port()).parse::<Uri>()?,
-            jwt,
-            1,
+            ClientArgs {
+                url: format!("http://{}:{}", l2_addr.ip(), l2_addr.port()).parse::<Uri>()?,
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 200, // Short timeout for faster failure
+            }
+            .new_http_client(PayloadSource::L2)?,
+            ClientArgs {
+                url: format!("http://{}:{}", builder_addr.ip(), builder_addr.port())
+                    .parse::<Uri>()?,
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 200,
+            }
+            .new_http_client(PayloadSource::Builder)?,
         );
 
         // Start proxy server
@@ -850,7 +850,10 @@ mod tests {
         let result = proxy_client
             .request::<serde_json::Value, _>("mock_forwardedMethod", (mock_data,))
             .await;
-        assert!(result.is_err(), "Request should fail when L2 server is not running");
+        assert!(
+            result.is_err(),
+            "Request should fail when L2 server is not running"
+        );
         println!("Request failed as expected (no server): {:?}", result);
 
         // Step 4: Start the L2 server
@@ -884,7 +887,10 @@ mod tests {
         // Verify the server received requests
         {
             let l2_requests = l2.requests.lock().await;
-            assert!(l2_requests.len() >= 1, "L2 server should have received requests");
+            assert!(
+                l2_requests.len() >= 1,
+                "L2 server should have received requests"
+            );
             assert_eq!(l2_requests[0]["method"], "mock_forwardedMethod");
         }
 
@@ -905,12 +911,20 @@ mod tests {
         // Build proxy with short timeouts pointing to current L2
         let jwt = JwtSecret::random();
         let proxy_layer = ProxyLayer::new(
-            format!("http://{}:{}", l2_addr.ip(), l2_addr.port()).parse::<Uri>()?,
-            jwt,
-            200,
-            format!("http://{}:{}", l2_addr.ip(), l2_addr.port()).parse::<Uri>()?,
-            jwt,
-            200,
+            ClientArgs {
+                url: format!("http://{}:{}", l2_addr.ip(), l2_addr.port()).parse::<Uri>()?,
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 200,
+            }
+            .new_http_client(PayloadSource::L2)?,
+            ClientArgs {
+                url: format!("http://{}:{}", l2_addr.ip(), l2_addr.port()).parse::<Uri>()?,
+                jwt_token: Some(jwt),
+                jwt_path: None,
+                timeout: 200,
+            }
+            .new_http_client(PayloadSource::Builder)?,
         );
 
         // Start proxy on dynamic port
@@ -946,7 +960,7 @@ mod tests {
             .request::<serde_json::Value, _>("mock_forwardedMethod", (mock_data,))
             .await;
         match res {
-            Ok(v) => assert!(false, "expected error when L2 down, got: {v:?}"),
+            Ok(v) => unreachable!("expected error when L2 down, got: {v:?}"),
             Err(ClientError::Call(e)) => {
                 let code = e.code();
                 assert!(
@@ -957,7 +971,10 @@ mod tests {
             }
             Err(_other) => {
                 // Transport or other non-Call errors are considered retriable
-                assert!(matches!(_other, ClientError::Transport(_)), "expected transport error");
+                assert!(
+                    matches!(_other, ClientError::Transport(_)),
+                    "expected transport error"
+                );
             }
         }
 
@@ -967,7 +984,11 @@ mod tests {
         let res = proxy_client
             .request::<serde_json::Value, _>("mock_forwardedMethod", (mock_data,))
             .await;
-        assert!(res.is_ok(), "request should succeed after L2 restart: {:?}", res);
+        assert!(
+            res.is_ok(),
+            "request should succeed after L2 restart: {:?}",
+            res
+        );
 
         // Cleanup
         server_handle.stop()?;
