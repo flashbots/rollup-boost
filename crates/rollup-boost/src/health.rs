@@ -75,7 +75,7 @@ impl HealthHandle {
                         }
                     }
                     Err(e) => {
-                        warn!(target: "rollup_boost::health", "Failed to get unsafe block from l2 client: {} - updating health status", e);
+                        warn!(target: "rollup_boost::health", "L2 client - Failed to get unsafe block {} - updating health status", e);
                         self.probes.set_health(Health::ServiceUnavailable);
                         continue;
                     }
@@ -101,7 +101,7 @@ impl HealthHandle {
                             }
                         }
                         Err(e) => {
-                            warn!(target: "rollup_boost::health", "Failed to get unsafe block from builder client: {} - updating health status", e);
+                            warn!(target: "rollup_boost::health", "Builder client - Failed to get unsafe block {} - updating health status", e);
                             self.probes.set_health(Health::PartialContent);
                         }
                     };
