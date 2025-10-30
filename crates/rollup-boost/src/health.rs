@@ -51,7 +51,7 @@ impl HealthHandle {
             loop {
                 sleep_until(Instant::now() + self.health_check_interval).await;
                 let t = timestamp.tick();
-                
+
                 // Check L2 client health. If its unhealthy, set the health status to ServiceUnavailable
                 // If in disabled or dry run execution mode, set the health status to Healthy if the l2 client is healthy
                 match self
@@ -288,18 +288,6 @@ mod tests {
         };
 
         Ok(hyper::Response::new(response.to_string()))
-    }
-
-    async fn error_handler(
-        _req: hyper::Request<hyper::body::Incoming>,
-        _block_timestamp: u64,
-    ) -> Result<hyper::Response<String>, hyper::Error> {
-        let error_response = json!({
-            "jsonrpc": "2.0",
-            "error": { "code": -32603, "message": "Injected test error" },
-            "id": 1
-        });
-        Ok(hyper::Response::new(error_response.to_string()))
     }
 
     #[serial]
