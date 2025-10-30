@@ -9,7 +9,7 @@ use tokio::{
     task::JoinHandle,
     time::{Instant, sleep_until},
 };
-use tracing::{info, warn};
+use tracing::{warn};
 
 use crate::{EngineApiExt, ExecutionMode, Health, Probes};
 
