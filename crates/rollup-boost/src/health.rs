@@ -9,7 +9,7 @@ use tokio::{
     task::JoinHandle,
     time::{Instant, sleep_until},
 };
-use tracing::{warn};
+use tracing::warn;
 
 use crate::{EngineApiExt, ExecutionMode, Health, Probes};
 
@@ -321,7 +321,7 @@ mod tests {
             execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
             l2_client: l2_client.clone(),
             builder_client: builder_client.clone(),
-            health_check_interval: Duration::from_secs(1),
+            health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
         };
 
@@ -363,13 +363,55 @@ mod tests {
             execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
             l2_client: l2_client.clone(),
             builder_client: builder_client.clone(),
-            health_check_interval: Duration::from_secs(1),
+            health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
         };
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
         assert!(matches!(probes.health(), Health::PartialContent));
+        Ok(())
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn test_health_check_l2_exceeds_max_unsafe_interval() -> eyre::Result<()> {
+        let probes = Arc::new(Probes::default());
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+
+        // L2 healthy unhealth
+        let l2 = MockHttpServer::serve(handler, now - 10).await.unwrap();
+        let l2_client = Arc::new(RpcClient::new(
+            format!("http://{}", l2.addr).parse::<Uri>()?,
+            JwtSecret::random(),
+            100,
+            PayloadSource::L2,
+        )?);
+
+        // Builder healthy
+        let builder = MockHttpServer::serve(handler, now).await.unwrap();
+        let builder_client = Arc::new(RpcClient::new(
+            format!("http://{}", builder.addr).parse::<Uri>()?,
+            JwtSecret::random(),
+            100,
+            PayloadSource::Builder,
+        )?);
+
+        let health_handle = HealthHandle {
+            probes: probes.clone(),
+            execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
+            l2_client: l2_client.clone(),
+            builder_client: builder_client.clone(),
+            health_check_interval: Duration::from_secs(60),
+            max_unsafe_interval: 5,
+        };
+
+        health_handle.spawn();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert!(matches!(probes.health(), Health::ServiceUnavailable));
         Ok(())
     }
 
@@ -404,7 +446,7 @@ mod tests {
             execution_mode: Arc::new(Mutex::new(ExecutionMode::Disabled)),
             l2_client: l2_client.clone(),
             builder_client: builder_client.clone(),
-            health_check_interval: Duration::from_secs(1),
+            health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
         };
 
@@ -445,7 +487,7 @@ mod tests {
             execution_mode: Arc::new(Mutex::new(ExecutionMode::DryRun)),
             l2_client: l2_client.clone(),
             builder_client: builder_client.clone(),
-            health_check_interval: Duration::from_secs(1),
+            health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
         };
 
@@ -485,7 +527,7 @@ mod tests {
             execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
             l2_client: l2_client.clone(),
             builder_client: builder_client.clone(),
-            health_check_interval: Duration::from_secs(1),
+            health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
         };
 
@@ -505,9 +547,8 @@ mod tests {
             .as_secs();
 
         // L2 returns an error
-        let l2 = MockHttpServer::serve(error_handler, now).await.unwrap();
         let l2_client = Arc::new(RpcClient::new(
-            format!("http://{}", l2.addr).parse::<Uri>()?,
+            "http://127.0.0.1:6000".parse::<Uri>()?,
             JwtSecret::random(),
             100,
             PayloadSource::L2,
@@ -527,7 +568,7 @@ mod tests {
             execution_mode: Arc::new(Mutex::new(ExecutionMode::Enabled)),
             l2_client: l2_client.clone(),
             builder_client: builder_client.clone(),
-            health_check_interval: Duration::from_secs(1),
+            health_check_interval: Duration::from_secs(60),
             max_unsafe_interval: 5,
         };
 
