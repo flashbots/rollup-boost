@@ -50,10 +50,8 @@ impl HealthHandle {
 
             loop {
                 sleep_until(Instant::now() + self.health_check_interval).await;
-                info!("health check loop");
-
                 let t = timestamp.tick();
-
+                
                 // Check L2 client health. If its unhealthy, set the health status to ServiceUnavailable
                 // If in disabled or dry run execution mode, set the health status to Healthy if the l2 client is healthy
                 match self
