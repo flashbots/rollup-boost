@@ -49,7 +49,6 @@ impl HealthHandle {
             let mut timestamp = MonotonicTimestamp::new();
 
             loop {
-                sleep_until(Instant::now() + self.health_check_interval).await;
                 let t = timestamp.tick();
 
                 // Check L2 client health. If its unhealthy, set the health status to ServiceUnavailable
@@ -65,24 +64,25 @@ impl HealthHandle {
                         {
                             warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %block.header.timestamp, "L2 client - unsafe block timestamp is too old, updating health status to ServiceUnavailable");
                             self.probes.set_health(Health::ServiceUnavailable);
+                            sleep_until(Instant::now() + self.health_check_interval).await;
                             continue;
                         } else if self.execution_mode.lock().is_disabled()
                             || self.execution_mode.lock().is_dry_run()
                         {
-                            info!("self.probes.set_health");
                             self.probes.set_health(Health::Healthy);
+                            sleep_until(Instant::now() + self.health_check_interval).await;
                             continue;
                         }
                     }
                     Err(e) => {
                         warn!(target: "rollup_boost::health", "L2 client - Failed to get unsafe block {} - updating health status", e);
                         self.probes.set_health(Health::ServiceUnavailable);
+                        sleep_until(Instant::now() + self.health_check_interval).await;
                         continue;
                     }
                 };
 
                 if self.execution_mode.lock().is_enabled() {
-                    info!("self.execution_mode.lock().is_enabled");
                     // Only check builder client health if execution mode is enabled
                     // If its unhealthy, set the health status to PartialContent
                     match self
@@ -106,6 +106,7 @@ impl HealthHandle {
                         }
                     };
                 }
+                sleep_until(Instant::now() + self.health_check_interval).await;
             }
         })
     }
