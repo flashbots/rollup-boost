@@ -120,7 +120,7 @@ class FlashblocksPayloadV1():
     index: uint64
     static: Optional[ExecutionPayloadStaticV1]
     diff: ExecutionPayloadFlashblockResultV1
-    metadata: FlashblocksMetadata
+    metadata: Metadata
 ```
 
 **Field descriptions:**
@@ -200,70 +200,17 @@ class ExecutionPayloadStaticV1():
 Container encapsulating all metadata for a flashblock, including account state changes and transaction results.
 
 ```python
-class FlashblockMetadata():
-		accounts: List[AccountMetadata]
-		transactions: List[TransactionMetadata]
+class Metadata():
+		block_number: uint64
+		new_account_balances: Dict[ExecutionAddress, uint256]
+		receipts: Dict[Bytes32, Receipt]
 ```
 
 **Field descriptions:**
 
-- `accounts`: List of accounts with modified state in this flashblock.
-- `transactions`: List of transaction execution results in this flashblock.
-
-### **`AccountMetadata`**
-
-Container representing account state changes included in the Flashblock metadata. It is used by providers to fulfill the RPC requests.
-
-```python
-class AccountMetadata():
-    address: ExecutionAddress
-    balance: Optional[uint256]
-    nonce: uint64
-    code: Optional[Bytes]
-    storage_slots: List[StorageSlot]
-```
-
-**Field descriptions:**
-
-- `address`: Ethereum address of the affected account.
-- `balance`: Updated account balance after the Flashblock's execution (None if unchanged).
-- `nonce`: Updated account nonce (transaction count) after the Flashblock's execution.
-- `code_created`:  Contract bytecode if created in this Flashblock.
-- `storage_slots`: List of modified storage slots and their new values.
-
-Storage slot keys must be de-duplicated (only the final value for each key should be included) and sorted in ascending byte order for deterministic processing.
-
-### **`StorageSlot`**
-
-Container representing a single modified storage slot within an account.
-
-```python
-class StorageSlot():
-    key: Bytes32
-    value: Bytes32
-```
-
-**Field descriptions:**
-
-- `key`: Storage slot location (32-byte key).
-- `value`: New value stored at this slot after the Flashblock's execution.
-
-### **`TransactionMetadata`**
-
-Container representing succinct transaction execution results.
-
-```python
-class TransactionMetadata():
-    status: uint8
-    gas_used: uint64
-    contract_address: Optional[ExecutionAddress]
-```
-
-**Field descriptions:**
-
-- `status`: Execution status (1 for success, 0 for failure).
-- `gas_used`: Amount of gas used by this specific transaction.
-- `contract_address`: Address of created contract (None for non-creation transactions).
+- `block_number`: Sequential execution block number.
+- `new_account_balances`: Updated balances of addresses after block execution.
+- `receipts`: Execution receipts of transactions in the block
 
 ## System architecture
 
