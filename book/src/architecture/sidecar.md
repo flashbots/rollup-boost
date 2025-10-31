@@ -29,26 +29,26 @@ sequenceDiagram
     end
     box Builder
         participant builder-op-node as op-node
-        participant builder-op-geth as builder
+        participant builder-EL as builder
     end
 
-    Note over op-node, builder-op-geth: 1. Triggering Block Building
+    Note over op-node, builder-EL: 1. Triggering Block Building
     op-node->>rollup-boost: engine_FCU (with attrs)
     rollup-boost->>op-geth: engine_FCU (with attrs)
-    rollup-boost->>builder-op-geth: engine_FCU (with attrs)
+    rollup-boost->>builder-EL: engine_FCU (with attrs)
     rollup-boost->>op-node: proposer payload id
 
-    Note over op-node, builder-op-geth: 2. Get Local and Builder Blocks
+    Note over op-node, builder-EL: 2. Get Local and Builder Blocks
     op-node->>rollup-boost: engine_getPayload
     rollup-boost->>op-geth: engine_getPayload
-    rollup-boost->>builder-op-geth: engine_getPayload
+    rollup-boost->>builder-EL: engine_getPayload
 
-    Note over op-node, builder-op-geth: 3. Validating and Returning Builder Block
+    Note over op-node, builder-EL: 3. Validating and Returning Builder Block
     rollup-boost->>op-geth: engine_newPayload
     op-geth->>rollup-boost: block validity
     rollup-boost->>op-node: block payload
 
-    Note over op-node, builder-op-geth: 4. Updating Chain State
+    Note over op-node, builder-EL: 4. Updating Chain State
     op-node->>rollup-boost: engine_newPayload
     rollup-boost->>op-geth: engine_newPayload
     op-node->>rollup-boost: engine_FCU (without attrs)
