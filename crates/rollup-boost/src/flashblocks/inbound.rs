@@ -95,9 +95,6 @@ impl FlashblocksReceiverService {
         let (ws_stream, _) = connect_async(self.url.as_str()).await?;
         let (mut write, mut read) = ws_stream.split();
 
-        // if we have successfully connected - reset backoff
-        backoff.reset();
-
         info!("Connected to Flashblocks receiver at {}", self.url);
         self.metrics.connection_status.set(1);
 
@@ -202,6 +199,8 @@ impl FlashblocksReceiverService {
             }
         });
 
+        let connection_start = std::time::Instant::now();
+
         let result = tokio::select! {
             result = message_handle => {
                 result.map_err(|e| FlashblocksReceiverError::TaskPanic(e.to_string()))?
@@ -212,6 +211,12 @@ impl FlashblocksReceiverService {
         };
 
         cancel_token.cancel();
+
+        // Only reset backoff if connection was stable for the max_interval set
+        // This prevents rapid reconnection loops when a proxy accepts and immediately drops connections
+        if connection_start.elapsed() >= backoff.max_interval {
+            backoff.reset();
+        }
         result
     }
 }

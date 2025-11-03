@@ -53,6 +53,7 @@ impl FlashblocksWebsocketConfig {
             .with_max_interval(self.max_interval())
             .with_randomization_factor(0 as f64)
             .with_max_elapsed_time(None)
+            .with_multiplier(2.0)
             .build()
     }
 
