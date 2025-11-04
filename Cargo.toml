@@ -47,3 +47,46 @@ op-alloy-rpc-types = "0.20.0"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
+
+[patch."https://github.com/paradigmxyz/reth"]
+reth-optimism-payload-builder = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-db = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-node-api = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-node-builder = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-node-core = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-optimism-chainspec = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-optimism-cli = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-optimism-evm = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-optimism-forks = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-optimism-node = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-optimism-primitives = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-optimism-rpc = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-primitives = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-primitives-traits = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-provider = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-rpc-eth-api = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-rpc-server-types = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-rpc-layer = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-tasks = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-tracing = { git = "https://github.com/okx/reth", branch = "dev" }
+reth-e2e-test-utils = { git = "https://github.com/okx/reth", branch = "dev" }
+
+[patch.crates-io]
+alloy-consensus = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-eips = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-genesis = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-json-rpc = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-network = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-network-primitives = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-provider = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-pubsub = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-rpc-client = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-rpc-types = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-rpc-types-beacon = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-rpc-types-engine = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-rpc-types-eth = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-serde = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-signer = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-signer-local = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-transport = { git = "https://github.com/okx/alloy", rev = "65707b1" }
+alloy-transport-http = { git = "https://github.com/okx/alloy", rev = "65707b1" }
