@@ -7,7 +7,7 @@ use bytes::{Buf as _, BufMut as _, BytesMut};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::FlashblocksPayloadV1;
+use crate::{FlashblocksPayloadV1, flashblocks::error::FlashblocksError};
 
 /// An authorization token that grants a builder permission to publish flashblocks for a specific payload.
 ///

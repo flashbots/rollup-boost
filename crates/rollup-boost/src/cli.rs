@@ -361,9 +361,9 @@ pub mod tests {
         ])?;
 
         let flashblocks = args
-            .flashblocks
+            .flashblocks_ws
             .expect("flashblocks should be Some when flag is passed");
-        assert!(flashblocks.flashblocks);
+        assert!(flashblocks.flashblocks_ws);
 
         Ok(())
     }
@@ -420,9 +420,9 @@ pub mod tests {
         assert_eq!(args.debug_server_port, 6666);
 
         let flashblocks = args
-            .flashblocks
+            .flashblocks_ws
             .expect("flashblocks should be Some when flag is passed");
-        assert!(flashblocks.flashblocks);
+        assert!(flashblocks.flashblocks_ws);
 
         Ok(())
     }
