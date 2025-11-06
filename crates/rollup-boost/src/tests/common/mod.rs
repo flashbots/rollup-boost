@@ -21,7 +21,6 @@ use jsonrpsee::http_client::{HttpClient, transport::HttpBackend};
 use jsonrpsee::proc_macros::rpc;
 use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
-use parking_lot::Mutex;
 use proxy::{BuilderProxyHandler, start_proxy_server};
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
@@ -30,6 +29,7 @@ use std::collections::HashSet;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Mutex;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, SystemTime};
 use std::{fs::File, io::BufReader, time::UNIX_EPOCH};
@@ -643,7 +643,12 @@ pub fn get_available_port() -> u16 {
         LazyLock::new(|| Mutex::new(HashSet::new()));
     loop {
         let port: u16 = rand::random_range(1000..20000);
-        if TcpListener::bind(("127.0.0.1", port)).is_ok() && CLAIMED_PORTS.lock().insert(port) {
+        if TcpListener::bind(("127.0.0.1", port)).is_ok()
+            && CLAIMED_PORTS
+                .lock()
+                .expect("CLAIMED_PORTS poisoned")
+                .insert(port)
+        {
             return port;
         }
     }

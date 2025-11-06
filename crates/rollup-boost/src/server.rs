@@ -35,11 +35,11 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use opentelemetry::trace::SpanKind;
-use parking_lot::Mutex;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, instrument};
 
@@ -201,7 +201,9 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
             .await;
 
         // async call to builder to sync the builder node
-        if !self.execution_mode.lock().is_disabled() && !self.should_skip_unhealthy_builder() {
+        if !self.execution_mode.lock().await.is_disabled()
+            && !self.should_skip_unhealthy_builder().await
+        {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
@@ -218,10 +220,10 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
-        if self.execution_mode.lock().is_disabled() {
+        if self.execution_mode.lock().await.is_disabled() {
             return match l2_fut.await {
                 Ok(payload) => {
-                    self.probes.set_health(Health::Healthy);
+                    self.probes.set_health(Health::Healthy).await;
                     let context = PayloadSource::L2;
                     tracing::Span::current().record("payload_source", context.to_string());
                     counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
@@ -241,7 +243,7 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
                 }
 
                 Err(e) => {
-                    self.probes.set_health(Health::ServiceUnavailable);
+                    self.probes.set_health(Health::ServiceUnavailable).await;
                     Err(e.into())
                 }
             };
@@ -305,9 +307,14 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
 
         // Evaluate the builder and l2 response and select the final payload
         let (payload, context) = {
-            let l2_payload =
-                l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
-            self.probes.set_health(Health::Healthy);
+            let l2_payload = l2_payload.inspect_err(|_| {
+                // best-effort update; ignore await inside closure by spawning
+                let probes = self.probes.clone();
+                tokio::spawn(async move {
+                    probes.set_health(Health::ServiceUnavailable).await;
+                });
+            })?;
+            self.probes.set_health(Health::Healthy).await;
 
             // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
             // If there's an error, log it and return None instead.
@@ -334,7 +341,7 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
 
                 // If execution mode is set to DryRun, fallback to the l2_payload,
                 // otherwise prefer the builder payload
-                if self.execution_mode.lock().is_dry_run() {
+                if self.execution_mode.lock().await.is_dry_run() {
                     (l2_payload, PayloadSource::L2)
                 } else if let Some(selection_policy) = &self.block_selection_policy {
                     selection_policy.select_block(builder_payload, l2_payload)
@@ -344,8 +351,8 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
             } else {
                 // Only update the health status if the builder payload fails
                 // and execution mode is enabled
-                if self.execution_mode.lock().is_enabled() && builder_api_failed {
-                    self.probes.set_health(Health::PartialContent);
+                if self.execution_mode.lock().await.is_enabled() && builder_api_failed {
+                    self.probes.set_health(Health::PartialContent).await;
                 }
                 (l2_payload, PayloadSource::L2)
             }
@@ -375,8 +382,8 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
         Ok(payload)
     }
 
-    fn should_skip_unhealthy_builder(&self) -> bool {
-        self.ignore_unhealthy_builders && !matches!(self.probes.health(), Health::Healthy)
+    async fn should_skip_unhealthy_builder(&self) -> bool {
+        self.ignore_unhealthy_builders && !matches!(self.probes.health().await, Health::Healthy)
     }
 
     async fn calculate_external_state_root(
@@ -522,12 +529,12 @@ impl<T: EngineApiExt> EngineApiServer for RollupBoostServer<T> {
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
         // If execution mode is disabled, return the l2 client response immediately
-        if self.execution_mode.lock().is_disabled() {
+        if self.execution_mode.lock().await.is_disabled() {
             return Ok(l2_fut.await?);
         }
 
         // If traffic to the unhealthy builder is not allowed and the builder is unhealthy,
-        if self.should_skip_unhealthy_builder() {
+        if self.should_skip_unhealthy_builder().await {
             info!(message = "builder is unhealthy, skipping FCU to builder");
             return Ok(l2_fut.await?);
         }
@@ -754,10 +761,10 @@ pub mod tests {
     use jsonrpsee::RpcModule;
     use jsonrpsee::http_client::HttpClient;
     use jsonrpsee::server::{Server, ServerBuilder, ServerHandle};
-    use parking_lot::Mutex;
     use std::net::SocketAddr;
     use std::str::FromStr;
     use std::sync::Arc;
+    use std::sync::Mutex;
     use tokio::time::sleep;
 
     #[derive(Debug, Clone)]
@@ -880,7 +887,7 @@ pub mod tests {
             let (probe_layer, probes) = ProbeLayer::new();
 
             // For tests, set initial health to Healthy since we don't run health checks
-            probes.set_health(Health::Healthy);
+            probes.set_health(Health::Healthy).await;
 
             let rollup_boost = RollupBoostServer::new(
                 l2_rpc_client,
@@ -964,9 +971,11 @@ pub mod tests {
         assert!(fcu_response.is_ok());
         let fcu_requests = test_harness.l2_mock.fcu_requests.clone();
         {
-            let fcu_requests_mu = fcu_requests.lock();
+            let fcu_requests_mu = fcu_requests.lock().expect("fcu_requests mutex poisoned");
             let fcu_requests_builder = test_harness.builder_mock.fcu_requests.clone();
-            let fcu_requests_builder_mu = fcu_requests_builder.lock();
+            let fcu_requests_builder_mu = fcu_requests_builder
+                .lock()
+                .expect("fcu_requests_builder mutex poisoned");
             assert_eq!(fcu_requests_mu.len(), 1);
             assert_eq!(fcu_requests_builder_mu.len(), 1);
             let req: &(ForkchoiceState, Option<OpPayloadAttributes>) =
@@ -991,10 +1000,14 @@ pub mod tests {
         assert!(new_payload_response.is_ok());
         let new_payload_requests = test_harness.l2_mock.new_payload_requests.clone();
         {
-            let new_payload_requests_mu = new_payload_requests.lock();
+            let new_payload_requests_mu = new_payload_requests
+                .lock()
+                .expect("new_payloads_requests mutex poisoned");
             let new_payload_requests_builder =
                 test_harness.builder_mock.new_payload_requests.clone();
-            let new_payload_requests_builder_mu = new_payload_requests_builder.lock();
+            let new_payload_requests_builder_mu = new_payload_requests_builder
+                .lock()
+                .expect("new_payloads_requests_builder mutex poisoned");
             assert_eq!(new_payload_requests_mu.len(), 1);
             assert_eq!(new_payload_requests_builder_mu.len(), 1);
             let req: &(ExecutionPayloadV3, Vec<FixedBytes<32>>, B256) =
@@ -1019,12 +1032,18 @@ pub mod tests {
         assert!(get_payload_response.is_ok());
         let get_payload_requests = test_harness.l2_mock.get_payload_requests.clone();
         {
-            let get_payload_requests_mu = get_payload_requests.lock();
+            let get_payload_requests_mu = get_payload_requests
+                .lock()
+                .expect("get_payloads_requests mutex poisoned");
             let get_payload_requests_builder =
                 test_harness.builder_mock.get_payload_requests.clone();
-            let get_payload_requests_builder_mu = get_payload_requests_builder.lock();
+            let get_payload_requests_builder_mu = get_payload_requests_builder
+                .lock()
+                .expect("get_payloads_requests_builder mutex poisoned");
             let new_payload_requests = test_harness.l2_mock.new_payload_requests.clone();
-            let new_payload_requests_mu = new_payload_requests.lock();
+            let new_payload_requests_mu = new_payload_requests
+                .lock()
+                .expect("new_payloads_requests mutex poisoned");
             assert_eq!(get_payload_requests_builder_mu.len(), 0);
             assert_eq!(get_payload_requests_mu.len(), 1);
             assert_eq!(new_payload_requests_mu.len(), 1);
@@ -1076,7 +1095,10 @@ pub mod tests {
         module
             .register_method("engine_forkchoiceUpdatedV3", move |params, _, _| {
                 let params: (ForkchoiceState, Option<OpPayloadAttributes>) = params.parse()?;
-                let mut fcu_requests = mock_engine_server.fcu_requests.lock();
+                let mut fcu_requests = mock_engine_server
+                    .fcu_requests
+                    .lock()
+                    .expect("fcu_requests mutex poisoned");
                 fcu_requests.push(params);
 
                 let mut response = mock_engine_server.fcu_response.clone();
@@ -1093,7 +1115,10 @@ pub mod tests {
         module
             .register_method("engine_getPayloadV3", move |params, _, _| {
                 let params: (PayloadId,) = params.parse()?;
-                let mut get_payload_requests = mock_engine_server.get_payload_requests.lock();
+                let mut get_payload_requests = mock_engine_server
+                    .get_payload_requests
+                    .lock()
+                    .expect("get_payloads_requests mutex poisoned");
                 get_payload_requests.push(params.0);
 
                 // Return the response based on the call index, or the last one if we exceed the list
@@ -1120,7 +1145,10 @@ pub mod tests {
         module
             .register_method("engine_newPayloadV3", move |params, _, _| {
                 let params: (ExecutionPayloadV3, Vec<B256>, B256) = params.parse()?;
-                let mut new_payload_requests = mock_engine_server.new_payload_requests.lock();
+                let mut new_payload_requests = mock_engine_server
+                    .new_payload_requests
+                    .lock()
+                    .expect("new_payloads_requests mutex poisoned");
                 new_payload_requests.push(params);
 
                 mock_engine_server.new_payload_response.clone()
@@ -1162,9 +1190,19 @@ pub mod tests {
         sleep(std::time::Duration::from_millis(100)).await;
 
         {
-            let builder_fcu_req = builder_mock.fcu_requests.lock();
+            let builder_fcu_req = builder_mock
+                .fcu_requests
+                .lock()
+                .expect("fcu_requests mutex poisoned");
             assert_eq!(builder_fcu_req.len(), 1);
-            assert_eq!(l2_mock.fcu_requests.lock().len(), 1);
+            assert_eq!(
+                l2_mock
+                    .fcu_requests
+                    .lock()
+                    .expect("fcu_requests_mu mutex poisoned")
+                    .len(),
+                1
+            );
         }
 
         // Test getPayload call
@@ -1175,12 +1213,18 @@ pub mod tests {
         sleep(std::time::Duration::from_millis(100)).await;
 
         {
-            let builder_gp_reqs = builder_mock.get_payload_requests.lock();
+            let builder_gp_reqs = builder_mock
+                .get_payload_requests
+                .lock()
+                .expect("get_payload_requests mutex poisoned");
             assert_eq!(builder_gp_reqs.len(), 0);
         }
 
         {
-            let local_gp_reqs = l2_mock.get_payload_requests.lock();
+            let local_gp_reqs = l2_mock
+                .get_payload_requests
+                .lock()
+                .expect("get_payload_requests mutex poisoned");
             assert_eq!(local_gp_reqs.len(), 1);
             assert_eq!(local_gp_reqs[0], same_id);
         }
