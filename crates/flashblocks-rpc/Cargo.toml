@@ -7,27 +7,27 @@ license = "MIT"
 [dependencies]
 rollup-boost.workspace = true
 
-reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa", features = [
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0", features = [
     "test-utils",
 ] }
-reth-e2e-test-utils = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-tasks = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-node-core = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-db = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-tracing = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
-reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", rev = "c3a60fa" }
+reth-e2e-test-utils = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-tasks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-node-core = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
+reth-rpc-server-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.0" }
 
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
