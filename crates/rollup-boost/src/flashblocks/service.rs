@@ -422,7 +422,13 @@ mod tests {
             .await?;
 
         let get_payload_requests_builder = builder_mock.get_payload_requests.clone();
-        assert_eq!(get_payload_requests_builder.lock().len(), 1);
+        assert_eq!(
+            get_payload_requests_builder
+                .lock()
+                .expect("get_payload_requests mutex poisoned")
+                .len(),
+            1
+        );
 
         Ok(())
     }
@@ -455,7 +461,13 @@ mod tests {
             .await?;
 
         let get_payload_requests_builder = builder_mock.get_payload_requests.clone();
-        assert_eq!(get_payload_requests_builder.lock().len(), 1);
+        assert_eq!(
+            get_payload_requests_builder
+                .lock()
+                .expect("get_payload_requests mutex poisoned")
+                .len(),
+            1
+        );
 
         Ok(())
     }
