@@ -61,7 +61,7 @@
 
 # Abstract
 
-Introduces a standard for partial blocks called “Flashblocks,” inspired but not entirely identical to [Solana Shreds](https://github.com/solana-foundation/specs/blob/main/p2p/shred.md), enabling rapid preconfirmations on Ethereum Layer 2 networks such as OP Stack. Flashblocks propagate transaction batches incrementally and expose their state via a modified Ethereum JSON-RPC interface, giving users immediate feedback equivalent to drastically reduced block times without modifying underlying the underlying OP Stack protocol. Flashblocks can be combined with Trusted Execution Environment technology to enable quick verifiability over various networks of machines in addition to protection from equivocation.
+Introduces a standard for partial blocks called “Flashblocks,” inspired but not entirely identical to [Solana Shreds](https://github.com/solana-foundation/specs/blob/main/p2p/shred.md), enabling rapid preconfirmations on Ethereum Layer 2 networks such as OP Stack. Flashblocks propagate transaction batches incrementally and expose their state via a modified Ethereum JSON-RPC interface, giving users immediate feedback equivalent to drastically reduced block times without modifying the underlying OP Stack protocol. Flashblocks can be combined with Trusted Execution Environment technology to enable quick verifiability over various networks of machines in addition to protection from equivocation.
 
 # Prerequisites
 
@@ -114,7 +114,7 @@ The core data structure sent from the Block Builder to Rollup Boost and then ext
 
 ```python
 class FlashblocksPayloadV1():
-		version: Bytes4
+    version: Bytes4
     payload_id: Bytes8
     parent_flash_hash: Optional[Bytes32]
     index: uint64
@@ -197,73 +197,47 @@ class ExecutionPayloadStaticV1():
 
 ### **`Metadata`**
 
-Container encapsulating all metadata for a flashblock, including account state changes and transaction results.
+Container encapsulating all metadata for a flashblock, including account state changes and transaction results. This type is [defined here][flashblock-metadata] by op-rbuilder.
 
 ```python
 class FlashblockMetadata():
-		accounts: List[AccountMetadata]
-		transactions: List[TransactionMetadata]
+    block_number: int
+		new_account_balances: dict[str, str]
+		receipts: dict[str, OpReceipt]
 ```
+
+[flashblock-metadata]: https://github.com/flashbots/op-rbuilder/blob/main/crates/op-rbuilder/src/builders/flashblocks/payload.rs#L889
 
 **Field descriptions:**
 
-- `accounts`: List of accounts with modified state in this flashblock.
-- `transactions`: List of transaction execution results in this flashblock.
+- `block_number`: The block that the flashblock is correcsponds to.
+- `new_account_balances`: A mapping of address to hex encoded u256 account balances.
+- `receipts`: A mapping of transaction hash to 
 
-### **`AccountMetadata`**
+### **`OpReceipt`**
 
-Container representing account state changes included in the Flashblock metadata. It is used by providers to fulfill the RPC requests.
+Container representing succinct transaction execution results, [defined here][op-receipt].
 
-```python
-class AccountMetadata():
-    address: ExecutionAddress
-    balance: Optional[uint256]
-    nonce: uint64
-    code: Optional[Bytes]
-    storage_slots: List[StorageSlot]
+```rust
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "reth-codec", reth_codecs::add_arbitrary_tests(rlp))]
+pub enum OpReceipt {
+    /// Legacy receipt
+    Legacy(Receipt),
+    /// EIP-2930 receipt
+    Eip2930(Receipt),
+    /// EIP-1559 receipt
+    Eip1559(Receipt),
+    /// EIP-7702 receipt
+    Eip7702(Receipt),
+    /// Deposit receipt
+    Deposit(OpDepositReceipt),
+}
 ```
 
-**Field descriptions:**
-
-- `address`: Ethereum address of the affected account.
-- `balance`: Updated account balance after the Flashblock's execution (None if unchanged).
-- `nonce`: Updated account nonce (transaction count) after the Flashblock's execution.
-- `code_created`:  Contract bytecode if created in this Flashblock.
-- `storage_slots`: List of modified storage slots and their new values.
-
-Storage slot keys must be de-duplicated (only the final value for each key should be included) and sorted in ascending byte order for deterministic processing.
-
-### **`StorageSlot`**
-
-Container representing a single modified storage slot within an account.
-
-```python
-class StorageSlot():
-    key: Bytes32
-    value: Bytes32
-```
-
-**Field descriptions:**
-
-- `key`: Storage slot location (32-byte key).
-- `value`: New value stored at this slot after the Flashblock's execution.
-
-### **`TransactionMetadata`**
-
-Container representing succinct transaction execution results.
-
-```python
-class TransactionMetadata():
-    status: uint8
-    gas_used: uint64
-    contract_address: Optional[ExecutionAddress]
-```
-
-**Field descriptions:**
-
-- `status`: Execution status (1 for success, 0 for failure).
-- `gas_used`: Amount of gas used by this specific transaction.
-- `contract_address`: Address of created contract (None for non-creation transactions).
+[op-receipt]: https://github.com/paradigmxyz/reth/blob/main/crates/optimism/primitives/src/receipt.rs#L17-L32
 
 ## System architecture
 
