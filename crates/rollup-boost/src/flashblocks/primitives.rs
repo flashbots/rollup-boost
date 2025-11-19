@@ -28,6 +28,9 @@ pub struct ExecutionPayloadFlashblockDeltaV1 {
     pub withdrawals: Vec<Withdrawal>,
     /// The withdrawals root of the block.
     pub withdrawals_root: B256,
+    /// The blob gas used
+    #[serde(with = "alloy_serde::quantity")]
+    pub blob_gas_used: u64
 }
 
 /// Represents the base configuration of an execution payload that remains constant
