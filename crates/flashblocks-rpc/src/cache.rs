@@ -14,24 +14,36 @@ use op_alloy_rpc_types::Transaction;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_evm::extract_l1_info;
 use reth_optimism_primitives::OpPrimitives;
-use reth_optimism_primitives::{OpBlock, OpReceipt, OpTransactionSigned};
+use reth_optimism_primitives::{OpBlock, OpTransactionSigned};
 use reth_optimism_rpc::OpReceiptBuilder;
 use reth_primitives::Recovered;
 use reth_primitives_traits::block::body::BlockBody;
 
+use op_alloy_rpc_types_engine::OpFlashblockPayload;
 use reth_rpc_eth_api::transaction::ConvertReceiptInput;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
-use rollup_boost::{
-    FlashblockBuilder, FlashblocksPayloadV1, OpExecutionPayloadEnvelope, PayloadVersion,
-};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use rollup_boost::{FlashblockBuilder, OpExecutionPayloadEnvelope, PayloadVersion};
+use std::{collections::HashMap, sync::Arc};
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct Metadata {
-    pub receipts: HashMap<String, OpReceipt>,
-    pub new_account_balances: HashMap<String, String>, // Address -> Balance (hex)
-    pub block_number: u64,
+/// Convert op_alloy_consensus::OpReceipt to reth_optimism_primitives::OpReceipt
+fn convert_receipt(receipt: &op_alloy_consensus::OpReceipt) -> reth_optimism_primitives::OpReceipt {
+    match receipt {
+        op_alloy_consensus::OpReceipt::Legacy(r) => {
+            reth_optimism_primitives::OpReceipt::Legacy(r.clone())
+        }
+        op_alloy_consensus::OpReceipt::Eip2930(r) => {
+            reth_optimism_primitives::OpReceipt::Eip2930(r.clone())
+        }
+        op_alloy_consensus::OpReceipt::Eip1559(r) => {
+            reth_optimism_primitives::OpReceipt::Eip1559(r.clone())
+        }
+        op_alloy_consensus::OpReceipt::Eip7702(r) => {
+            reth_optimism_primitives::OpReceipt::Eip7702(r.clone())
+        }
+        op_alloy_consensus::OpReceipt::Deposit(r) => {
+            reth_optimism_primitives::OpReceipt::Deposit(r.clone())
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -65,7 +77,7 @@ impl FlashblocksCache {
         ArcSwap::load(&self.inner).get_receipt(tx_hash)
     }
 
-    pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
+    pub fn process_payload(&self, payload: OpFlashblockPayload) -> eyre::Result<()> {
         let mut new_state = FlashblocksCacheInner::clone(&self.inner.load_full());
         new_state.process_payload(payload)?;
         self.inner.store(Arc::new(new_state));
@@ -147,14 +159,8 @@ impl FlashblocksCacheInner {
         self.receipts_cache.clear();
     }
 
-    pub fn process_payload(&mut self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
-        // Convert metadata with error handling
-        let metadata: Metadata = match serde_json::from_value(payload.metadata.clone()) {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(eyre::eyre!("Failed to deserialize metadata: {}", e));
-            }
-        };
+    pub fn process_payload(&mut self, payload: OpFlashblockPayload) -> eyre::Result<()> {
+        let metadata = payload.metadata.clone();
 
         if payload.index == 0 {
             self.reset();
@@ -190,7 +196,7 @@ impl FlashblocksCacheInner {
             // update the receipts
             let receipt = metadata
                 .receipts
-                .get(&tx.tx_hash().to_string())
+                .get(&tx.tx_hash())
                 .expect("Receipt should exist");
 
             all_receipts.push(receipt.clone());
@@ -226,7 +232,7 @@ impl FlashblocksCacheInner {
                     timestamp,
                 };
                 let input: ConvertReceiptInput<'_, OpPrimitives> = ConvertReceiptInput {
-                    receipt: receipt.clone(),
+                    receipt: convert_receipt(receipt),
                     tx: tx.try_to_recovered_ref()?,
                     gas_used: receipt.cumulative_gas_used() - gas_used,
                     next_log_index,
@@ -250,12 +256,7 @@ impl FlashblocksCacheInner {
 
         // Store account balances
         for (address, balance) in metadata.new_account_balances.iter() {
-            let address = Address::from_str(address)
-                .map_err(|e| eyre::eyre!("Failed to parse address: {}", e))?;
-            let balance = U256::from_str(balance)
-                .map_err(|e| eyre::eyre!("Failed to parse balance: {}", e))?;
-
-            self.balance_cache.insert(address, balance);
+            self.balance_cache.insert(*address, *balance);
         }
 
         Ok(())

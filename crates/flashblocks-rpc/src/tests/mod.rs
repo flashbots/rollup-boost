@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod tests {
-    use crate::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay, cache::Metadata};
+    use crate::{EthApiOverrideServer, FlashblocksApiExt, FlashblocksOverlay};
     use alloy_consensus::Receipt;
     use alloy_genesis::Genesis;
     use alloy_primitives::{Address, B256, Bytes, TxHash, U256, address, b256};
     use alloy_provider::{Provider, RootProvider};
     use alloy_rpc_client::RpcClient;
     use alloy_rpc_types_engine::PayloadId;
+    use op_alloy_consensus::OpReceipt;
     use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
     use reth_node_core::{
         args::{DiscoveryArgs, NetworkArgs, RpcServerArgs},
@@ -14,18 +15,18 @@ mod tests {
     };
     use reth_optimism_chainspec::OpChainSpecBuilder;
     use reth_optimism_node::{OpNode, args::RollupArgs};
-    use reth_optimism_primitives::OpReceipt;
     use reth_provider::providers::BlockchainProvider;
     use reth_tasks::TaskManager;
-    use rollup_boost::{
-        ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
+    use op_alloy_rpc_types_engine::{
+        OpFlashblockPayload, OpFlashblockPayloadBase, OpFlashblockPayloadDelta,
+        OpFlashblockPayloadMetadata,
     };
-    use std::{any::Any, collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
+    use std::{any::Any, collections::BTreeMap, net::SocketAddr, str::FromStr, sync::Arc};
     use tokio::sync::{mpsc, oneshot};
     use url::Url;
 
     pub struct NodeContext {
-        sender: mpsc::Sender<(FlashblocksPayloadV1, oneshot::Sender<()>)>,
+        sender: mpsc::Sender<(OpFlashblockPayload, oneshot::Sender<()>)>,
         http_api_addr: SocketAddr,
         _node_exit_future: NodeExitFuture,
         _node: Box<dyn Any + Sync + Send>,
@@ -33,7 +34,7 @@ mod tests {
     }
 
     impl NodeContext {
-        pub async fn send_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
+        pub async fn send_payload(&self, payload: OpFlashblockPayload) -> eyre::Result<()> {
             let (tx, rx) = oneshot::channel();
             self.sender.send((payload, tx)).await?;
             rx.await?;
@@ -88,7 +89,7 @@ mod tests {
 
         // Start websocket server to simulate the builder and send payloads back to the node
         let (sender, mut receiver) =
-            mpsc::channel::<(FlashblocksPayloadV1, oneshot::Sender<()>)>(100);
+            mpsc::channel::<(OpFlashblockPayload, oneshot::Sender<()>)>(100);
 
         let NodeHandle {
             node,
@@ -135,11 +136,11 @@ mod tests {
         })
     }
 
-    fn create_first_payload() -> FlashblocksPayloadV1 {
-        FlashblocksPayloadV1 {
+    fn create_first_payload() -> OpFlashblockPayload {
+        OpFlashblockPayload {
             payload_id: PayloadId::new([0; 8]),
             index: 0,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(OpFlashblockPayloadBase {
                 parent_beacon_block_root: B256::default(),
                 parent_hash: B256::default(),
                 fee_recipient: Address::ZERO,
@@ -150,13 +151,12 @@ mod tests {
                 extra_data: Bytes::new(),
                 base_fee_per_gas: U256::ZERO,
             }),
-            diff: ExecutionPayloadFlashblockDeltaV1::default(),
-            metadata: serde_json::to_value(Metadata {
+            diff: OpFlashblockPayloadDelta::default(),
+            metadata: OpFlashblockPayloadMetadata {
                 block_number: 1,
-                receipts: HashMap::default(),
-                new_account_balances: HashMap::default(),
-            })
-            .unwrap(),
+                receipts: BTreeMap::new(),
+                new_account_balances: BTreeMap::new(),
+            },
         }
     }
 
@@ -168,7 +168,7 @@ mod tests {
     const TX2_HASH: TxHash =
         b256!("0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8");
 
-    fn create_second_payload() -> FlashblocksPayloadV1 {
+    fn create_second_payload() -> OpFlashblockPayload {
         // Create second payload (index 1) with transactions
         // tx1 hash: 0x2be2e6f8b01b03b87ae9f0ebca8bbd420f174bef0fbcc18c7802c5378b78f548 (deposit transaction)
         // tx2 hash: 0xa6155b295085d3b87a3c86e342fe11c3b22f9952d0d85d9d34d223b7d6a17cd8
@@ -176,11 +176,32 @@ mod tests {
         let tx2 = Bytes::from_str("0xf8cd82016d8316e5708302c01c94f39635f2adf40608255779ff742afe13de31f57780b8646e530e9700000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000001bc16d674ec8000000000000000000000000000000000000000000000000000156ddc81eed2a36d68302948ba0a608703e79b22164f74523d188a11f81c25a65dd59535bab1cd1d8b30d115f3ea07f4cfbbad77a139c9209d3bded89091867ff6b548dd714109c61d1f8e7a84d14").unwrap();
 
         // Send another test flashblock payload
-        let payload = FlashblocksPayloadV1 {
+        let mut receipts = BTreeMap::new();
+        receipts.insert(
+            TX1_HASH,
+            OpReceipt::Legacy(Receipt {
+                status: true.into(),
+                cumulative_gas_used: 21000,
+                logs: vec![],
+            }),
+        );
+        receipts.insert(
+            TX2_HASH,
+            OpReceipt::Legacy(Receipt {
+                status: true.into(),
+                cumulative_gas_used: 45000,
+                logs: vec![],
+            }),
+        );
+
+        let mut balances = BTreeMap::new();
+        balances.insert(TEST_ADDRESS, U256::from(PENDING_BALANCE));
+
+        OpFlashblockPayload {
             payload_id: PayloadId::new([0; 8]),
             index: 1,
             base: None,
-            diff: ExecutionPayloadFlashblockDeltaV1 {
+            diff: OpFlashblockPayloadDelta {
                 state_root: B256::default(),
                 receipts_root: B256::default(),
                 gas_used: 0,
@@ -191,41 +212,12 @@ mod tests {
                 withdrawals_root: Default::default(),
                 blob_gas_used: Default::default(),
             },
-            metadata: serde_json::to_value(Metadata {
+            metadata: OpFlashblockPayloadMetadata {
                 block_number: 1,
-                receipts: {
-                    let mut receipts = HashMap::default();
-                    receipts.insert(
-                        TX1_HASH.to_string(), // transaction hash as string
-                        OpReceipt::Legacy(Receipt {
-                            status: true.into(),
-                            cumulative_gas_used: 21000,
-                            logs: vec![],
-                        }),
-                    );
-                    receipts.insert(
-                        TX2_HASH.to_string(), // transaction hash as string
-                        OpReceipt::Legacy(Receipt {
-                            status: true.into(),
-                            cumulative_gas_used: 45000,
-                            logs: vec![],
-                        }),
-                    );
-                    receipts
-                },
-                new_account_balances: {
-                    let mut map = HashMap::default();
-                    map.insert(
-                        TEST_ADDRESS.to_string(),
-                        format!("0x{:x}", U256::from(PENDING_BALANCE)),
-                    );
-                    map
-                },
-            })
-            .unwrap(),
-        };
-
-        payload
+                receipts,
+                new_account_balances: balances,
+            },
+        }
     }
 
     #[tokio::test]
