@@ -26,6 +26,7 @@ use rollup_boost::{FlashblockBuilder, OpExecutionPayloadEnvelope, PayloadVersion
 use std::{collections::HashMap, sync::Arc};
 
 /// Convert op_alloy_consensus::OpReceipt to reth_optimism_primitives::OpReceipt
+/// TODO: remove this once reth updates to use the op-alloy defined type as well.
 fn convert_receipt(receipt: &op_alloy_consensus::OpReceipt) -> reth_optimism_primitives::OpReceipt {
     match receipt {
         op_alloy_consensus::OpReceipt::Legacy(r) => {
