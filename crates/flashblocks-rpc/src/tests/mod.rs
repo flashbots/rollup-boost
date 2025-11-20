@@ -8,6 +8,10 @@ mod tests {
     use alloy_rpc_client::RpcClient;
     use alloy_rpc_types_engine::PayloadId;
     use op_alloy_consensus::OpReceipt;
+    use op_alloy_rpc_types_engine::{
+        OpFlashblockPayload, OpFlashblockPayloadBase, OpFlashblockPayloadDelta,
+        OpFlashblockPayloadMetadata,
+    };
     use reth_node_builder::{Node, NodeBuilder, NodeConfig, NodeHandle};
     use reth_node_core::{
         args::{DiscoveryArgs, NetworkArgs, RpcServerArgs},
@@ -17,10 +21,6 @@ mod tests {
     use reth_optimism_node::{OpNode, args::RollupArgs};
     use reth_provider::providers::BlockchainProvider;
     use reth_tasks::TaskManager;
-    use op_alloy_rpc_types_engine::{
-        OpFlashblockPayload, OpFlashblockPayloadBase, OpFlashblockPayloadDelta,
-        OpFlashblockPayloadMetadata,
-    };
     use std::{any::Any, collections::BTreeMap, net::SocketAddr, str::FromStr, sync::Arc};
     use tokio::sync::{mpsc, oneshot};
     use url::Url;
