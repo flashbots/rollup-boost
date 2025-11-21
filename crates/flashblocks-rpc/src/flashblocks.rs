@@ -3,9 +3,9 @@ use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
 use jsonrpsee::core::async_trait;
 use op_alloy_network::Optimism;
+use op_alloy_rpc_types_engine::OpFlashblockPayload;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_rpc_eth_api::{RpcBlock, RpcReceipt};
-use rollup_boost::FlashblocksPayloadV1;
 use std::{io::Read, sync::Arc};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -101,19 +101,19 @@ impl FlashblocksOverlay {
         Ok(())
     }
 
-    pub fn process_payload(&self, payload: FlashblocksPayloadV1) -> eyre::Result<()> {
+    pub fn process_payload(&self, payload: OpFlashblockPayload) -> eyre::Result<()> {
         self.cache.process_payload(payload)
     }
 }
 
 enum InternalMessage {
-    NewPayload(FlashblocksPayloadV1),
+    NewPayload(OpFlashblockPayload),
 }
 
-fn try_decode_message(bytes: &[u8]) -> eyre::Result<FlashblocksPayloadV1> {
+fn try_decode_message(bytes: &[u8]) -> eyre::Result<OpFlashblockPayload> {
     let text = try_parse_message(bytes)?;
 
-    let payload: FlashblocksPayloadV1 = match serde_json::from_str(&text) {
+    let payload: OpFlashblockPayload = match serde_json::from_str(&text) {
         Ok(m) => m,
         Err(e) => {
             return Err(eyre::eyre!("failed to parse message: {}", e));
