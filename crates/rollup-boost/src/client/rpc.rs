@@ -474,7 +474,7 @@ pub mod tests {
     use assert_cmd::Command;
     use http::Uri;
     use jsonrpsee::core::client::ClientT;
-    use parking_lot::Mutex;
+    use std::sync::Mutex;
 
     use crate::payload::PayloadSource;
     use alloy_rpc_types_engine::JwtSecret;
@@ -499,7 +499,12 @@ pub mod tests {
             LazyLock::new(|| Mutex::new(HashSet::new()));
         loop {
             let port: u16 = rand::random_range(1000..20000);
-            if TcpListener::bind(("127.0.0.1", port)).is_ok() && CLAIMED_PORTS.lock().insert(port) {
+            if TcpListener::bind(("127.0.0.1", port)).is_ok()
+                && CLAIMED_PORTS
+                    .lock()
+                    .expect("CLAIMED_PORTS poisoned")
+                    .insert(port)
+            {
                 return port;
             }
         }
