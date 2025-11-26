@@ -257,9 +257,9 @@ class TDReport():
 - `MROWNER`: Measurement register that takes arbitrary information and can be set by the TEE infrastructure operator before the startup of the VM. Currently not used.
 - `MROWNERCONFIG`: same as `MROWNER`
 - `MRCONFIGID`: same as `MROWNER`
-- `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain. It's important to verify debug and performance measurements flags are not set.
-- `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain. It's important to verify which flags are set.
-- `ReportData`: Confidential-VM defined data included in the report (e.g., public key hash).
+- `TDAttributes`: Attributes describing the security properties and configuration of the Trust Domain. Should verify the debug flag is not enabled unknowingly.
+- `XFAM`: Extended Features and Attributes Mask, indicating which CPU extended features are enabled for the Trust Domain.
+- `ReportData`: Confidential VM–defined data included in the report (currently TEE-controlled address and hash of extendedRegistrationData).
 
 ### **`DCAPEndorsements`**
 
