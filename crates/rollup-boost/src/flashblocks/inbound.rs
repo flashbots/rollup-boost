@@ -69,21 +69,36 @@ impl FlashblocksReceiverService {
 
     pub async fn run(self) {
         let mut backoff = self.websocket_config.backoff();
+        info!("FlashblocksReceiverService starting reconnection loop");
         loop {
-            if let Err(e) = self.connect_and_handle(&mut backoff).await {
-                let interval = backoff
-                    .next_backoff()
-                    .expect("max_elapsed_time not set, never None");
-                error!(
-                    "Flashblocks receiver connection error, retrying in {}ms: {}",
-                    interval.as_millis(),
-                    e
-                );
-                self.metrics.reconnect_attempts.increment(1);
-                self.metrics.connection_status.set(0);
-                tokio::time::sleep(interval).await;
-            } else {
-                break;
+            match self.connect_and_handle(&mut backoff).await {
+                Err(e) => {
+                    // Get next backoff interval, or use max if None (defensive)
+                    let interval = backoff
+                        .next_backoff()
+                        .unwrap_or_else(|| {
+                            error!("Backoff returned None despite max_elapsed_time=None, using max_interval as fallback");
+                            self.websocket_config.max_interval()
+                        });
+                    error!(
+                        "Flashblocks receiver connection error, retrying in {}ms: {}",
+                        interval.as_millis(),
+                        e
+                    );
+                    self.metrics.reconnect_attempts.increment(1);
+                    self.metrics.connection_status.set(0);
+                    tokio::time::sleep(interval).await;
+                }
+                Ok(()) => {
+                    // This should never happen - connect_and_handle should loop forever
+                    // or return an error. If we get here, reconnect immediately.
+                    error!(
+                        "Flashblocks receiver connection ended unexpectedly with Ok(()), this should never happen. Reconnecting immediately."
+                    );
+                    self.metrics.reconnect_attempts.increment(1);
+                    self.metrics.connection_status.set(0);
+                    // Reconnect immediately without delay since this is unexpected
+                }
             }
         }
     }
