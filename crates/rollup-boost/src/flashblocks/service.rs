@@ -1,7 +1,4 @@
 use super::outbound::WebSocketPublisher;
-use super::primitives::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
-};
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
@@ -17,6 +14,9 @@ use jsonrpsee::core::async_trait;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
+};
+use op_alloy_rpc_types_engine::{
+    OpFlashblockPayload, OpFlashblockPayloadBase, OpFlashblockPayloadDelta,
 };
 use reth_optimism_payload_builder::payload_id_optimism;
 use std::io;
@@ -44,13 +44,13 @@ pub enum FlashblocksError {
 // Simplify actor messages to just handle shutdown
 #[derive(Debug)]
 enum FlashblocksEngineMessage {
-    FlashblocksPayloadV1(FlashblocksPayloadV1),
+    OpFlashblockPayload(OpFlashblockPayload),
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct FlashblockBuilder {
-    base: Option<ExecutionPayloadBaseV1>,
-    flashblocks: Vec<ExecutionPayloadFlashblockDeltaV1>,
+    base: Option<OpFlashblockPayloadBase>,
+    flashblocks: Vec<OpFlashblockPayloadDelta>,
 }
 
 impl FlashblockBuilder {
@@ -58,7 +58,7 @@ impl FlashblockBuilder {
         Self::default()
     }
 
-    pub fn extend(&mut self, payload: FlashblocksPayloadV1) -> Result<(), FlashblocksError> {
+    pub fn extend(&mut self, payload: OpFlashblockPayload) -> Result<(), FlashblocksError> {
         tracing::debug!(message = "Extending payload", payload_id = %payload.payload_id, index = payload.index, has_base=payload.base.is_some());
 
         // Validate the index is contiguous
@@ -241,7 +241,7 @@ impl FlashblocksService {
 
     async fn on_event(&mut self, event: FlashblocksEngineMessage) {
         match event {
-            FlashblocksEngineMessage::FlashblocksPayloadV1(payload) => {
+            FlashblocksEngineMessage::OpFlashblockPayload(payload) => {
                 self.metrics.messages_processed.increment(1);
 
                 tracing::debug!(
@@ -299,9 +299,9 @@ impl FlashblocksService {
         }
     }
 
-    pub async fn run(&mut self, mut stream: mpsc::Receiver<FlashblocksPayloadV1>) {
+    pub async fn run(&mut self, mut stream: mpsc::Receiver<OpFlashblockPayload>) {
         while let Some(event) = stream.recv().await {
-            self.on_event(FlashblocksEngineMessage::FlashblocksPayloadV1(event))
+            self.on_event(FlashblocksEngineMessage::OpFlashblockPayload(event))
                 .await;
         }
     }
@@ -465,7 +465,7 @@ mod tests {
         let mut builder = FlashblockBuilder::new();
 
         // Error: First payload must have a base
-        let result = builder.extend(FlashblocksPayloadV1 {
+        let result = builder.extend(OpFlashblockPayload {
             payload_id: PayloadId::default(),
             index: 0,
             ..Default::default()
@@ -474,10 +474,10 @@ mod tests {
         assert_eq!(result.unwrap_err(), FlashblocksError::MissingBasePayload);
 
         // Ok: First payload is correct if it has base and index 0
-        let result = builder.extend(FlashblocksPayloadV1 {
+        let result = builder.extend(OpFlashblockPayload {
             payload_id: PayloadId::default(),
             index: 0,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(OpFlashblockPayloadBase {
                 ..Default::default()
             }),
             ..Default::default()
@@ -485,10 +485,10 @@ mod tests {
         assert!(result.is_ok());
 
         // Error: First payload must have index 0
-        let result = builder.extend(FlashblocksPayloadV1 {
+        let result = builder.extend(OpFlashblockPayload {
             payload_id: PayloadId::default(),
             index: 1,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(OpFlashblockPayloadBase {
                 ..Default::default()
             }),
             ..Default::default()
@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(result.unwrap_err(), FlashblocksError::UnexpectedBasePayload);
 
         // Error: Second payload must have a follow-up index
-        let result = builder.extend(FlashblocksPayloadV1 {
+        let result = builder.extend(OpFlashblockPayload {
             payload_id: PayloadId::default(),
             index: 2,
             base: None,
@@ -507,7 +507,7 @@ mod tests {
         assert_eq!(result.unwrap_err(), FlashblocksError::InvalidIndex);
 
         // Ok: Second payload has the correct index
-        let result = builder.extend(FlashblocksPayloadV1 {
+        let result = builder.extend(OpFlashblockPayload {
             payload_id: PayloadId::default(),
             index: 1,
             base: None,
