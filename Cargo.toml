@@ -4,11 +4,13 @@ resolver = "3"
 members = [
     "crates/rollup-boost",
     "crates/websocket-proxy",
-    "crates/flashblocks-rpc",
+    "crates/flashblocks-rpc", 
+    "crates/rollup-boost-core",
 ]
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
+rollup-boost-core = { path = "crates/rollup-boost-core" }
 
 tracing = "0.1.4"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
