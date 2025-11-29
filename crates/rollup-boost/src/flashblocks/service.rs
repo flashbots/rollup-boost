@@ -1,7 +1,4 @@
 use super::outbound::WebSocketPublisher;
-use super::primitives::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
-};
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
 use crate::{
     ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
@@ -19,6 +16,9 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use reth_optimism_payload_builder::payload_id_optimism;
+use rollup_boost_core::flashblocks::{
+    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
+};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};

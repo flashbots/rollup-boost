@@ -1,10 +1,11 @@
-use super::{metrics::FlashblocksWsInboundMetrics, primitives::FlashblocksPayloadV1};
+use super::metrics::FlashblocksWsInboundMetrics;
 use crate::FlashblocksWebsocketConfig;
 use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use lru::LruCache;
+use rollup_boost_core::flashblocks::FlashblocksPayloadV1;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::Mutex;

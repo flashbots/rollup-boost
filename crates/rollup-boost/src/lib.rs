@@ -44,3 +44,7 @@ pub use engine_api::*;
 
 mod version;
 pub use version::*;
+
+// re-export rollup-boost-core flashblocks types
+// this can be removed once dependent crates migrate to using rollup-boost-core directly
+pub use rollup_boost_core::flashblocks::*;
