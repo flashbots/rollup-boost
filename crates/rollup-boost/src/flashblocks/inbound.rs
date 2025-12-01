@@ -5,10 +5,13 @@ use backoff::backoff::Backoff;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use lru::LruCache;
+use std::io::ErrorKind::TimedOut;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 use tokio::{sync::mpsc, time::interval};
+use tokio_tungstenite::tungstenite::Error::Io;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
@@ -69,8 +72,12 @@ impl FlashblocksReceiverService {
 
     pub async fn run(self) {
         let mut backoff = self.websocket_config.backoff();
+        let timeout = Duration::from_millis(
+            self.websocket_config
+                .flashblock_builder_ws_connect_timeout_ms,
+        );
         loop {
-            if let Err(e) = self.connect_and_handle(&mut backoff).await {
+            if let Err(e) = self.connect_and_handle(&mut backoff, timeout).await {
                 let interval = backoff
                     .next_backoff()
                     .expect("max_elapsed_time not set, never None");
@@ -83,6 +90,8 @@ impl FlashblocksReceiverService {
                 self.metrics.connection_status.set(0);
                 tokio::time::sleep(interval).await;
             } else {
+                // connect_and_handle should never return Ok(())
+                tracing::error!("Builder websocket connection has stopped. Invariant is broken.");
                 break;
             }
         }
@@ -91,8 +100,12 @@ impl FlashblocksReceiverService {
     async fn connect_and_handle(
         &self,
         backoff: &mut ExponentialBackoff,
+        timeout: Duration,
     ) -> Result<(), FlashblocksReceiverError> {
-        let (ws_stream, _) = connect_async(self.url.as_str()).await?;
+        // Timeout is used to ensure we won't get stuck in case some TCP frames go missing
+        let (ws_stream, _) = tokio::time::timeout(timeout, connect_async(self.url.as_str()))
+            .await
+            .map_err(|_| FlashblocksReceiverError::Connection(Io(TimedOut.into())))??;
         let (mut write, mut read) = ws_stream.split();
 
         info!("Connected to Flashblocks receiver at {}", self.url);
@@ -395,6 +408,7 @@ mod tests {
             flashblock_builder_ws_max_reconnect_ms: 100,
             flashblock_builder_ws_ping_interval_ms: 500,
             flashblock_builder_ws_pong_timeout_ms: 2000,
+            flashblock_builder_ws_connect_timeout_ms: 5000,
         };
         let service = FlashblocksReceiverService::new(url, tx, config);
         let _ = tokio::spawn(async move {
@@ -446,6 +460,7 @@ mod tests {
             flashblock_builder_ws_max_reconnect_ms: 1000,
             flashblock_builder_ws_ping_interval_ms: 500,
             flashblock_builder_ws_pong_timeout_ms: 2000,
+            flashblock_builder_ws_connect_timeout_ms: 5000,
         };
 
         let (tx, _rx) = mpsc::channel(100);
