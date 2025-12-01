@@ -172,7 +172,8 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
-    use crate::{Probes, payload::PayloadSource};
+    use crate::Probes;
+    use rollup_boost_core::payload::PayloadSource;
     use serial_test::serial;
 
     pub struct MockHttpServer {
