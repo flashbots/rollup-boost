@@ -91,8 +91,7 @@ impl FlashblocksReceiverService {
                 tokio::time::sleep(interval).await;
             } else {
                 // connect_and_handle should never return Ok(())
-                tracing::error!("Builder websocket connection has stopped. Invariant is broken.");
-                break;
+                error!("Builder websocket connection has stopped. Invariant is broken.");
             }
         }
     }
