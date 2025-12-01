@@ -10263,8 +10263,12 @@ dependencies = [
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
  "alloy-serde",
+ "futures",
+ "moka",
+ "op-alloy-rpc-types-engine",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
