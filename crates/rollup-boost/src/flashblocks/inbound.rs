@@ -500,9 +500,7 @@ mod tests {
 
     /// Starts a TCP server that accepts connections but never completes the WebSocket handshake.
     /// This simulates a stuck connection during the handshake phase.
-    async fn start_stuck_server(
-        addr: SocketAddr,
-    ) -> eyre::Result<(watch::Sender<bool>, url::Url)> {
+    async fn start_stuck_server(addr: SocketAddr) -> eyre::Result<(watch::Sender<bool>, url::Url)> {
         let (term_tx, mut term_rx) = watch::channel(false);
 
         let listener = TcpListener::bind(addr)?;
@@ -560,15 +558,17 @@ mod tests {
         let (tx, _rx) = mpsc::channel(100);
         let service = FlashblocksReceiverService::new(url, tx, config);
 
-        let timeout = std::time::Duration::from_millis(
-            config.flashblock_builder_ws_connect_timeout_ms,
-        );
+        let timeout =
+            std::time::Duration::from_millis(config.flashblock_builder_ws_connect_timeout_ms);
         let mut backoff = config.backoff();
 
         // Call connect_and_handle directly - it should timeout and return an error
         let result = service.connect_and_handle(&mut backoff, timeout).await;
 
-        assert!(result.is_err(), "connect_and_handle should return error on timeout");
+        assert!(
+            result.is_err(),
+            "connect_and_handle should return error on timeout"
+        );
 
         // Verify it's a connection error (timeout is wrapped as connection error)
         let err = result.unwrap_err();
