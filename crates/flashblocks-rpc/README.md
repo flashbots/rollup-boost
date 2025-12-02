@@ -17,10 +17,10 @@ cargo build --release
 Run:
 
 ```bash
-./target/release/flashblocks-rpc \
-    --flashblocks.enabled=true \
-    --flashblocks.websocket-url=ws://localhost:8080/flashblocks \
-    --chain=optimism \
+./target/release/flashblocks-rpc node \
+    --flashblocks.enabled \
+    --flashblocks.websocket-url="wss://sepolia-flashblocks.unichain.org/ws" \
+    --chain=unichain-sepolia \
     --http \
     --http.port=8545
 ```
