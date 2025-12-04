@@ -3348,7 +3348,7 @@ dependencies = [
  "reth-tasks",
  "reth-tracing",
  "rollup-boost",
- "rollup-boost-core",
+ "rollup-boost-types",
  "serde",
  "serde_json",
  "tokio",
@@ -10232,7 +10232,7 @@ dependencies = [
  "reqwest",
  "reth-optimism-payload-builder",
  "reth-rpc-layer 1.4.7",
- "rollup-boost-core",
+ "rollup-boost-types",
  "rustls",
  "serde",
  "serde_json",
@@ -10256,7 +10256,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rollup-boost-core"
+name = "rollup-boost-types"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",

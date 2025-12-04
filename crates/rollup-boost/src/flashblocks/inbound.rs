@@ -5,7 +5,7 @@ use backoff::backoff::Backoff;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use lru::LruCache;
-use rollup_boost_core::flashblocks::FlashblocksPayloadV1;
+use rollup_boost_types::flashblocks::FlashblocksPayloadV1;
 use std::io::ErrorKind::TimedOut;
 use std::num::NonZeroUsize;
 use std::sync::Arc;

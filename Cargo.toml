@@ -5,12 +5,12 @@ members = [
     "crates/rollup-boost",
     "crates/websocket-proxy",
     "crates/flashblocks-rpc", 
-    "crates/rollup-boost-core",
+    "crates/rollup-boost-types",
 ]
 
 [workspace.dependencies]
 rollup-boost = { path = "crates/rollup-boost" }
-rollup-boost-core = { path = "crates/rollup-boost-core" }
+rollup-boost-types = { path = "crates/rollup-boost-types" }
 
 backoff = "0.4.0"
 clap = { version = "4", features = ["derive", "env"] }

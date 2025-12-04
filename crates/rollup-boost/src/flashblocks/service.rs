@@ -14,10 +14,10 @@ use op_alloy_rpc_types_engine::{
     OpPayloadAttributes,
 };
 use reth_optimism_payload_builder::payload_id_optimism;
-use rollup_boost_core::flashblocks::{
+use rollup_boost_types::flashblocks::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
-use rollup_boost_core::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadVersion};
+use rollup_boost_types::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadVersion};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -392,7 +392,7 @@ mod tests {
     use crate::server::tests::{MockEngineServer, spawn_server};
     use http::Uri;
     use reth_rpc_layer::JwtSecret;
-    use rollup_boost_core::payload::PayloadSource;
+    use rollup_boost_types::payload::PayloadSource;
     use std::str::FromStr;
 
     /// Test that we fallback to the getPayload method if the flashblocks payload is not available

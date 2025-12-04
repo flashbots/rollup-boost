@@ -6,7 +6,7 @@ use core::{
     task::{Context, Poll},
 };
 use futures::{Sink, SinkExt, StreamExt};
-use rollup_boost_core::flashblocks::FlashblocksPayloadV1;
+use rollup_boost_types::flashblocks::FlashblocksPayloadV1;
 use std::{io, net::TcpListener, sync::Arc};
 use tokio::{
     net::TcpStream,

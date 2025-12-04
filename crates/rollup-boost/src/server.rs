@@ -32,7 +32,7 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
-use rollup_boost_core::payload::{
+use rollup_boost_types::payload::{
     NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope, PayloadSource,
     PayloadTraceContext, PayloadVersion,
 };

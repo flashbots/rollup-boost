@@ -23,7 +23,7 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use paste::paste;
-use rollup_boost_core::payload::{
+use rollup_boost_types::payload::{
     NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion,
 };
 use std::path::PathBuf;
@@ -483,7 +483,7 @@ pub mod tests {
     use jsonrpsee::server::{ServerBuilder, ServerHandle};
     use jsonrpsee::{RpcModule, rpc_params};
     use predicates::prelude::*;
-    use rollup_boost_core::payload::PayloadSource;
+    use rollup_boost_types::payload::PayloadSource;
     use std::collections::HashSet;
     use std::net::SocketAddr;
     use std::net::TcpListener;

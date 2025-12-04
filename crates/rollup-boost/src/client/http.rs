@@ -13,7 +13,7 @@ use hyper_util::rt::TokioExecutor;
 use jsonrpsee::core::BoxError;
 use jsonrpsee::server::HttpBody;
 use opentelemetry::trace::SpanKind;
-use rollup_boost_core::payload::PayloadSource;
+use rollup_boost_types::payload::PayloadSource;
 use tower::{
     Service as _, ServiceBuilder, ServiceExt,
     timeout::{Timeout, TimeoutLayer},

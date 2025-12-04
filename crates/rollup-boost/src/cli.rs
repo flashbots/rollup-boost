@@ -12,7 +12,7 @@ use crate::{
     probe::ProbeLayer,
 };
 use crate::{FlashblocksService, RpcClient};
-use rollup_boost_core::payload::PayloadSource;
+use rollup_boost_types::payload::PayloadSource;
 
 #[derive(Clone, Debug, clap::Args)]
 pub struct RollupBoostLibArgs {
