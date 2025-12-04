@@ -18,3 +18,12 @@ build-debug:
 
 kurtosis-spawn:
     kurtosis run github.com/ethpandaops/optimism-package@452133367b693e3ba22214a6615c86c60a1efd5e --args-file ./scripts/ci/kurtosis-params.yaml --enclave op-rollup-boost
+
+clippy:
+    cargo clippy --workspace -- -D warnings
+
+fmt:
+    cargo fmt --all
+
+test:
+    cargo nextest run --workspace
