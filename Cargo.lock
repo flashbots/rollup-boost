@@ -3354,9 +3354,9 @@ dependencies = [
  "jsonrpsee",
  "metrics",
  "metrics-derive",
- "op-alloy-consensus 0.23.0",
- "op-alloy-network 0.23.0",
- "op-alloy-rpc-types 0.23.0",
+ "op-alloy-consensus 0.22.4",
+ "op-alloy-network",
+ "op-alloy-rpc-types",
  "reth-db",
  "reth-e2e-test-utils",
  "reth-node-api",
@@ -5651,10 +5651,8 @@ checksum = "baac15f8823a36112356594845beb21df41c9cfbb80d4322b73c18643cc96e89"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
- "alloy-network",
  "alloy-primitives",
  "alloy-rlp",
- "alloy-rpc-types-eth",
  "alloy-serde",
  "derive_more",
  "serde",
@@ -5680,23 +5678,7 @@ dependencies = [
  "alloy-rpc-types-eth",
  "alloy-signer",
  "op-alloy-consensus 0.22.4",
- "op-alloy-rpc-types 0.22.4",
-]
-
-[[package]]
-name = "op-alloy-network"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "452c6f2ad049692cb79a5b1a0e454e3044b5b8daf9b6fcaf646e93d932742718"
-dependencies = [
- "alloy-consensus",
- "alloy-network",
- "alloy-primitives",
- "alloy-provider",
- "alloy-rpc-types-eth",
- "alloy-signer",
- "op-alloy-consensus 0.23.0",
- "op-alloy-rpc-types 0.23.0",
+ "op-alloy-rpc-types",
 ]
 
 [[package]]
@@ -5723,25 +5705,6 @@ dependencies = [
  "alloy-serde",
  "derive_more",
  "op-alloy-consensus 0.22.4",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "op-alloy-rpc-types"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20aec5a1dc6bf6fb843e3a0476de97783582182058fd564e383d5f177631192e"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-network-primitives",
- "alloy-primitives",
- "alloy-rpc-types-eth",
- "alloy-serde",
- "derive_more",
- "op-alloy-consensus 0.23.0",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -8635,7 +8598,7 @@ dependencies = [
  "derive_more",
  "miniz_oxide",
  "op-alloy-consensus 0.22.4",
- "op-alloy-rpc-types 0.22.4",
+ "op-alloy-rpc-types",
  "paste",
  "reth-chainspec",
  "reth-ethereum-forks",
@@ -8932,9 +8895,9 @@ dependencies = [
  "jsonrpsee-types 0.26.0",
  "metrics",
  "op-alloy-consensus 0.22.4",
- "op-alloy-network 0.22.4",
+ "op-alloy-network",
  "op-alloy-rpc-jsonrpsee",
- "op-alloy-rpc-types 0.22.4",
+ "op-alloy-rpc-types",
  "op-alloy-rpc-types-engine 0.22.4",
  "op-revm",
  "reqwest",
@@ -8997,7 +8960,7 @@ dependencies = [
  "metrics",
  "op-alloy-consensus 0.22.4",
  "op-alloy-flz",
- "op-alloy-rpc-types 0.22.4",
+ "op-alloy-rpc-types",
  "op-revm",
  "parking_lot",
  "reth-chain-state",
@@ -9395,8 +9358,8 @@ dependencies = [
  "dyn-clone",
  "jsonrpsee-types 0.26.0",
  "op-alloy-consensus 0.22.4",
- "op-alloy-network 0.22.4",
- "op-alloy-rpc-types 0.22.4",
+ "op-alloy-network",
+ "op-alloy-rpc-types",
  "op-revm",
  "reth-ethereum-primitives",
  "reth-evm",
