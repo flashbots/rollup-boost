@@ -40,14 +40,11 @@ alloy-rpc-types = "1.0.41"
 alloy-genesis = "1.0.41"
 alloy-rpc-client = "1.0.41"
 alloy-provider = "1.0.41"
-op-alloy-network = "0.22.3"
-op-alloy-rpc-types-engine = "0.22.3"
-op-alloy-consensus = "0.22.3"
-op-alloy-rpc-types = "0.22.3"
+op-alloy-network = "0.23.0"
+op-alloy-rpc-types-engine = "0.23.0"
+op-alloy-consensus = "0.23.0"
+op-alloy-rpc-types = "0.23.0"
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 testcontainers = "0.23"
 jsonrpsee = "0.26.0"
 testcontainers-modules = { version = "0.11", features = ["redis"] }
-
-[patch.crates-io]
-op-alloy-rpc-types-engine = { git = "https://github.com/alloy-rs/op-alloy", rev = "f297e3f"}
