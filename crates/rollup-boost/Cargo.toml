@@ -5,6 +5,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
+rollup-boost-types.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap.workspace = true
@@ -17,9 +18,12 @@ tokio.workspace = true
 eyre.workspace = true
 url.workspace = true
 sha2.workspace = true
-arbitrary.workspace = true
+moka = { workspace = true, features = ["future"] }
 
+# Reth deps
 reth-optimism-payload-builder.workspace = true
+reth-rpc-layer.workspace = true
+
 op-alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
@@ -29,16 +33,8 @@ alloy-rlp.workspace = true
 
 tokio-tungstenite.workspace = true
 metrics-derive.workspace = true
-testcontainers.workspace = true
 
-# TODO: update to latest release when it is published
-# jsonrpsee = { version = "0.25.1", features = ["server", "http-client", "macros"] }
-jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", rev = "f04afa740e55db60dce20d9839758792f035ffff", features = [
-    "server",
-    "http-client",
-    "macros",
-] }
-moka = { version = "0.12.10", features = ["future"] }
+jsonrpsee = { workspace = true, features = ["server", "http-client", "macros"] }
 http = "1.1.0"
 dotenvy = "0.15.7"
 tower = { version = "0.5.2", features = ["timeout"] }
@@ -67,19 +63,22 @@ paste = "1.0.15"
 parking_lot = "0.12.3"
 tokio-util = { version = "0.7.13" }
 dashmap = "6.1.0"
+backoff.workspace = true
+uuid = { version = "1.17.0", features = ["v4", "v7"] }
+bytes = "1.10.1"
+lru = "0.16"
 
 ed25519-dalek = { version = "2", features = ["serde"] }
 blake3 = "1"                                            # fast hashing for payload IDs
 hex = "0.4"
-bytes = "1.2"
 
 [dev-dependencies]
-reth-rpc-layer.workspace = true
-tempfile = "3.20.0"
+tempfile = "3.23.0"
+serial_test = "3"
 rand = "0.9.0"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
 op-alloy-consensus.workspace = true
-alloy-eips = { version = "1.0.9", features = ["serde"] }
+alloy-eips = { version = "1.0.41", features = ["serde"] }
 alloy-consensus = { workspace = true, features = ["serde"] }
 anyhow = "1.0"
 assert_cmd = "2.0.10"
@@ -87,6 +86,7 @@ predicates = "3.1.2"
 tokio-util = { version = "0.7.13" }
 ctor = "0.4.1"
 reqwest = "0.12.15"
+testcontainers.workspace = true
 
 [build-dependencies]
 vergen = { version = "9.0.4", features = ["build", "cargo", "emit_and_set"] }

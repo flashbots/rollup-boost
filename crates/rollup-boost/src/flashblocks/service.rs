@@ -1,12 +1,6 @@
 use super::outbound::WebSocketPublisher;
-use super::primitives::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
-};
-use crate::flashblocks::error::FlashblocksError;
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
-use crate::{
-    ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
-};
+use crate::{ClientResult, EngineApiExt, RpcClient};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
@@ -19,21 +13,30 @@ use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
 };
-use reth_optimism_payload_builder::payload_id_optimism;
-use serde::{Deserialize, Serialize};
+use rollup_boost_types::flashblocks::{
+    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
+};
+use rollup_boost_types::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadVersion};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
-#[derive(Debug, Deserialize, Serialize)]
-struct FlashbotsMessage {
-    method: String,
-    params: serde_json::Value,
-    #[serde(default)]
-    id: Option<u64>,
+#[derive(Debug, Error, PartialEq)]
+pub enum FlashblocksError {
+    #[error("Missing base payload for initial flashblock")]
+    MissingBasePayload,
+    #[error("Unexpected base payload for non-initial flashblock")]
+    UnexpectedBasePayload,
+    #[error("Missing delta for flashblock")]
+    MissingDelta,
+    #[error("Invalid index for flashblock")]
+    InvalidIndex,
+    #[error("Missing payload")]
+    MissingPayload,
 }
 
 // Simplify actor messages to just handle shutdown
@@ -109,7 +112,7 @@ impl FlashblockBuilder {
         let withdrawals_root = diff.withdrawals_root;
 
         let execution_payload = ExecutionPayloadV3 {
-            blob_gas_used: 0,
+            blob_gas_used: diff.blob_gas_used.unwrap_or(0),
             excess_blob_gas: 0,
             payload_inner: ExecutionPayloadV2 {
                 withdrawals,
@@ -159,7 +162,7 @@ impl FlashblockBuilder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FlashblocksService {
     client: RpcClient,
 
@@ -311,7 +314,7 @@ impl EngineApiExt for FlashblocksService {
     ) -> ClientResult<ForkchoiceUpdated> {
         // Calculate and set expected payload_id
         if let Some(attr) = &payload_attributes {
-            let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attr, 3);
+            let payload_id = attr.payload_id(&fork_choice_state.head_block_hash, 3);
             self.set_current_payload_id(payload_id).await;
         }
 
@@ -385,12 +388,10 @@ impl EngineApiExt for FlashblocksService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        PayloadSource,
-        server::tests::{MockEngineServer, spawn_server},
-    };
+    use crate::server::tests::{MockEngineServer, spawn_server};
     use http::Uri;
     use reth_rpc_layer::JwtSecret;
+    use rollup_boost_types::payload::PayloadSource;
     use std::str::FromStr;
 
     /// Test that we fallback to the getPayload method if the flashblocks payload is not available

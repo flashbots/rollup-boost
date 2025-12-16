@@ -1,13 +1,11 @@
 use crate::debug_api::ExecutionMode;
-use crate::{Authorization, BlockSelectionPolicy, EngineApiExt};
+use crate::{
+    Authorization, BlockSelectionPolicy, ClientArgs, EngineApiExt, Flashblocks, FlashblocksService,
+    RollupBoostLibArgs, update_execution_mode_gauge,
+};
 use crate::{
     client::rpc::RpcClient,
-    debug_api::DebugServer,
     health::HealthHandle,
-    payload::{
-        NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope, PayloadSource,
-        PayloadTraceContext, PayloadVersion,
-    },
     probe::{Health, Probes},
 };
 use alloy_primitives::{B256, Bytes, bytes};
@@ -34,6 +32,12 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use rollup_boost_types::payload::{
+    NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope, PayloadSource,
+    PayloadTraceContext, PayloadVersion,
+};
+use std::net::{IpAddr, SocketAddr};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -44,43 +48,122 @@ pub type Response = HttpResponse;
 pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
 pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
-#[derive(Clone)]
+#[derive(Debug)]
+pub struct BuilderPayloadResult {
+    pub payload: Option<OpExecutionPayloadEnvelope>,
+    pub builder_api_failed: bool,
+}
+
+pub type BuilderResult = Result<BuilderPayloadResult, ErrorObject<'static>>;
+
+#[derive(Clone, Debug)]
 pub struct RollupBoostServer<T: EngineApiExt> {
     pub l2_client: Arc<RpcClient>,
     pub builder_client: Arc<T>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
+    pub execution_mode: Arc<Mutex<ExecutionMode>>,
     block_selection_policy: Option<BlockSelectionPolicy>,
     external_state_root: bool,
     ignore_unhealthy_builders: bool,
-    execution_mode: Arc<Mutex<ExecutionMode>>,
     probes: Arc<Probes>,
     payload_to_fcu_request: DashMap<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>,
 }
 
-impl<T> RollupBoostServer<T>
-where
-    T: EngineApiExt,
-{
+impl RollupBoostServer<FlashblocksService> {
+    pub fn new_from_args(
+        rollup_boost_args: RollupBoostLibArgs,
+        probes: Arc<Probes>,
+    ) -> eyre::Result<Self> {
+        let Some(flashblocks_args) = rollup_boost_args.flashblocks_ws else {
+            eyre::bail!(
+                "FlashblocksService requires flashblocks to be enabled, first check rollup_boost_args.flashblocks.flashblocks == true before calling this constructor"
+            );
+        };
+        let l2_client_args: ClientArgs = rollup_boost_args.l2_client.into();
+        let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
+
+        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2)?;
+        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+
+        let inbound_url = flashblocks_args.flashblocks_builder_url;
+        let outbound_addr = SocketAddr::new(
+            IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
+            flashblocks_args.flashblocks_port,
+        );
+
+        let builder_client = Arc::new(Flashblocks::run(
+            builder_client.clone(),
+            inbound_url,
+            outbound_addr,
+            flashblocks_args.flashblocks_ws_config,
+        )?);
+
+        Ok(RollupBoostServer::new(
+            l2_client,
+            builder_client,
+            rollup_boost_args.execution_mode,
+            rollup_boost_args.block_selection_policy,
+            probes.clone(),
+            rollup_boost_args.external_state_root,
+            rollup_boost_args.ignore_unhealthy_builders,
+        ))
+    }
+}
+
+impl RollupBoostServer<RpcClient> {
+    pub fn new_from_args(
+        rollup_boost_args: RollupBoostLibArgs,
+        probes: Arc<Probes>,
+    ) -> eyre::Result<Self> {
+        if rollup_boost_args.flashblocks_ws.is_none() {
+            eyre::bail!(
+                "RpcClient requires flashblocks to be disabled, first check rollup_boost_args.flashblocks.flashblocks == false before calling this constructor"
+            );
+        };
+        let l2_client_args: ClientArgs = rollup_boost_args.l2_client.into();
+        let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
+
+        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2)?;
+        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+
+        Ok(RollupBoostServer::new(
+            l2_client,
+            Arc::new(builder_client),
+            rollup_boost_args.execution_mode,
+            rollup_boost_args.block_selection_policy,
+            probes.clone(),
+            rollup_boost_args.external_state_root,
+            rollup_boost_args.ignore_unhealthy_builders,
+        ))
+    }
+}
+
+impl<T: EngineApiExt> RollupBoostServer<T> {
     pub fn new(
         l2_client: RpcClient,
         builder_client: Arc<T>,
-        initial_execution_mode: Arc<Mutex<ExecutionMode>>,
+        initial_execution_mode: ExecutionMode,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
         external_state_root: bool,
         ignore_unhealthy_builders: bool,
     ) -> Self {
+        update_execution_mode_gauge(initial_execution_mode);
         Self {
             l2_client: Arc::new(l2_client),
             builder_client,
             block_selection_policy,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
-            execution_mode: initial_execution_mode,
+            execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
             probes,
             external_state_root,
             ignore_unhealthy_builders,
             payload_to_fcu_request: DashMap::new(),
         }
+    }
+
+    pub fn probes(&self) -> Arc<Probes> {
+        self.probes.clone()
     }
 
     pub fn spawn_health_check(
@@ -91,6 +174,7 @@ where
         let handle = HealthHandle::new(
             self.probes.clone(),
             self.execution_mode.clone(),
+            self.l2_client.clone(),
             self.builder_client.clone(),
             Duration::from_secs(health_check_interval),
             max_unsafe_interval,
@@ -99,13 +183,11 @@ where
         handle.spawn()
     }
 
-    pub async fn start_debug_server(&self, debug_addr: &str) -> eyre::Result<()> {
-        let server = DebugServer::new(self.execution_mode.clone());
-        server.run(debug_addr).await?;
-        Ok(())
+    pub fn set_execution_mode(&self, execution_mode: ExecutionMode) {
+        *self.execution_mode.lock() = execution_mode;
     }
 
-    pub fn execution_mode(&self) -> ExecutionMode {
+    pub fn get_execution_mode(&self) -> ExecutionMode {
         *self.execution_mode.lock()
     }
 
@@ -130,7 +212,7 @@ where
             .await;
 
         // async call to builder to sync the builder node
-        if !self.execution_mode().is_disabled() && !self.should_skip_unhealthy_builder() {
+        if !self.execution_mode.lock().is_disabled() && !self.should_skip_unhealthy_builder() {
             let builder = self.builder_client.clone();
             let new_payload_clone = new_payload.clone();
             tokio::spawn(async move { builder.new_payload(new_payload_clone).await });
@@ -147,7 +229,7 @@ where
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
-        if self.execution_mode().is_disabled() {
+        if self.execution_mode.lock().is_disabled() {
             return match l2_fut.await {
                 Ok(payload) => {
                     self.probes.set_health(Health::Healthy);
@@ -188,14 +270,26 @@ where
             {
                 info!(message = "builder has no payload, skipping get_payload call to builder");
                 tracing::Span::current().record("builder_has_payload", false);
-                return RpcResult::Ok(None);
+                return BuilderResult::Ok(BuilderPayloadResult {
+                    payload: None,
+                    builder_api_failed: true,
+                });
             }
 
             // Get payload and validate with the local l2 client
             tracing::Span::current().record("builder_has_payload", true);
             info!(message = "builder has payload, calling get_payload on builder");
 
-            let payload = self.builder_client.get_payload(payload_id, version).await?;
+            let payload = match self.builder_client.get_payload(payload_id, version).await {
+                Ok(payload) => payload,
+                Err(e) => {
+                    error!(message = "error getting payload from builder", error = %e);
+                    return BuilderResult::Ok(BuilderPayloadResult {
+                        payload: None,
+                        builder_api_failed: true,
+                    });
+                }
+            };
 
             if !self.external_state_root {
                 let _ = self
@@ -203,12 +297,19 @@ where
                     .new_payload(NewPayload::from(payload.clone()))
                     .await?;
 
-                return Ok(Some(payload));
+                return BuilderResult::Ok(BuilderPayloadResult {
+                    payload: Some(payload),
+                    builder_api_failed: false,
+                });
             }
 
-            return self
+            let external_payload = self
                 .calculate_external_state_root(payload, payload_id, version)
-                .await;
+                .await?;
+            BuilderResult::Ok(BuilderPayloadResult {
+                payload: external_payload,
+                builder_api_failed: false,
+            })
         };
 
         let (l2_payload, builder_payload) = tokio::join!(l2_fut, builder_fut);
@@ -221,12 +322,13 @@ where
 
             // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
             // If there's an error, log it and return None instead.
-            let builder_payload = builder_payload
-                .map_err(|e| {
+            let (builder_payload, builder_api_failed) = match builder_payload {
+                Ok(result) => (result.payload, result.builder_api_failed),
+                Err(e) => {
                     error!(message = "error getting payload from builder", error = %e);
-                    e
-                })
-                .unwrap_or(None);
+                    (None, true)
+                }
+            };
 
             if let Some(builder_payload) = builder_payload {
                 // Record the delta (gas and txn) between the builder and l2 payload
@@ -243,7 +345,7 @@ where
 
                 // If execution mode is set to DryRun, fallback to the l2_payload,
                 // otherwise prefer the builder payload
-                if self.execution_mode().is_dry_run() {
+                if self.execution_mode.lock().is_dry_run() {
                     (l2_payload, PayloadSource::L2)
                 } else if let Some(selection_policy) = &self.block_selection_policy {
                     selection_policy.select_block(builder_payload, l2_payload)
@@ -252,8 +354,8 @@ where
                 }
             } else {
                 // Only update the health status if the builder payload fails
-                // and execution mode is not set to DryRun
-                if !self.execution_mode().is_dry_run() {
+                // and execution mode is enabled
+                if self.execution_mode.lock().is_enabled() && builder_api_failed {
                     self.probes.set_health(Health::PartialContent);
                 }
                 (l2_payload, PayloadSource::L2)
@@ -293,7 +395,7 @@ where
         builder_payload: OpExecutionPayloadEnvelope,
         payload_id: PayloadId,
         version: PayloadVersion,
-    ) -> RpcResult<Option<OpExecutionPayloadEnvelope>> {
+    ) -> Result<Option<OpExecutionPayloadEnvelope>, ErrorObject<'static>> {
         let fcu_info = self.payload_to_fcu_request.remove(&payload_id).unwrap().1;
 
         let new_payload_attrs = match fcu_info.1.as_ref() {
@@ -303,6 +405,7 @@ where
                 no_tx_pool: Some(true),
                 gas_limit: attrs.gas_limit,
                 eip_1559_params: attrs.eip_1559_params,
+                min_base_fee: attrs.min_base_fee,
             },
             None => OpPayloadAttributes {
                 payload_attributes: builder_payload.payload_attributes(),
@@ -310,6 +413,7 @@ where
                 no_tx_pool: Some(true),
                 gas_limit: None,
                 eip_1559_params: None,
+                min_base_fee: None,
             },
         };
 
@@ -331,13 +435,14 @@ where
                     debug!(
                         message = "received new state root payload from l2",
                         payload = ?new_payload,
+                        builder_payload = ?builder_payload,
                     );
                     return Ok(Some(new_payload));
                 }
 
                 Err(e) => {
                     error!(message = "error getting new state root payload from l2", error = %e);
-                    return Err(e.into());
+                    return Ok(None);
                 }
             }
         }
@@ -420,10 +525,7 @@ pub trait EngineApi {
 }
 
 #[async_trait]
-impl<T> EngineApiServer for RollupBoostServer<T>
-where
-    T: EngineApiExt,
-{
+impl<T: EngineApiExt> EngineApiServer for RollupBoostServer<T> {
     #[instrument(
         skip_all,
         err,
@@ -445,7 +547,7 @@ where
             .fork_choice_updated_v3(fork_choice_state, payload_attributes.clone());
 
         // If execution mode is disabled, return the l2 client response immediately
-        if self.execution_mode().is_disabled() {
+        if self.execution_mode.lock().is_disabled() {
             return Ok(l2_fut.await?);
         }
 
@@ -689,7 +791,7 @@ pub mod tests {
         pub get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
-        get_payload_response: RpcResult<OpExecutionPayloadEnvelopeV3>,
+        get_payload_responses: Vec<RpcResult<OpExecutionPayloadEnvelopeV3>>,
         new_payload_response: RpcResult<PayloadStatus>,
 
         pub override_payload_id: Option<PayloadId>,
@@ -702,7 +804,7 @@ pub mod tests {
                 get_payload_requests: Arc::new(Mutex::new(vec![])),
                 new_payload_requests: Arc::new(Mutex::new(vec![])),
                 fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))),
-                get_payload_response: Ok(OpExecutionPayloadEnvelopeV3{
+                get_payload_responses: vec![Ok(OpExecutionPayloadEnvelopeV3{
                     execution_payload: ExecutionPayloadV3 {
                             payload_inner: ExecutionPayloadV2 {
                                 payload_inner: ExecutionPayloadV1 {
@@ -734,7 +836,7 @@ pub mod tests {
                     },
                 should_override_builder: false,
                 parent_beacon_block_root: B256::ZERO,
-            }),
+            })],
             override_payload_id: None,
             new_payload_response: Ok(PayloadStatus::from_status(PayloadStatusEnum::Valid)),
         }
@@ -757,6 +859,14 @@ pub mod tests {
             l2_mock: Option<MockEngineServer>,
             builder_mock: Option<MockEngineServer>,
         ) -> Self {
+            Self::new_with_external_state_root(l2_mock, builder_mock, false).await
+        }
+
+        async fn new_with_external_state_root(
+            l2_mock: Option<MockEngineServer>,
+            builder_mock: Option<MockEngineServer>,
+            external_state_root: bool,
+        ) -> Self {
             let jwt_secret = JwtSecret::random();
 
             let l2_mock = l2_mock.unwrap_or(MockEngineServer::new());
@@ -764,57 +874,54 @@ pub mod tests {
             let (l2_server, l2_server_addr) = spawn_server(l2_mock.clone()).await;
             let (builder_server, builder_server_addr) = spawn_server(builder_mock.clone()).await;
 
-            let l2_auth_rpc = Uri::from_str(&format!("http://{l2_server_addr}")).unwrap();
-            let l2_client = RpcClient::new(
-                l2_auth_rpc.clone(),
-                jwt_secret,
-                2000,
-                PayloadSource::L2,
-                None,
-            )
-            .unwrap();
+            // Build l2 clients
+            let l2_client_args = ClientArgs {
+                url: format!("http://{l2_server_addr}")
+                    .parse()
+                    .expect("l2 server address is valid url"),
+                jwt_token: Some(jwt_secret),
+                jwt_path: None,
+                timeout: 2000,
+            };
+            let l2_rpc_client = l2_client_args.new_rpc_client(PayloadSource::L2).unwrap();
+            let l2_http_client = l2_client_args.new_http_client(PayloadSource::L2).unwrap();
 
-            let builder_auth_rpc = Uri::from_str(&format!("http://{builder_server_addr}")).unwrap();
-            let builder_client = Arc::new(
-                RpcClient::new(
-                    builder_auth_rpc.clone(),
-                    jwt_secret,
-                    2000,
-                    PayloadSource::Builder,
-                    None,
-                )
-                .unwrap(),
+            // Build builder clients
+            let builder_client_args = ClientArgs {
+                url: Uri::from_str(&format!("http://{builder_server_addr}")).unwrap(),
+                jwt_token: Some(jwt_secret),
+                jwt_path: None,
+                timeout: 2000,
+            };
+            let builder_rpc_client = Arc::new(
+                builder_client_args
+                    .new_rpc_client(PayloadSource::Builder)
+                    .unwrap(),
             );
+            let builder_http_client = builder_client_args
+                .new_http_client(PayloadSource::Builder)
+                .unwrap();
 
             let (probe_layer, probes) = ProbeLayer::new();
-            let execution_mode = Arc::new(Mutex::new(ExecutionMode::Enabled));
 
             // For tests, set initial health to Healthy since we don't run health checks
             probes.set_health(Health::Healthy);
 
             let rollup_boost = RollupBoostServer::new(
-                l2_client,
-                builder_client,
-                execution_mode.clone(),
+                l2_rpc_client,
+                builder_rpc_client,
+                ExecutionMode::Enabled,
                 None,
                 probes.clone(),
-                false,
+                external_state_root,
                 true,
             );
 
             let module: RpcModule<()> = rollup_boost.try_into().unwrap();
 
-            let http_middleware =
-                tower::ServiceBuilder::new()
-                    .layer(probe_layer)
-                    .layer(ProxyLayer::new(
-                        l2_auth_rpc,
-                        jwt_secret,
-                        1,
-                        builder_auth_rpc,
-                        jwt_secret,
-                        1,
-                    ));
+            let http_middleware = tower::ServiceBuilder::new()
+                .layer(probe_layer)
+                .layer(ProxyLayer::new(l2_http_client, builder_http_client));
 
             let server = Server::builder()
                 .set_http_middleware(http_middleware)
@@ -897,9 +1004,7 @@ pub mod tests {
         let new_payload_response = test_harness
             .rpc_client
             .new_payload_v3(
-                test_harness
-                    .l2_mock
-                    .get_payload_response
+                test_harness.l2_mock.get_payload_responses[0]
                     .clone()
                     .unwrap()
                     .execution_payload
@@ -921,9 +1026,7 @@ pub mod tests {
                 new_payload_requests_mu.first().unwrap();
             assert_eq!(
                 req.0,
-                test_harness
-                    .l2_mock
-                    .get_payload_response
+                test_harness.l2_mock.get_payload_responses[0]
                     .clone()
                     .unwrap()
                     .execution_payload
@@ -971,10 +1074,11 @@ pub mod tests {
             };
             status
         });
-        l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut payload| {
-            payload.block_value = U256::from(10);
-            payload
-        });
+        l2_mock.get_payload_responses[0] =
+            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                payload.block_value = U256::from(10);
+                payload
+            });
         let test_harness = TestHarness::new(Some(l2_mock), None).await;
 
         // test get_payload_v3 return l2 payload if builder payload is invalid
@@ -1017,7 +1121,24 @@ pub mod tests {
                 let mut get_payload_requests = mock_engine_server.get_payload_requests.lock();
                 get_payload_requests.push(params.0);
 
-                mock_engine_server.get_payload_response.clone()
+                // Return the response based on the call index, or the last one if we exceed the list
+                let response_index = get_payload_requests.len().saturating_sub(1);
+                if response_index < mock_engine_server.get_payload_responses.len() {
+                    mock_engine_server.get_payload_responses[response_index].clone()
+                } else {
+                    // If we have more calls than responses, use the last response
+                    mock_engine_server
+                        .get_payload_responses
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            Err(ErrorObject::owned(
+                                INVALID_REQUEST_CODE,
+                                "No response configured",
+                                None::<String>,
+                            ))
+                        })
+                }
             })
             .unwrap();
 
@@ -1100,19 +1221,19 @@ pub mod tests {
             PayloadStatusEnum::Valid,
         ))
         .with_payload_id(payload_id));
-        l2_mock.get_payload_response = l2_mock.get_payload_response.clone().map(|mut payload| {
-            payload.block_value = U256::from(10);
-            payload
-        });
+        l2_mock.get_payload_responses[0] =
+            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                payload.block_value = U256::from(10);
+                payload
+            });
 
         let mut builder_mock = MockEngineServer::new();
         builder_mock.fcu_response = Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(
             PayloadStatusEnum::Syncing,
         ))
         .with_payload_id(payload_id));
-        builder_mock.get_payload_response =
-            builder_mock
-                .get_payload_response
+        builder_mock.get_payload_responses[0] =
+            builder_mock.get_payload_responses[0]
                 .clone()
                 .map(|mut payload| {
                     payload.block_value = U256::from(15);
@@ -1188,5 +1309,187 @@ pub mod tests {
             .fork_choice_updated_v3(fcu, Some(payload_attributes))
             .await;
         assert!(fcu_response.is_err());
+    }
+
+    // Helper function to create mock servers and run a test scenario
+    async fn run_health_test_scenario(
+        l2_mock: MockEngineServer,
+        builder_mock: Option<MockEngineServer>,
+        expected_health: StatusCode,
+        external_state_root: bool,
+        expect_l2_get_payload_success: bool,
+    ) {
+        let test_harness = TestHarness::new_with_external_state_root(
+            Some(l2_mock),
+            builder_mock,
+            external_state_root,
+        )
+        .await;
+
+        let response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(
+                ForkchoiceState {
+                    head_block_hash: FixedBytes::random(),
+                    safe_block_hash: FixedBytes::random(),
+                    finalized_block_hash: FixedBytes::random(),
+                },
+                Some(OpPayloadAttributes {
+                    gas_limit: Some(1000000),
+                    ..Default::default()
+                }),
+            )
+            .await;
+        assert!(response.is_ok());
+
+        let payload_id = response.unwrap().payload_id.unwrap();
+        let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
+        if expect_l2_get_payload_success {
+            assert!(get_payload_response.is_ok());
+        } else {
+            assert!(get_payload_response.is_err());
+        }
+
+        let health = test_harness.get("healthz").await;
+        assert_eq!(health.status(), expected_health);
+
+        test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn builder_api_failure_vs_processing_failure() {
+        let payload_id = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]);
+        let valid_fcu =
+            ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))
+                .with_payload_id(payload_id);
+
+        // Test 1: Builder API failure should mark as unhealthy
+        {
+            let mut l2_mock = MockEngineServer::new();
+            l2_mock.fcu_response = Ok(valid_fcu.clone());
+
+            let mut builder_mock = MockEngineServer::new();
+            builder_mock.fcu_response = Ok(valid_fcu.clone());
+            builder_mock.get_payload_responses[0] = Err(ErrorObject::owned(
+                INVALID_REQUEST_CODE,
+                "Builder API failed",
+                None::<String>,
+            ));
+
+            run_health_test_scenario(
+                l2_mock,
+                Some(builder_mock),
+                StatusCode::PARTIAL_CONTENT,
+                false,
+                true,
+            )
+            .await;
+        }
+
+        // Test 2: L2 validation failure
+        {
+            let mut l2_mock = MockEngineServer::new();
+            l2_mock.fcu_response = Ok(valid_fcu.clone());
+            l2_mock.new_payload_response = Err(ErrorObject::owned(
+                INVALID_REQUEST_CODE,
+                "L2 validation failed",
+                None::<String>,
+            ));
+
+            let mut builder_mock = MockEngineServer::new();
+            builder_mock.fcu_response = Ok(valid_fcu.clone());
+            builder_mock.get_payload_responses[0] =
+                builder_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(15);
+                    p
+                });
+
+            // L2 validation failure still marks as unhealthy
+            run_health_test_scenario(
+                l2_mock.clone(),
+                Some(builder_mock.clone()),
+                StatusCode::PARTIAL_CONTENT,
+                false,
+                true,
+            )
+            .await;
+        }
+
+        // Test 3: Both APIs succeed - should remain healthy
+        {
+            let mut l2_mock = MockEngineServer::new();
+            l2_mock.fcu_response = Ok(valid_fcu.clone());
+            l2_mock.get_payload_responses[0] =
+                l2_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(5);
+                    p
+                });
+
+            let mut builder_mock = MockEngineServer::new();
+            builder_mock.fcu_response = Ok(valid_fcu.clone());
+            builder_mock.get_payload_responses[0] =
+                builder_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(20);
+                    p
+                });
+
+            run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::OK, false, true)
+                .await;
+        }
+
+        // Test 4: Builder FCU fails (no payload tracked) - should mark as unhealthy
+        {
+            let mut l2_mock = MockEngineServer::new();
+            l2_mock.fcu_response = Ok(valid_fcu.clone());
+            l2_mock.get_payload_responses[0] =
+                l2_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(8);
+                    p
+                });
+
+            let mut builder_mock = MockEngineServer::new();
+            builder_mock.fcu_response = Err(ErrorObject::owned(
+                INVALID_REQUEST_CODE,
+                "Builder FCU failed",
+                None::<String>,
+            ));
+
+            run_health_test_scenario(
+                l2_mock,
+                Some(builder_mock),
+                StatusCode::PARTIAL_CONTENT,
+                false,
+                true,
+            )
+            .await;
+        }
+
+        // Test 5: External state root - L2 second call fails but builder API succeeded
+        {
+            let mut l2_mock = MockEngineServer::new();
+            l2_mock.fcu_response = Ok(valid_fcu.clone());
+            // First L2 get_payload call succeeds
+            l2_mock.get_payload_responses[0] =
+                l2_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(5);
+                    p
+                });
+            // Second L2 get_payload call (for external state root) fails
+            l2_mock.get_payload_responses.push(Err(ErrorObject::owned(
+                INVALID_REQUEST_CODE,
+                "L2 external state root failed",
+                None::<String>,
+            )));
+
+            let mut builder_mock = MockEngineServer::new();
+            builder_mock.fcu_response = Ok(valid_fcu.clone());
+            builder_mock.get_payload_responses[0] =
+                builder_mock.get_payload_responses[0].clone().map(|mut p| {
+                    p.block_value = U256::from(30);
+                    p
+                });
+
+            run_health_test_scenario(l2_mock, Some(builder_mock), StatusCode::OK, true, true).await;
+        }
     }
 }

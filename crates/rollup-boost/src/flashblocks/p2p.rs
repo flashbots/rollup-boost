@@ -629,6 +629,7 @@ mod tests {
             transactions: vec![Bytes::from_static(b"\xDE\xAD\xBE\xEF")],
             withdrawals: vec![Withdrawal::default()],
             withdrawals_root: B256::from([0x44; 32]),
+            blob_gas_used: None,
         }
     }
 

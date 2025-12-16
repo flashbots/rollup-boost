@@ -13,6 +13,7 @@ use serde_json::Value;
 #[derive(
     Clone, Debug, PartialEq, Default, Deserialize, Serialize, Eq, RlpEncodable, RlpDecodable,
 )]
+#[rlp(trailing)]
 pub struct ExecutionPayloadFlashblockDeltaV1 {
     /// The state root of the block.
     pub state_root: B256,
@@ -31,6 +32,13 @@ pub struct ExecutionPayloadFlashblockDeltaV1 {
     pub withdrawals: Vec<Withdrawal>,
     /// The withdrawals root of the block.
     pub withdrawals_root: B256,
+    /// The blob gas used
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "alloy_serde::quantity::opt"
+    )]
+    pub blob_gas_used: Option<u64>,
 }
 
 /// Represents the base configuration of an execution payload that remains constant
@@ -205,6 +213,7 @@ mod tests {
             transactions: vec![Bytes::from(vec![0xde, 0xad, 0xbe, 0xef])],
             withdrawals: vec![Withdrawal::default()],
             withdrawals_root: B256::from([4u8; 32]),
+            blob_gas_used: None,
         }
     }
 

@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 use crate::DebugClient;
+use crate::EngineApiClient;
 use crate::{AuthLayer, AuthService};
-use crate::{EngineApiClient, OpExecutionPayloadEnvelope, PayloadVersion};
-use crate::{NewPayload, PayloadSource};
 use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, Bytes, TxKind, U256, address, hex};
 use alloy_rpc_types_engine::{ExecutionPayload, JwtSecret};
@@ -23,6 +22,9 @@ use op_alloy_consensus::TxDeposit;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use parking_lot::Mutex;
 use proxy::{BuilderProxyHandler, start_proxy_server};
+use rollup_boost_types::payload::{
+    NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion,
+};
 use serde_json::Value;
 use services::op_reth::{AUTH_RPC_PORT, OpRethConfig, OpRethImage, OpRethMehods, P2P_PORT};
 use services::rollup_boost::{RollupBoost, RollupBoostConfig};
@@ -381,15 +383,15 @@ impl RollupBoostTestHarnessBuilder {
 
         // Start Rollup-boost instance
         let mut rollup_boost = RollupBoostConfig::default();
-        rollup_boost.args.l2_client.l2_url = l2.auth_rpc().await?;
-        rollup_boost.args.builder.builder_url = builder_url.try_into().unwrap();
+        rollup_boost.args.lib.l2_client.l2_url = l2.auth_rpc().await?;
+        rollup_boost.args.lib.builder.builder_url = builder_url.try_into().unwrap();
         rollup_boost.args.log_file = Some(rollup_boost_log_file_path);
-        rollup_boost.args.external_state_root = self.external_state_root;
+        rollup_boost.args.lib.external_state_root = self.external_state_root;
         if let Some(allow_traffic) = self.ignore_unhealthy_builders {
-            rollup_boost.args.ignore_unhealthy_builders = allow_traffic;
+            rollup_boost.args.lib.ignore_unhealthy_builders = allow_traffic;
         }
         if let Some(interval) = self.max_unsafe_interval {
-            rollup_boost.args.max_unsafe_interval = interval;
+            rollup_boost.args.lib.max_unsafe_interval = interval;
         }
         let rollup_boost = rollup_boost.start().await;
         println!("rollup-boost authrpc: {}", rollup_boost.rpc_endpoint());
@@ -515,6 +517,7 @@ impl SimpleBlockGenerator {
                     no_tx_pool: Some(empty_blocks),
                     gas_limit: Some(10000000000),
                     eip_1559_params: None,
+                    min_base_fee: None,
                 }),
             )
             .await?;
