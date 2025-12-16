@@ -2,7 +2,7 @@ use crate::client::auth::AuthLayer;
 use crate::client::http::HttpClient as RollupBoostHttpClient;
 use crate::server::EngineApiClient;
 use crate::version::{CARGO_PKG_VERSION, VERGEN_GIT_SHA};
-use crate::{Authorization, EngineApiExt, FlashblocksEngineApiClient};
+use crate::{EngineApiExt, FlashblocksEngineApiClient};
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_engine::{
     ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, JwtError, JwtSecret, PayloadId,
@@ -25,6 +25,7 @@ use op_alloy_rpc_types_engine::{
 use opentelemetry::trace::SpanKind;
 use paste::paste;
 use reth_optimism_payload_builder::payload_id_optimism;
+use rollup_boost_types::authorization::Authorization;
 use rollup_boost_types::payload::{
     NewPayload, OpExecutionPayloadEnvelope, PayloadSource, PayloadVersion,
 };

@@ -112,7 +112,7 @@ pub struct FlashblocksP2PArgs {
         value_parser = parse_sk,
         required = false,
     )]
-    pub flashblocks_authorizer_sk: SigningKey,
+    pub authorizer_sk: SigningKey,
 
     #[arg(
         long,
@@ -120,7 +120,7 @@ pub struct FlashblocksP2PArgs {
         value_parser = parse_vk,
         required = false,
     )]
-    pub flashblocks_builder_vk: VerifyingKey,
+    pub builder_vk: VerifyingKey,
 }
 
 pub fn parse_sk(s: &str) -> eyre::Result<SigningKey> {

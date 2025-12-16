@@ -1,6 +1,6 @@
 use crate::debug_api::ExecutionMode;
 use crate::{
-    Authorization, BlockSelectionPolicy, ClientArgs, EngineApiExt, Flashblocks, FlashblocksP2PKeys,
+    BlockSelectionPolicy, ClientArgs, EngineApiExt, Flashblocks, FlashblocksP2PKeys,
     FlashblocksService, RollupBoostLibArgs, update_execution_mode_gauge,
 };
 use crate::{
@@ -32,6 +32,7 @@ use op_alloy_rpc_types_engine::{
 };
 use opentelemetry::trace::SpanKind;
 use parking_lot::Mutex;
+use rollup_boost_types::authorization::Authorization;
 use rollup_boost_types::payload::{
     NewPayload, NewPayloadV3, NewPayloadV4, OpExecutionPayloadEnvelope, PayloadSource,
     PayloadTraceContext, PayloadVersion,
@@ -125,8 +126,8 @@ impl RollupBoostServer<RpcClient> {
         let flashblocks_p2p_keys = rollup_boost_args
             .flashblocks_p2p
             .map(|x| FlashblocksP2PKeys {
-                authorization_sk: x.flashblocks_authorizer_sk.clone(),
-                builder_vk: x.flashblocks_builder_vk.clone(),
+                authorization_sk: x.authorizer_sk.clone(),
+                builder_vk: x.builder_vk.clone(),
             });
 
         let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2, None)?;

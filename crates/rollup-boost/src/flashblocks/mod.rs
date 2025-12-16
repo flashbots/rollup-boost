@@ -12,6 +12,3 @@ mod args;
 pub use args::*;
 
 mod metrics;
-
-mod authorization;
-pub use authorization::*;

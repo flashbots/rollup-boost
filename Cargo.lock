@@ -11366,11 +11366,14 @@ dependencies = [
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
  "alloy-serde",
+ "blake3",
+ "ed25519-dalek",
  "futures",
  "moka",
  "op-alloy-rpc-types-engine 0.23.1",
  "serde",
  "serde_json",
+ "thiserror 2.0.17",
  "tracing",
 ]
 

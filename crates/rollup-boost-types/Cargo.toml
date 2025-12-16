@@ -16,3 +16,6 @@ op-alloy-rpc-types-engine = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+thiserror = { workspace = true }
+ed25519-dalek = { version = "2", features = ["serde"] }
+blake3 = "1"                                            # fast hashing for payload IDs

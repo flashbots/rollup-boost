@@ -3,8 +3,7 @@ use alloy_rlp::{Decodable, Encodable, Header};
 use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-
-use crate::FlashblocksError;
+use thiserror::Error;
 
 /// An authorization token that grants a builder permission to publish flashblocks for a specific payload.
 ///
@@ -22,6 +21,12 @@ pub struct Authorization {
     pub builder_vk: VerifyingKey,
     /// The authorizer's signature over the payload_id, timestamp, and builder_vk
     pub authorizer_sig: Signature,
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum AuthorizationError {
+    #[error("invalid authorizer signature")]
+    InvalidAuthorizerSig,
 }
 
 impl Authorization {
@@ -73,14 +78,14 @@ impl Authorization {
     ///
     /// * `Ok(())` if the signature is valid
     /// * `Err(FlashblocksP2PError::InvalidAuthorizerSig)` if the signature is invalid
-    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), FlashblocksError> {
+    pub fn verify(&self, authorizer_sk: VerifyingKey) -> Result<(), AuthorizationError> {
         let mut msg = self.payload_id.0.to_vec();
         msg.extend_from_slice(&self.timestamp.to_le_bytes());
         msg.extend_from_slice(self.builder_vk.as_bytes());
         let hash = blake3::hash(&msg);
         authorizer_sk
             .verify(hash.as_bytes(), &self.authorizer_sig)
-            .map_err(|_| FlashblocksError::InvalidAuthorizerSig)
+            .map_err(|_| AuthorizationError::InvalidAuthorizerSig)
     }
 }
 
