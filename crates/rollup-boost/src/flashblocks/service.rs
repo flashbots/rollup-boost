@@ -37,6 +37,8 @@ pub enum FlashblocksError {
     InvalidIndex,
     #[error("Missing payload")]
     MissingPayload,
+    #[error("invalid authorizer signature")]
+    InvalidAuthorizerSig,
 }
 
 // Simplify actor messages to just handle shutdown

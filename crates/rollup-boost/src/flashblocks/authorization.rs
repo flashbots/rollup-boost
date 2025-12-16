@@ -4,7 +4,7 @@ use alloy_rpc_types_engine::PayloadId;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::flashblocks::error::FlashblocksError;
+use crate::FlashblocksError;
 
 /// An authorization token that grants a builder permission to publish flashblocks for a specific payload.
 ///
