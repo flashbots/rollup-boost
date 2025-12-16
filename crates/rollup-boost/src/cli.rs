@@ -254,7 +254,7 @@ pub mod tests {
 
         assert!(
             args.is_err(),
-            "flashblocks args should be invalid without --flashblocks flag"
+            "flashblocks args should be invalid without --flashblocks-p2p flag"
         );
 
         Ok(())
@@ -268,7 +268,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-p2p",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",
@@ -277,9 +277,9 @@ pub mod tests {
 
         let flashblocks = args
             .lib
-            .flashblocks_ws
+            .flashblocks_p2p
             .expect("flashblocks should be Some when flag is passed");
-        assert!(flashblocks.flashblocks_ws);
+        assert!(flashblocks.flashblocks_p2p);
 
         Ok(())
     }
@@ -292,7 +292,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-p2p",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",
@@ -301,9 +301,9 @@ pub mod tests {
 
         let flashblocks = args
             .lib
-            .flashblocks_ws
+            .flashblocks_p2p
             .expect("flashblocks should be Some when flag is passed");
-        assert!(flashblocks.flashblocks_ws);
+        assert!(flashblocks.flashblocks_p2p);
 
         Ok(())
     }
@@ -340,7 +340,7 @@ pub mod tests {
             "6666",
             "--execution-mode",
             "disabled",
-            "--flashblocks",
+            "--flashblocks-p2p",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",
@@ -361,9 +361,9 @@ pub mod tests {
 
         let flashblocks = args
             .lib
-            .flashblocks_ws
+            .flashblocks_p2p
             .expect("flashblocks should be Some when flag is passed");
-        assert!(flashblocks.flashblocks_ws);
+        assert!(flashblocks.flashblocks_p2p);
 
         Ok(())
     }
@@ -388,7 +388,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-p2p",
             "--flashblocks-authorizer-sk",
             "invalid_hex",
             "--flashblocks-builder-vk",
@@ -406,7 +406,7 @@ pub mod tests {
             SECRET,
             "--l2-jwt-token",
             SECRET,
-            "--flashblocks",
+            "--flashblocks-p2p",
             "--flashblocks-authorizer-sk",
             FLASHBLOCKS_SK,
             "--flashblocks-builder-vk",

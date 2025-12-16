@@ -1,7 +1,7 @@
 use crate::debug_api::ExecutionMode;
 use crate::{
-    Authorization, BlockSelectionPolicy, ClientArgs, EngineApiExt, Flashblocks, FlashblocksService,
-    RollupBoostLibArgs, update_execution_mode_gauge,
+    Authorization, BlockSelectionPolicy, ClientArgs, EngineApiExt, Flashblocks, FlashblocksP2PKeys,
+    FlashblocksService, RollupBoostLibArgs, update_execution_mode_gauge,
 };
 use crate::{
     client::rpc::RpcClient,
@@ -82,8 +82,8 @@ impl RollupBoostServer<FlashblocksService> {
         let l2_client_args: ClientArgs = rollup_boost_args.l2_client.into();
         let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
 
-        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2)?;
-        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2, None)?;
+        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder, None)?;
 
         let inbound_url = flashblocks_args.flashblocks_builder_url;
         let outbound_addr = SocketAddr::new(
@@ -115,16 +115,23 @@ impl RollupBoostServer<RpcClient> {
         rollup_boost_args: RollupBoostLibArgs,
         probes: Arc<Probes>,
     ) -> eyre::Result<Self> {
-        if rollup_boost_args.flashblocks_ws.is_none() {
+        if rollup_boost_args.flashblocks_ws.is_some() {
             eyre::bail!(
-                "RpcClient requires flashblocks to be disabled, first check rollup_boost_args.flashblocks.flashblocks == false before calling this constructor"
+                "RpcClient requires flashblocks-ws to be disabled, first check rollup_boost_args.flashblocks.flashblocks == false before calling this constructor"
             );
         };
         let l2_client_args: ClientArgs = rollup_boost_args.l2_client.into();
         let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
+        let flashblocks_p2p_keys = rollup_boost_args
+            .flashblocks_p2p
+            .map(|x| FlashblocksP2PKeys {
+                authorization_sk: x.flashblocks_authorizer_sk.clone(),
+                builder_vk: x.flashblocks_builder_vk.clone(),
+            });
 
-        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2)?;
-        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2, None)?;
+        let builder_client =
+            builder_client_args.new_rpc_client(PayloadSource::Builder, flashblocks_p2p_keys)?;
 
         Ok(RollupBoostServer::new(
             l2_client,
@@ -883,7 +890,9 @@ pub mod tests {
                 jwt_path: None,
                 timeout: 2000,
             };
-            let l2_rpc_client = l2_client_args.new_rpc_client(PayloadSource::L2).unwrap();
+            let l2_rpc_client = l2_client_args
+                .new_rpc_client(PayloadSource::L2, None)
+                .unwrap();
             let l2_http_client = l2_client_args.new_http_client(PayloadSource::L2).unwrap();
 
             // Build builder clients
@@ -895,7 +904,7 @@ pub mod tests {
             };
             let builder_rpc_client = Arc::new(
                 builder_client_args
-                    .new_rpc_client(PayloadSource::Builder)
+                    .new_rpc_client(PayloadSource::Builder, None)
                     .unwrap(),
             );
             let builder_http_client = builder_client_args

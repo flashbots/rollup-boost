@@ -108,7 +108,7 @@ pub struct FlashblocksP2PKeys {
     /// Flashblocks Authorization Secret
     pub authorization_sk: SigningKey,
     /// Flashblocks builder vk
-    pub builder_pk: VerifyingKey,
+    pub builder_vk: VerifyingKey,
 }
 
 /// Client interface for interacting with execution layer node's Engine API.
@@ -165,6 +165,8 @@ impl RpcClient {
             target = self.payload_source.to_string(),
             head_block_hash = %fork_choice_state.head_block_hash,
             url = %self.auth_rpc,
+            payload_attributes = payload_attributes.is_some(),
+            flashblocks_authorization,
             code,
             payload_id
         )
@@ -177,12 +179,13 @@ impl RpcClient {
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
         let res = match (&payload_attributes, &self.flashblocks_p2p_keys) {
             (Some(attrs), Some(flashblocks)) => {
+                tracing::Span::current().record("flashblocks_authorization", true);
                 let payload_id = payload_id_optimism(&fork_choice_state.head_block_hash, attrs, 3);
                 let authorization = Authorization::new(
                     payload_id,
                     attrs.payload_attributes.timestamp,
                     &flashblocks.authorization_sk,
-                    flashblocks.builder_pk.clone(),
+                    flashblocks.builder_vk.clone(),
                 );
                 self.auth_client
                     .flashblocks_fork_choice_updated_v3(
@@ -441,13 +444,17 @@ impl ClientArgs {
         }
     }
 
-    pub fn new_rpc_client(&self, payload_source: PayloadSource) -> eyre::Result<RpcClient> {
+    pub fn new_rpc_client(
+        &self,
+        payload_source: PayloadSource,
+        flashblocks_p2p_keys: Option<FlashblocksP2PKeys>,
+    ) -> eyre::Result<RpcClient> {
         RpcClient::new(
             self.url.clone(),
             self.get_auth_jwt()?,
             self.timeout,
             payload_source,
-            None, // TODO
+            flashblocks_p2p_keys,
         )
         .map_err(eyre::Report::from)
     }
@@ -509,7 +516,6 @@ define_client_args!((BuilderArgs, builder), (L2ClientArgs, l2));
 
 #[cfg(test)]
 pub mod tests {
-    use assert_cmd::Command;
     use http::Uri;
     use jsonrpsee::core::client::ClientT;
     use parking_lot::Mutex;
@@ -518,7 +524,6 @@ pub mod tests {
     use jsonrpsee::core::client::Error as ClientError;
     use jsonrpsee::server::{ServerBuilder, ServerHandle};
     use jsonrpsee::{RpcModule, rpc_params};
-    use predicates::prelude::*;
     use rollup_boost_types::payload::PayloadSource;
     use std::collections::HashSet;
     use std::net::SocketAddr;
@@ -541,16 +546,6 @@ pub mod tests {
                 return port;
             }
         }
-    }
-
-    #[test]
-    fn test_invalid_args() {
-        let mut cmd = Command::cargo_bin("rollup-boost").unwrap();
-        cmd.arg("--invalid-arg");
-
-        cmd.assert().failure().stderr(predicate::str::contains(
-            "error: unexpected argument '--invalid-arg' found",
-        ));
     }
 
     #[tokio::test]

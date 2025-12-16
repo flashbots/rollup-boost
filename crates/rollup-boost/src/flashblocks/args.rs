@@ -100,7 +100,7 @@ pub struct FlashblocksP2PArgs {
     #[arg(
         long,
         id = "flashblocks_p2p",
-        conflicts_with = "flashblocks",
+        conflicts_with = "flashblocks_ws",
         env,
         required = false
     )]
