@@ -107,7 +107,7 @@ pub struct FlashblocksP2PArgs {
     pub flashblocks_p2p: bool,
 
     #[arg(
-        long,
+        long = "flashblocks-authorizer-sk",
         env = "FLASHBLOCKS_AUTHORIZER_SK",
         value_parser = parse_sk,
         required = false,
@@ -115,7 +115,7 @@ pub struct FlashblocksP2PArgs {
     pub authorizer_sk: SigningKey,
 
     #[arg(
-        long,
+        long = "flashblocks-builder-vk",
         env = "FLASHBLOCKS_BUILDER_VK",
         value_parser = parse_vk,
         required = false,

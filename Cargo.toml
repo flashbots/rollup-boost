@@ -30,8 +30,8 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
 url = "2.2.0"
 
 # Reth deps, use 4231f4b to get latest op-alloy
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", ref = "4231f4b" }
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth", ref = "4231f4b" }
+reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "4231f4b" }
+reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth", rev = "4231f4b" }
 
 # Alloy libraries
 alloy-rpc-types-engine = "1.0.41"
