@@ -5,7 +5,6 @@ use backoff::backoff::Backoff;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use lru::LruCache;
-use std::io::ErrorKind::TimedOut;
 use op_alloy_rpc_types_engine::OpFlashblockPayload;
 use std::io::ErrorKind::TimedOut;
 use std::num::NonZeroUsize;

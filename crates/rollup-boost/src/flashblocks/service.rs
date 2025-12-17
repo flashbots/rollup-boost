@@ -1,6 +1,8 @@
 use super::outbound::WebSocketPublisher;
 use crate::flashblocks::metrics::FlashblocksServiceMetrics;
-use crate::{ClientResult, EngineApiExt, RpcClient};
+use crate::{
+    ClientResult, EngineApiExt, NewPayload, OpExecutionPayloadEnvelope, PayloadVersion, RpcClient,
+};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
@@ -16,7 +18,6 @@ use op_alloy_rpc_types_engine::{
 use op_alloy_rpc_types_engine::{
     OpFlashblockPayload, OpFlashblockPayloadBase, OpFlashblockPayloadDelta,
 };
-use reth_optimism_payload_builder::payload_id_optimism;
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -388,10 +389,10 @@ impl EngineApiExt for FlashblocksService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::payload::PayloadSource;
     use crate::server::tests::{MockEngineServer, spawn_server};
     use http::Uri;
     use reth_rpc_layer::JwtSecret;
-    use rollup_boost_types::payload::PayloadSource;
     use std::str::FromStr;
 
     /// Test that we fallback to the getPayload method if the flashblocks payload is not available
