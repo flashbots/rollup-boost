@@ -118,7 +118,7 @@ impl RollupBoostServer<RpcClient> {
     ) -> eyre::Result<Self> {
         if rollup_boost_args.flashblocks_ws.is_some() {
             eyre::bail!(
-                "RpcClient requires flashblocks-ws to be disabled, first check rollup_boost_args.flashblocks.flashblocks == false before calling this constructor"
+                "RpcClient requires flashblocks-ws to be disabled, first check rollup_boost_args.flashblocks_ws.is_none() before calling this constructor"
             );
         };
         let l2_client_args: ClientArgs = rollup_boost_args.l2_client.into();
