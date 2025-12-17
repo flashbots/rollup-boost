@@ -479,7 +479,7 @@ where
 
 #[rpc(client)]
 pub trait FlashblocksEngineApi {
-    /// When flashblocks is enabled
+    /// When flashblocks p2p is enabled
     /// we add an additional parameter `authorization` to the FCU
     #[method(name = "flashblocks_forkchoiceUpdatedV3")]
     async fn flashblocks_fork_choice_updated_v3(
