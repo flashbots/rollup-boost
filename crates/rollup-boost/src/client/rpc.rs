@@ -467,7 +467,11 @@ macro_rules! define_client_args {
     };
 }
 
-define_client_args!((BuilderArgs, builder), (L2ClientArgs, l2));
+define_client_args!(
+    (BuilderArgs, builder),
+    (L2ClientArgs, l2),
+    (ShadowBuilderArgs, shadow_builder)
+);
 
 #[cfg(test)]
 pub mod tests {

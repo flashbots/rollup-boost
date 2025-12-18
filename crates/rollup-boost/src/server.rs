@@ -909,7 +909,7 @@ pub mod tests {
 
             let http_middleware = tower::ServiceBuilder::new()
                 .layer(probe_layer)
-                .layer(ProxyLayer::new(l2_http_client, builder_http_client));
+                .layer(ProxyLayer::new(l2_http_client, builder_http_client, None));
 
             let server = Server::builder()
                 .set_http_middleware(http_middleware)
