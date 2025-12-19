@@ -481,7 +481,8 @@ impl EngineApiExt for FlasblocksP2PRpcClient {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
-        match (payload_attributes, *self.execution_mode.lock()) {
+        let execution_mode = *self.execution_mode.lock();
+        match (payload_attributes, execution_mode) {
             // If we have payload attributes and execution mode is enabled, generate authorization
             // We don't want to the builder to publish flashblocks if rollup boost is not going to
             // honour the block.
