@@ -121,19 +121,18 @@ where
                 tokio::spawn(async move {
                     let _ = builder_client.forward(buffered_clone, method_clone).await;
                 });
-            }
-
-            // If the shadow builder is enabled, forward the request to the shadow builder
-            if let Some(shadow_builder_client) = service.shadow_builder_client.clone() {
-                let method_clone = method.clone();
-                let buffered_clone = buffered.clone();
-                let mut shadow_builder_client = shadow_builder_client.clone();
-                debug!(target: "proxy::call", message = "proxying request to shadow builder", ?method);
-                tokio::spawn(async move {
-                    let _ = shadow_builder_client
-                        .forward(buffered_clone, method_clone)
-                        .await;
-                });
+                // If the shadow builder is enabled, forward the request to the shadow builder
+                if let Some(shadow_builder_client) = service.shadow_builder_client.clone() {
+                    let method_clone = method.clone();
+                    let buffered_clone = buffered.clone();
+                    let mut shadow_builder_client = shadow_builder_client.clone();
+                    debug!(target: "proxy::call", message = "proxying request to shadow builder", ?method);
+                    tokio::spawn(async move {
+                        let _ = shadow_builder_client
+                            .forward(buffered_clone, method_clone)
+                            .await;
+                    });
+                }
             }
 
             // Return the response from the L2 client
