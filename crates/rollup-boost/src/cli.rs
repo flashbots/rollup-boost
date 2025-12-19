@@ -12,7 +12,6 @@ use crate::{
     get_version, init_metrics,
     probe::ProbeLayer,
 };
-use crate::{FlashblocksService, RpcClient};
 use rollup_boost_types::payload::PayloadSource;
 
 #[derive(Clone, Debug, clap::Args)]
@@ -123,27 +122,12 @@ impl RollupBoostServiceArgs {
 
         let (probe_layer, probes) = ProbeLayer::new();
 
-        let (health_handle, rpc_module) = if self.lib.flashblocks_ws.is_some() {
-            let rollup_boost = RollupBoostServer::<FlashblocksService>::new_from_args(
-                self.lib.clone(),
-                probes.clone(),
-            )?;
-            let health_handle = rollup_boost
-                .spawn_health_check(self.lib.health_check_interval, self.lib.max_unsafe_interval);
-            let debug_server = DebugServer::new(rollup_boost.execution_mode.clone());
-            debug_server.run(&debug_addr).await?;
-            let rpc_module: RpcModule<()> = rollup_boost.try_into()?;
-            (health_handle, rpc_module)
-        } else {
-            let rollup_boost =
-                RollupBoostServer::<RpcClient>::new_from_args(self.lib.clone(), probes.clone())?;
-            let health_handle = rollup_boost
-                .spawn_health_check(self.lib.health_check_interval, self.lib.max_unsafe_interval);
-            let debug_server = DebugServer::new(rollup_boost.execution_mode.clone());
-            debug_server.run(&debug_addr).await?;
-            let rpc_module: RpcModule<()> = rollup_boost.try_into()?;
-            (health_handle, rpc_module)
-        };
+        let rollup_boost = RollupBoostServer::new_from_args(self.lib.clone(), probes.clone())?;
+        let health_handle = rollup_boost
+            .spawn_health_check(self.lib.health_check_interval, self.lib.max_unsafe_interval);
+        let debug_server = DebugServer::new(rollup_boost.execution_mode.clone());
+        debug_server.run(&debug_addr).await?;
+        let rpc_module: RpcModule<()> = rollup_boost.try_into()?;
 
         // Build and start the server
         info!("Starting server on :{}", self.rpc_port);

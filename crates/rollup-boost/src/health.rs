@@ -307,7 +307,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::L2,
-            None,
         )?);
 
         let builder = MockHttpServer::serve(handler, now).await.unwrap();
@@ -316,7 +315,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -350,7 +348,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::L2,
-            None,
         )?);
 
         // Builder unhealthy
@@ -360,7 +357,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -394,7 +390,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::L2,
-            None,
         )?);
 
         // Builder healthy
@@ -404,7 +399,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -438,7 +432,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::L2,
-            None,
         )?);
         let builder = MockHttpServer::serve(handler, now - 10).await.unwrap();
 
@@ -447,7 +440,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -481,7 +473,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::L2,
-            None,
         )?);
         let builder = MockHttpServer::serve(handler, now - 10).await.unwrap();
 
@@ -490,7 +481,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -523,7 +513,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::L2,
-            None,
         )?);
 
         // Builder unhealthy
@@ -532,7 +521,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
         )?);
 
         let health_handle = HealthHandle {
@@ -565,7 +553,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::L2,
-            None,
         )?);
 
         // Builder healthy
@@ -575,7 +562,6 @@ mod tests {
             JwtSecret::random(),
             100,
             PayloadSource::Builder,
-            None,
         )?);
 
         let health_handle = HealthHandle {

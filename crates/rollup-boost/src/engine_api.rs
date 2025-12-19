@@ -7,7 +7,7 @@ use crate::ClientResult;
 use rollup_boost_types::payload::{NewPayload, OpExecutionPayloadEnvelope, PayloadVersion};
 
 #[async_trait]
-pub trait EngineApiExt: Send + Sync + 'static {
+pub trait EngineApiExt: std::fmt::Debug + Send + Sync + 'static {
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,

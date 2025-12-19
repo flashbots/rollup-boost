@@ -1,7 +1,7 @@
 use crate::debug_api::ExecutionMode;
 use crate::{
-    BlockSelectionPolicy, ClientArgs, EngineApiExt, Flashblocks, FlashblocksP2PKeys,
-    FlashblocksService, RollupBoostLibArgs, update_execution_mode_gauge,
+    BlockSelectionPolicy, ClientArgs, EngineApiExt, FlasblocksP2PRpcClient, Flashblocks,
+    FlashblocksP2PKeys, RollupBoostLibArgs, update_execution_mode_gauge,
 };
 use crate::{
     client::rpc::RpcClient,
@@ -58,9 +58,9 @@ pub struct BuilderPayloadResult {
 pub type BuilderResult = Result<BuilderPayloadResult, ErrorObject<'static>>;
 
 #[derive(Clone, Debug)]
-pub struct RollupBoostServer<T: EngineApiExt> {
+pub struct RollupBoostServer {
     pub l2_client: Arc<RpcClient>,
-    pub builder_client: Arc<T>,
+    pub builder_client: Arc<dyn EngineApiExt>,
     pub payload_trace_context: Arc<PayloadTraceContext>,
     pub execution_mode: Arc<Mutex<ExecutionMode>>,
     block_selection_policy: Option<BlockSelectionPolicy>,
@@ -70,39 +70,49 @@ pub struct RollupBoostServer<T: EngineApiExt> {
     payload_to_fcu_request: DashMap<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>,
 }
 
-impl RollupBoostServer<FlashblocksService> {
+impl RollupBoostServer {
     pub fn new_from_args(
         rollup_boost_args: RollupBoostLibArgs,
         probes: Arc<Probes>,
     ) -> eyre::Result<Self> {
-        let Some(flashblocks_args) = rollup_boost_args.flashblocks_ws else {
-            eyre::bail!(
-                "FlashblocksService requires flashblocks to be enabled, first check rollup_boost_args.flashblocks.flashblocks == true before calling this constructor"
-            );
-        };
         let l2_client_args: ClientArgs = rollup_boost_args.l2_client.into();
         let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
 
-        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2, None)?;
-        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder, None)?;
+        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2)?;
+        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+        let execution_mode = Arc::new(Mutex::new(rollup_boost_args.execution_mode.clone()));
 
-        let inbound_url = flashblocks_args.flashblocks_builder_url;
-        let outbound_addr = SocketAddr::new(
-            IpAddr::from_str(&flashblocks_args.flashblocks_host)?,
-            flashblocks_args.flashblocks_port,
-        );
+        let builder_client: Arc<dyn EngineApiExt> =
+            if let Some(flashblocks_ws) = rollup_boost_args.flashblocks_ws {
+                let inbound_url = flashblocks_ws.flashblocks_builder_url;
+                let outbound_addr = SocketAddr::new(
+                    IpAddr::from_str(&flashblocks_ws.flashblocks_host)?,
+                    flashblocks_ws.flashblocks_port,
+                );
 
-        let builder_client = Arc::new(Flashblocks::run(
-            builder_client.clone(),
-            inbound_url,
-            outbound_addr,
-            flashblocks_args.flashblocks_ws_config,
-        )?);
+                Arc::new(Flashblocks::run(
+                    builder_client.clone(),
+                    inbound_url,
+                    outbound_addr,
+                    flashblocks_ws.flashblocks_ws_config,
+                )?)
+            } else if let Some(flashblocks_p2p) = rollup_boost_args.flashblocks_p2p.clone() {
+                Arc::new(FlasblocksP2PRpcClient {
+                    inner: builder_client,
+                    flashblocks_p2p_keys: FlashblocksP2PKeys {
+                        authorization_sk: flashblocks_p2p.authorizer_sk.clone(),
+                        builder_vk: flashblocks_p2p.builder_vk.clone(),
+                    },
+                    execution_mode: execution_mode.clone(),
+                })
+            } else {
+                Arc::new(builder_client)
+            };
 
         Ok(RollupBoostServer::new(
             l2_client,
             builder_client,
-            rollup_boost_args.execution_mode,
+            execution_mode,
             rollup_boost_args.block_selection_policy,
             probes.clone(),
             rollup_boost_args.external_state_root,
@@ -111,58 +121,23 @@ impl RollupBoostServer<FlashblocksService> {
     }
 }
 
-impl RollupBoostServer<RpcClient> {
-    pub fn new_from_args(
-        rollup_boost_args: RollupBoostLibArgs,
-        probes: Arc<Probes>,
-    ) -> eyre::Result<Self> {
-        if rollup_boost_args.flashblocks_ws.is_some() {
-            eyre::bail!(
-                "RpcClient requires flashblocks-ws to be disabled, first check rollup_boost_args.flashblocks_ws.is_none() before calling this constructor"
-            );
-        };
-        let l2_client_args: ClientArgs = rollup_boost_args.l2_client.into();
-        let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
-        let flashblocks_p2p_keys = rollup_boost_args
-            .flashblocks_p2p
-            .map(|x| FlashblocksP2PKeys {
-                authorization_sk: x.authorizer_sk.clone(),
-                builder_vk: x.builder_vk.clone(),
-            });
-
-        let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2, None)?;
-        let builder_client =
-            builder_client_args.new_rpc_client(PayloadSource::Builder, flashblocks_p2p_keys)?;
-
-        Ok(RollupBoostServer::new(
-            l2_client,
-            Arc::new(builder_client),
-            rollup_boost_args.execution_mode,
-            rollup_boost_args.block_selection_policy,
-            probes.clone(),
-            rollup_boost_args.external_state_root,
-            rollup_boost_args.ignore_unhealthy_builders,
-        ))
-    }
-}
-
-impl<T: EngineApiExt> RollupBoostServer<T> {
+impl RollupBoostServer {
     pub fn new(
         l2_client: RpcClient,
-        builder_client: Arc<T>,
-        initial_execution_mode: ExecutionMode,
+        builder_client: Arc<dyn EngineApiExt>,
+        execution_mode: Arc<Mutex<ExecutionMode>>,
         block_selection_policy: Option<BlockSelectionPolicy>,
         probes: Arc<Probes>,
         external_state_root: bool,
         ignore_unhealthy_builders: bool,
     ) -> Self {
-        update_execution_mode_gauge(initial_execution_mode);
+        update_execution_mode_gauge(*execution_mode.lock());
         Self {
             l2_client: Arc::new(l2_client),
             builder_client,
             block_selection_policy,
             payload_trace_context: Arc::new(PayloadTraceContext::new()),
-            execution_mode: Arc::new(Mutex::new(initial_execution_mode)),
+            execution_mode,
             probes,
             external_state_root,
             ignore_unhealthy_builders,
@@ -459,10 +434,7 @@ impl<T: EngineApiExt> RollupBoostServer<T> {
     }
 }
 
-impl<T> TryInto<RpcModule<()>> for RollupBoostServer<T>
-where
-    T: EngineApiExt,
-{
+impl TryInto<RpcModule<()>> for RollupBoostServer {
     type Error = RegisterMethodError;
 
     fn try_into(self) -> Result<RpcModule<()>, Self::Error> {
@@ -533,7 +505,7 @@ pub trait EngineApi {
 }
 
 #[async_trait]
-impl<T: EngineApiExt> EngineApiServer for RollupBoostServer<T> {
+impl EngineApiServer for RollupBoostServer {
     #[instrument(
         skip_all,
         err,
@@ -891,9 +863,7 @@ pub mod tests {
                 jwt_path: None,
                 timeout: 2000,
             };
-            let l2_rpc_client = l2_client_args
-                .new_rpc_client(PayloadSource::L2, None)
-                .unwrap();
+            let l2_rpc_client = l2_client_args.new_rpc_client(PayloadSource::L2).unwrap();
             let l2_http_client = l2_client_args.new_http_client(PayloadSource::L2).unwrap();
 
             // Build builder clients
@@ -905,7 +875,7 @@ pub mod tests {
             };
             let builder_rpc_client = Arc::new(
                 builder_client_args
-                    .new_rpc_client(PayloadSource::Builder, None)
+                    .new_rpc_client(PayloadSource::Builder)
                     .unwrap(),
             );
             let builder_http_client = builder_client_args
@@ -920,7 +890,7 @@ pub mod tests {
             let rollup_boost = RollupBoostServer::new(
                 l2_rpc_client,
                 builder_rpc_client,
-                ExecutionMode::Enabled,
+                Arc::new(Mutex::new(ExecutionMode::Enabled)),
                 None,
                 probes.clone(),
                 external_state_root,
