@@ -83,7 +83,14 @@ impl RollupBoostServer<FlashblocksService> {
         let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
 
         let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2)?;
-        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+        let mut builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+
+        // Add shadow builder if configured
+        if let Some(shadow_args) = rollup_boost_args.shadow_builder {
+            let shadow_client_args: ClientArgs = shadow_args.into();
+            let shadow_client = shadow_client_args.new_rpc_client(PayloadSource::Builder)?;
+            builder_client = builder_client.with_shadow(shadow_client)
+        };
 
         let flashblocks_args = rollup_boost_args.flashblocks;
         let inbound_url = flashblocks_args.flashblocks_builder_url;
@@ -125,7 +132,14 @@ impl RollupBoostServer<RpcClient> {
         let builder_client_args: ClientArgs = rollup_boost_args.builder.into();
 
         let l2_client = l2_client_args.new_rpc_client(PayloadSource::L2)?;
-        let builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+        let mut builder_client = builder_client_args.new_rpc_client(PayloadSource::Builder)?;
+
+        // Add shadow builder if configured
+        if let Some(shadow_args) = rollup_boost_args.shadow_builder {
+            let shadow_client_args: ClientArgs = shadow_args.into();
+            let shadow_client = shadow_client_args.new_rpc_client(PayloadSource::Builder)?;
+            builder_client = builder_client.with_shadow(shadow_client)
+        };
 
         Ok(RollupBoostServer::new(
             l2_client,

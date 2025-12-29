@@ -25,9 +25,10 @@ use op_alloy_rpc_types_engine::{
 use opentelemetry::trace::SpanKind;
 use paste::paste;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 use super::auth::Auth;
 
@@ -111,6 +112,8 @@ pub struct RpcClient {
     auth_rpc: Uri,
     /// The source of the payload
     payload_source: PayloadSource,
+    /// Optional shadow builder client for async mirroring (fire-and-forget)
+    shadow: Option<Arc<RpcClient>>,
 }
 
 impl RpcClient {
@@ -136,7 +139,16 @@ impl RpcClient {
             auth_client,
             auth_rpc,
             payload_source,
+            shadow: None,
         })
+    }
+
+    /// Set the shadow builder client for async mirroring.
+    /// When set, all Engine API calls will be asynchronously forwarded to the shadow builder
+    /// in a fire-and-forget manner. Errors from the shadow builder are logged but not propagated.
+    pub fn with_shadow(mut self, shadow: RpcClient) -> Self {
+        self.shadow = Some(Arc::new(shadow));
+        self
     }
 
     #[instrument(
@@ -156,6 +168,21 @@ impl RpcClient {
         fork_choice_state: ForkchoiceState,
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
+        // Mirror to shadow builder (fire-and-forget)
+        if let Some(shadow) = &self.shadow {
+            let shadow_client = shadow.auth_client.clone();
+            let fork_choice_state = fork_choice_state;
+            let payload_attributes = payload_attributes.clone();
+            tokio::spawn(async move {
+                if let Err(e) = shadow_client
+                    .fork_choice_updated_v3(fork_choice_state, payload_attributes)
+                    .await
+                {
+                    debug!(target: "shadow_builder", error = %e, "shadow fork_choice_updated_v3 failed");
+                }
+            });
+        }
+
         info!("Sending fork_choice_updated_v3 to {}", self.payload_source);
         let res = self
             .auth_client
@@ -195,6 +222,16 @@ impl RpcClient {
         &self,
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV3> {
+        // Mirror to shadow builder (fire-and-forget)
+        if let Some(shadow) = &self.shadow {
+            let shadow_client = shadow.auth_client.clone();
+            tokio::spawn(async move {
+                if let Err(e) = shadow_client.get_payload_v3(payload_id).await {
+                    debug!(target: "shadow_builder", error = %e, "shadow get_payload_v3 failed");
+                }
+            });
+        }
+
         tracing::Span::current().record("payload_id", payload_id.to_string());
         info!("Sending get_payload_v3 to {}", self.payload_source);
         Ok(self
@@ -221,6 +258,21 @@ impl RpcClient {
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> ClientResult<PayloadStatus> {
+        // Mirror to shadow builder (fire-and-forget)
+        if let Some(shadow) = &self.shadow {
+            let shadow_client = shadow.auth_client.clone();
+            let payload = payload.clone();
+            let versioned_hashes = versioned_hashes.clone();
+            tokio::spawn(async move {
+                if let Err(e) = shadow_client
+                    .new_payload_v3(payload, versioned_hashes, parent_beacon_block_root)
+                    .await
+                {
+                    debug!(target: "shadow_builder", error = %e, "shadow new_payload_v3 failed");
+                }
+            });
+        }
+
         info!("Sending new_payload_v3 to {}", self.payload_source);
 
         let res = self
@@ -250,6 +302,16 @@ impl RpcClient {
         &self,
         payload_id: PayloadId,
     ) -> ClientResult<OpExecutionPayloadEnvelopeV4> {
+        // Mirror to shadow builder (fire-and-forget)
+        if let Some(shadow) = &self.shadow {
+            let shadow_client = shadow.auth_client.clone();
+            tokio::spawn(async move {
+                if let Err(e) = shadow_client.get_payload_v4(payload_id).await {
+                    debug!(target: "shadow_builder", error = %e, "shadow get_payload_v4 failed");
+                }
+            });
+        }
+
         info!("Sending get_payload_v4 to {}", self.payload_source);
         Ok(self
             .auth_client
@@ -291,6 +353,27 @@ impl RpcClient {
         parent_beacon_block_root: B256,
         execution_requests: Vec<Bytes>,
     ) -> ClientResult<PayloadStatus> {
+        // Mirror to shadow builder (fire-and-forget)
+        if let Some(shadow) = &self.shadow {
+            let shadow_client = shadow.auth_client.clone();
+            let payload = payload.clone();
+            let versioned_hashes = versioned_hashes.clone();
+            let execution_requests = execution_requests.clone();
+            tokio::spawn(async move {
+                if let Err(e) = shadow_client
+                    .new_payload_v4(
+                        payload,
+                        versioned_hashes,
+                        parent_beacon_block_root,
+                        execution_requests,
+                    )
+                    .await
+                {
+                    debug!(target: "shadow_builder", error = %e, "shadow new_payload_v4 failed");
+                }
+            });
+        }
+
         info!("Sending new_payload_v4 to {}", self.payload_source);
 
         let res = self
