@@ -6,7 +6,7 @@ use jsonrpsee::server::HttpBody;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
-use tracing::info;
+use tracing::{debug, info};
 
 const ENGINE_METHOD: &str = "engine_";
 
@@ -24,13 +24,19 @@ const FORWARD_REQUESTS: [&str; 6] = [
 pub struct ProxyLayer {
     l2_client: HttpClient,
     builder_client: HttpClient,
+    shadow_builder_client: Option<HttpClient>,
 }
 
 impl ProxyLayer {
-    pub fn new(l2_client: HttpClient, builder_client: HttpClient) -> Self {
+    pub fn new(
+        l2_client: HttpClient,
+        builder_client: HttpClient,
+        shadow_builder_client: Option<HttpClient>,
+    ) -> Self {
         ProxyLayer {
             l2_client,
             builder_client,
+            shadow_builder_client,
         }
     }
 }
@@ -43,6 +49,7 @@ impl<S> Layer<S> for ProxyLayer {
             inner,
             l2_client: self.l2_client.clone(),
             builder_client: self.builder_client.clone(),
+            shadow_builder_client: self.shadow_builder_client.clone(),
         }
     }
 }
@@ -52,6 +59,7 @@ pub struct ProxyService<S> {
     inner: S,
     l2_client: HttpClient,
     builder_client: HttpClient,
+    shadow_builder_client: Option<HttpClient>,
 }
 
 // Consider using `RpcServiceT` when https://github.com/paritytech/jsonrpsee/pull/1521 is merged
@@ -108,11 +116,23 @@ where
                 let method_clone = method.clone();
                 let buffered_clone = buffered.clone();
                 let mut builder_client = service.builder_client.clone();
-
+                debug!(target: "proxy::call", message = "forwarding request to builder", ?method);
                 // Fire and forget the builder request
                 tokio::spawn(async move {
                     let _ = builder_client.forward(buffered_clone, method_clone).await;
                 });
+                // If the shadow builder is enabled, forward the request to the shadow builder
+                if let Some(shadow_builder_client) = service.shadow_builder_client.clone() {
+                    let method_clone = method.clone();
+                    let buffered_clone = buffered.clone();
+                    let mut shadow_builder_client = shadow_builder_client.clone();
+                    debug!(target: "proxy::call", message = "proxying request to shadow builder", ?method);
+                    tokio::spawn(async move {
+                        let _ = shadow_builder_client
+                            .forward(buffered_clone, method_clone)
+                            .await;
+                    });
+                }
             }
 
             // Return the response from the L2 client
@@ -196,6 +216,7 @@ mod tests {
                     timeout: 1,
                 }
                 .new_http_client(PayloadSource::Builder)?,
+                None,
             ));
 
             let temp_listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -512,6 +533,7 @@ mod tests {
             }
             .new_http_client(PayloadSource::Builder)
             .unwrap(),
+            None,
         );
 
         // Create a layered server
@@ -825,6 +847,7 @@ mod tests {
                 timeout: 200,
             }
             .new_http_client(PayloadSource::Builder)?,
+            None,
         );
 
         // Start proxy server
@@ -926,6 +949,7 @@ mod tests {
                 timeout: 200,
             }
             .new_http_client(PayloadSource::Builder)?,
+            None,
         );
 
         // Start proxy on dynamic port

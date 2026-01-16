@@ -12,12 +12,15 @@ use crate::{
     get_version, init_metrics,
     probe::ProbeLayer,
 };
-use crate::{FlashblocksService, RpcClient};
+use crate::{FlashblocksService, RpcClient, ShadowBuilderArgs};
 
 #[derive(Clone, Debug, clap::Args)]
 pub struct RollupBoostLibArgs {
     #[clap(flatten)]
     pub builder: BuilderArgs,
+
+    #[clap(flatten)]
+    pub shadow_builder: Option<ShadowBuilderArgs>,
 
     #[clap(flatten)]
     pub l2_client: L2ClientArgs,
@@ -117,6 +120,12 @@ impl RollupBoostServiceArgs {
         let builder_client_args: ClientArgs = self.lib.builder.clone().into();
         let builder_http_client = builder_client_args.new_http_client(PayloadSource::Builder)?;
 
+        let shadow_builder_client_args: Option<ClientArgs> =
+            self.lib.shadow_builder.clone().map(Into::into);
+        let shadow_builder_http_client = shadow_builder_client_args
+            .map(|client| client.new_http_client(PayloadSource::Builder))
+            .transpose()?;
+
         let (probe_layer, probes) = ProbeLayer::new();
 
         let (health_handle, rpc_module) = if self.lib.flashblocks.flashblocks {
@@ -146,8 +155,9 @@ impl RollupBoostServiceArgs {
             tower::ServiceBuilder::new()
                 .layer(probe_layer)
                 .layer(ProxyLayer::new(
-                    l2_http_client.clone(),
-                    builder_http_client.clone(),
+                    l2_http_client,
+                    builder_http_client,
+                    shadow_builder_http_client,
                 ));
 
         let server = Server::builder()
