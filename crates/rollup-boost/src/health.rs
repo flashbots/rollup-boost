@@ -4,7 +4,7 @@ use std::{
 };
 
 use alloy_rpc_types_eth::BlockNumberOrTag;
-use parking_lot::Mutex;
+use tokio::sync::Mutex;
 use tokio::{
     task::JoinHandle,
     time::{Instant, sleep_until},
@@ -63,26 +63,26 @@ impl HealthHandle {
                             .gt(&self.max_unsafe_interval)
                         {
                             warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %block.header.timestamp, "L2 client - unsafe block timestamp is too old, updating health status to ServiceUnavailable");
-                            self.probes.set_health(Health::ServiceUnavailable);
+                            self.probes.set_health(Health::ServiceUnavailable).await;
                             sleep_until(Instant::now() + self.health_check_interval).await;
                             continue;
-                        } else if self.execution_mode.lock().is_disabled()
-                            || self.execution_mode.lock().is_dry_run()
+                        } else if self.execution_mode.lock().await.is_disabled()
+                            || self.execution_mode.lock().await.is_dry_run()
                         {
-                            self.probes.set_health(Health::Healthy);
+                            self.probes.set_health(Health::Healthy).await;
                             sleep_until(Instant::now() + self.health_check_interval).await;
                             continue;
                         }
                     }
                     Err(e) => {
                         warn!(target: "rollup_boost::health", "L2 client - Failed to get unsafe block {} - updating health status", e);
-                        self.probes.set_health(Health::ServiceUnavailable);
+                        self.probes.set_health(Health::ServiceUnavailable).await;
                         sleep_until(Instant::now() + self.health_check_interval).await;
                         continue;
                     }
                 };
 
-                if self.execution_mode.lock().is_enabled() {
+                if self.execution_mode.lock().await.is_enabled() {
                     // Only check builder client health if execution mode is enabled
                     // If its unhealthy, set the health status to PartialContent
                     match self
@@ -95,14 +95,14 @@ impl HealthHandle {
                                 .gt(&self.max_unsafe_interval)
                             {
                                 warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %block.header.timestamp, "Builder client - unsafe block timestamp is too old updating health status");
-                                self.probes.set_health(Health::PartialContent);
+                                self.probes.set_health(Health::PartialContent).await;
                             } else {
-                                self.probes.set_health(Health::Healthy);
+                                self.probes.set_health(Health::Healthy).await;
                             }
                         }
                         Err(e) => {
                             warn!(target: "rollup_boost::health", "Builder client - Failed to get unsafe block {} - updating health status", e);
-                            self.probes.set_health(Health::PartialContent);
+                            self.probes.set_health(Health::PartialContent).await;
                         }
                     };
                 }
@@ -328,7 +328,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::Healthy));
+        assert!(matches!(probes.health().await, Health::Healthy));
         Ok(())
     }
 
@@ -370,7 +370,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::PartialContent));
+        assert!(matches!(probes.health().await, Health::PartialContent));
         Ok(())
     }
 
@@ -412,7 +412,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::ServiceUnavailable));
+        assert!(matches!(probes.health().await, Health::ServiceUnavailable));
         Ok(())
     }
 
@@ -453,7 +453,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::Healthy));
+        assert!(matches!(probes.health().await, Health::Healthy));
         Ok(())
     }
 
@@ -494,7 +494,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::Healthy));
+        assert!(matches!(probes.health().await, Health::Healthy));
         Ok(())
     }
 
@@ -534,7 +534,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::PartialContent));
+        assert!(matches!(probes.health().await, Health::PartialContent));
         Ok(())
     }
 
@@ -575,7 +575,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::ServiceUnavailable));
+        assert!(matches!(probes.health().await, Health::ServiceUnavailable));
         Ok(())
     }
 

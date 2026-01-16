@@ -10,7 +10,7 @@ use jsonrpsee::{
     http_client::{HttpRequest, HttpResponse},
     server::HttpBody,
 };
-use parking_lot::Mutex;
+use tokio::sync::Mutex;
 use tower::{Layer, Service};
 use tracing::info;
 
@@ -45,13 +45,13 @@ pub struct Probes {
 }
 
 impl Probes {
-    pub fn set_health(&self, value: Health) {
+    pub async fn set_health(&self, value: Health) {
         info!(target: "rollup_boost::probe", "Updating health probe to to {:?}", value);
-        *self.health.lock() = value;
+        *self.health.lock().await = value;
     }
 
-    pub fn health(&self) -> Health {
-        *self.health.lock()
+    pub async fn health(&self) -> Health {
+        *self.health.lock().await
     }
 }
 
@@ -115,7 +115,7 @@ where
         async move {
             match request.uri().path() {
                 // Return health status
-                "/healthz" => Ok(service.probes.health().into()),
+                "/healthz" => Ok(service.probes.health().await.into()),
                 // Service is responding, and therefor ready
                 "/readyz" => Ok(ok()),
                 // Service is responding, and therefor live
