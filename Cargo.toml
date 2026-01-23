@@ -31,9 +31,6 @@ ed25519-dalek = { version = "2", features = ["serde"] }
 blake3 = "1"
 hex = "0.4"
 
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.10.2" }
-reth-rpc-layer = { git = "https://github.com/paradigmxyz/reth", tag = "v1.10.2" }
-
 # Alloy libraries
 alloy-rpc-types-engine = "1.4.3"
 alloy-rpc-types-eth = "1.4.3"
