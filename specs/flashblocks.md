@@ -10,7 +10,7 @@
   - [Data structures](#data-structures)
     - [**`FlashblocksPayloadV1`**](#flashblockspayloadv1)
     - [**`ExecutionPayloadFlashblockResultV1`**](#executionpayloadflashblockresultv1)
-    - [**`ExecutionPayloadStaticV1`**](#executionpayloadstaticv1)
+    - [**`ExecutionPayloadBaseV1`**](#executionpayloadbasev1)
     - [**`Metadata`**](#metadata)
     - [**`AccountMetadata`**](#accountmetadata)
     - [**`StorageSlot`**](#storageslot)
@@ -114,13 +114,13 @@ The core data structure sent from the Block Builder to Rollup Boost and then ext
 
 ```python
 class FlashblocksPayloadV1():
-		version: Bytes4
+    version: Bytes4
     payload_id: Bytes8
-    parent_flash_hash: Optional[Bytes32]
     index: uint64
-    static: Optional[ExecutionPayloadStaticV1]
+    parent_flash_hash: Optional[Bytes32]
+    base: Optional[ExecutionPayloadBaseV1]
     diff: ExecutionPayloadFlashblockResultV1
-    metadata: FlashblocksMetadata
+    metadata: Metadata
 ```
 
 **Field descriptions:**
@@ -166,12 +166,12 @@ class ExecutionPayloadFlashblockResultV1():
 
 All fields in this structure represent the cumulative state of the entire block up to and including the current flashblock, not just the changes from this specific flashblock.
 
-### **`ExecutionPayloadStaticV1`**
+### **`ExecutionPayloadBaseV1`**
 
 Container representing immutable fundamental block properties established at initial block creation, unchanged throughout construction.
 
 ```python
-class ExecutionPayloadStaticV1():
+class ExecutionPayloadBaseV1():
     parent_beacon_block_root: Bytes32
     parent_hash: Bytes32
     fee_recipient: ExecutionAddress
@@ -200,7 +200,7 @@ class ExecutionPayloadStaticV1():
 Container encapsulating all metadata for a flashblock, including account state changes and transaction results.
 
 ```python
-class FlashblockMetadata():
+class Metadata():
 		accounts: List[AccountMetadata]
 		transactions: List[TransactionMetadata]
 ```
@@ -367,7 +367,7 @@ The lifecycle of a Flashblock begins with the Sequencer initiating block creatio
     
     It's important to emphasize that during this process, the External Block Builder sends only the incremental changes in each Flashblock, not the full block state each time. Each `FlashblocksPayloadV1` contains just the delta from the previous state (new transactions, updated state roots, etc.), allowing for efficient bandwidth usage and faster propagation.
     
-    Only the first Flashblock (with `index` 0) includes the `static` field containing immutable block data, while subsequent Flashblocks omit this field since this information remains constant throughout the block's construction. Each Flashblock includes a `parent_flash_hash` that references the SSZ hash of the previous Flashblock in the sequence, creating a hash-linked chain within the block.
+    Only the first Flashblock (with `index` 0) includes the `base` field containing immutable block data, while subsequent Flashblocks omit this field since this information remains constant throughout the block's construction. Each Flashblock includes a `parent_flash_hash` that references the SSZ hash of the previous Flashblock in the sequence, creating a hash-linked chain within the block.
     
     The combined information received across all flashblocks is sufficient to fully reconstruct the complete block without any additional data.
     
@@ -1026,4 +1026,4 @@ For RPC Operators, Flashblocks will require a modified RPC node that subscribes 
 
 # Implementation
 
-A feature complete implementation of all components described in this document can be found in the [rollup-boost](https://github.com/flashbots/rollup-boost), [op-rbuilder](https://github.com/flashbots/rbuilder/tree/develop/crates/op-rbuilder), [flashblocks-websocket-proxy](https://github.com/base/flashblocks-websocket-proxy), and [reth-flashblocks](https://github.com/danyalprout/reth-flashblocks).
+A feature complete implementation of all components described in this document can be found in the [rollup-boost](https://github.com/flashbots/rollup-boost), [op-rbuilder](https://github.com/flashbots/op-rbuilder/) and [node-reth](https://github.com/base/node-reth).
