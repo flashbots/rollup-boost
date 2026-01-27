@@ -113,14 +113,9 @@ where
 
             match decision {
                 ForwardDecision::Forward(reason) => {
-                    // Update metrics for leader changes
                     if reason == ForwardReason::NewLeader {
-                        self.metrics.new_blocks.increment(1);
                         self.metrics.leader_change(&self.uri.to_string());
-                    }
-
-                    // Record parse errors
-                    if reason == ForwardReason::ParseError {
+                    } else if reason == ForwardReason::ParseError {
                         self.metrics.flashblock_parse_errors.increment(1);
                     }
 

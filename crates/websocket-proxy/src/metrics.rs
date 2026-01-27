@@ -55,9 +55,6 @@ pub struct Metrics {
     #[metric(describe = "Number of flashblocks filtered by leader tracking (not forwarded)")]
     pub flashblocks_filtered: Counter,
 
-    #[metric(describe = "Number of new blocks detected by leader tracking")]
-    pub new_blocks: Counter,
-
     #[metric(describe = "Number of flashblocks that failed to parse for leader tracking")]
     pub flashblock_parse_errors: Counter,
 }

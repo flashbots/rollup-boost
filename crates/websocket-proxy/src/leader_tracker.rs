@@ -139,6 +139,11 @@ impl LeaderTracker {
                                 block_number,
                                 source_uri: uri.clone(),
                             });
+                        } else if block_number < block.block_number {
+                            warn!(
+                                "Leader {} sent flashblock for old block {} (current is {})",
+                                uri, block_number, block.block_number
+                            );
                         }
                     }
                     ForwardDecision::Forward(ForwardReason::FromLeader)

@@ -10,10 +10,10 @@ pub struct ParsedFlashblock {
     pub block_number: Option<u64>,
 }
 
-/// Parse a flashblock message to extract relevant metadata.
+/// Parse a flashblock message to extract the block number.
 ///
 /// This function deserializes the JSON message into a FlashblocksPayloadV1 structure
-/// and extracts the payload_id, block_number (if present), and index.
+/// and extracts the block_number if present.
 ///
 /// # Arguments
 /// * `message` - The JSON-encoded flashblock message string
