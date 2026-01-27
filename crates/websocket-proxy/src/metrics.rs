@@ -48,6 +48,18 @@ pub struct Metrics {
 
     #[metric(describe = "Count of clients disconnected due to pong timeout")]
     pub client_pong_disconnects: Counter,
+
+    #[metric(describe = "Number of conflicts detected by leader tracking (different sources for same block)")]
+    pub conflicts_detected: Counter,
+
+    #[metric(describe = "Number of flashblocks filtered by leader tracking (not forwarded)")]
+    pub flashblocks_filtered: Counter,
+
+    #[metric(describe = "Number of new blocks detected by leader tracking")]
+    pub new_blocks: Counter,
+
+    #[metric(describe = "Number of flashblocks that failed to parse for leader tracking")]
+    pub flashblock_parse_errors: Counter,
 }
 
 fn get_message_size(msg: &Message) -> u64 {
@@ -73,5 +85,14 @@ impl Metrics {
     pub fn record_message_sent(&self, msg: &Message) {
         self.sent_messages.increment(1);
         self.bytes_broadcasted.increment(get_message_size(msg));
+    }
+
+    pub fn flashblock_filtered_by_reason(&self, reason: &str) {
+        counter!("websocket_proxy.flashblocks_filtered_by_reason", "reason" => reason.to_owned())
+            .increment(1);
+    }
+
+    pub fn leader_change(&self, uri: &str) {
+        counter!("websocket_proxy.leader_changes", "uri" => uri.to_owned()).increment(1);
     }
 }

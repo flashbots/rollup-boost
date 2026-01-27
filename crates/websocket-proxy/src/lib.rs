@@ -1,5 +1,7 @@
 pub mod auth;
 pub mod client;
+pub mod flashblock_parser;
+pub mod leader_tracker;
 pub mod metrics;
 pub mod rate_limit;
 pub mod registry;
@@ -8,6 +10,8 @@ pub mod subscriber;
 
 pub use auth::*;
 pub use client::*;
+pub use flashblock_parser::*;
+pub use leader_tracker::*;
 pub use metrics::*;
 pub use rate_limit::*;
 pub use registry::*;

@@ -36,6 +36,7 @@ redis = "0.30.0"
 uuid = { version = "1.16.0", features = ["v4"] }
 tokio-util = "0.7.12"
 brotli = "8.0.1"
+rollup-boost-types = { path = "../rollup-boost-types" }
 
 [lib]
 name = "websocket_proxy"

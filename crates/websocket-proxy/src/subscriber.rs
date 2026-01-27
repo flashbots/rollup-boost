@@ -1,3 +1,4 @@
+use crate::leader_tracker::{DropReason, ForwardDecision, ForwardReason, LeaderTracker};
 use crate::metrics::Metrics;
 use axum::http::Uri;
 use backoff::{backoff::Backoff, ExponentialBackoff};
@@ -11,7 +12,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, tungstenite::Error};
 use tokio_util::bytes;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug, Clone)]
 pub struct SubscriberOptions {
@@ -70,6 +71,7 @@ where
     backoff: ExponentialBackoff,
     metrics: Arc<Metrics>,
     options: SubscriberOptions,
+    leader_tracker: Option<Arc<LeaderTracker>>,
 }
 
 impl<F> WebsocketSubscriber<F>
@@ -90,6 +92,63 @@ where
             backoff,
             metrics,
             options,
+            leader_tracker: None,
+        }
+    }
+
+    pub fn with_leader_tracker(mut self, leader_tracker: Arc<LeaderTracker>) -> Self {
+        self.leader_tracker = Some(leader_tracker);
+        self
+    }
+
+    /// Handle a flashblock message, applying leader tracking filtering if enabled.
+    async fn handle_flashblock_message(&self, message_str: &str, raw_data: Vec<u8>) {
+        self.metrics
+            .message_received_from_upstream(self.uri.to_string().as_str());
+
+        if let Some(leader_tracker) = &self.leader_tracker {
+            let decision = leader_tracker
+                .should_forward_message(&self.uri, message_str)
+                .await;
+
+            match decision {
+                ForwardDecision::Forward(reason) => {
+                    // Update metrics for leader changes
+                    if reason == ForwardReason::NewLeader {
+                        self.metrics.new_blocks.increment(1);
+                        self.metrics.leader_change(&self.uri.to_string());
+                    }
+
+                    // Record parse errors
+                    if reason == ForwardReason::ParseError {
+                        self.metrics.flashblock_parse_errors.increment(1);
+                    }
+
+                    (self.handler)(raw_data);
+                }
+                ForwardDecision::Drop(reason) => {
+                    // Record metrics for filtered messages
+                    self.metrics.flashblocks_filtered.increment(1);
+
+                    match reason {
+                        DropReason::Conflict => {
+                            self.metrics.conflicts_detected.increment(1);
+                            self.metrics.flashblock_filtered_by_reason("conflict");
+                        }
+                        DropReason::Stale => {
+                            self.metrics.flashblock_filtered_by_reason("stale");
+                        }
+                        DropReason::NotFromLeader => {
+                            self.metrics.flashblock_filtered_by_reason("not_from_leader");
+                        }
+                    }
+
+                    debug!("Filtered flashblock from {}: {:?}", self.uri, reason);
+                }
+            }
+        } else {
+            // No leader tracking - forward all messages
+            (self.handler)(raw_data);
         }
     }
 
@@ -253,9 +312,8 @@ where
                     uri = self.uri.to_string(),
                     payload = text.as_str()
                 );
-                self.metrics
-                    .message_received_from_upstream(self.uri.to_string().as_str());
-                (self.handler)(text.as_bytes().to_vec());
+                self.handle_flashblock_message(&text, text.as_bytes().to_vec())
+                    .await;
             }
             Message::Binary(data) => {
                 trace!(
@@ -263,9 +321,9 @@ where
                     uri = self.uri.to_string(),
                     payload = ?data.as_ref()
                 );
-                self.metrics
-                    .message_received_from_upstream(self.uri.to_string().as_str());
-                (self.handler)(data.as_ref().to_vec());
+                let text = String::from_utf8_lossy(data.as_ref());
+                self.handle_flashblock_message(&text, data.as_ref().to_vec())
+                    .await;
             }
             Message::Pong(_) => {
                 trace!(

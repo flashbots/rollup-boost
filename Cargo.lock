@@ -2108,6 +2108,7 @@ dependencies = [
  "redis 0.30.0",
  "redis-test",
  "reqwest",
+ "rollup-boost-types",
  "serde_json",
  "testcontainers",
  "testcontainers-modules",
@@ -4322,7 +4323,7 @@ dependencies = [
 
 [[package]]
 name = "rollup-boost"
-version = "0.7.12"
+version = "0.7.13"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",

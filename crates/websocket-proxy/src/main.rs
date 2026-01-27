@@ -1,5 +1,7 @@
 mod auth;
 mod client;
+mod flashblock_parser;
+mod leader_tracker;
 mod metrics;
 mod rate_limit;
 mod registry;
@@ -10,6 +12,7 @@ use axum::extract::ws::Message;
 use axum::http::Uri;
 use clap::Parser;
 use dotenvy::dotenv;
+use leader_tracker::LeaderTracker;
 use metrics::Metrics;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use rate_limit::{InMemoryRateLimit, RateLimit, RedisRateLimit};
@@ -164,6 +167,14 @@ struct Args {
         help = "Timeout in milliseconds to wait for pong response from clients"
     )]
     client_pong_timeout_ms: u64,
+
+    #[arg(
+        long,
+        env,
+        default_value = "false",
+        help = "Enable leader tracking to forward flashblocks only from the current leader"
+    )]
+    leader_tracking_enabled: bool,
 }
 
 #[tokio::main]
@@ -272,6 +283,15 @@ async fn main() {
     let token = CancellationToken::new();
     let mut subscriber_tasks = Vec::new();
 
+    // Initialize leader tracker if enabled
+    let leader_tracker = if args.leader_tracking_enabled {
+        info!(message = "leader tracking enabled");
+        Some(Arc::new(LeaderTracker::new()))
+    } else {
+        info!(message = "leader tracking disabled");
+        None
+    };
+
     // Start a subscriber for each upstream URI
     for (index, uri) in args.upstream_ws.iter().enumerate() {
         let uri_clone = uri.clone();
@@ -288,6 +308,11 @@ async fn main() {
 
         let mut subscriber =
             WebsocketSubscriber::new(uri_clone.clone(), listener_clone, metrics_clone, options);
+
+        // Attach leader tracker if enabled
+        if let Some(ref tracker) = leader_tracker {
+            subscriber = subscriber.with_leader_tracker(tracker.clone());
+        }
 
         let task = tokio::spawn(async move {
             info!(
