@@ -1,7 +1,7 @@
 use eyre::Context as _;
 use metrics::histogram;
-use opentelemetry::global;
 use opentelemetry::trace::{Status, TracerProvider as _};
+use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::trace::SpanProcessor;
 use opentelemetry_sdk::{Resource, propagation::TraceContextPropagator};
@@ -132,9 +132,20 @@ pub fn init_tracing(args: &RollupBoostServiceArgs) -> eyre::Result<()> {
             .with_endpoint(&args.otlp_endpoint)
             .build()
             .context("Failed to create OTLP exporter")?;
+
+        // precedence: OTEL_SERVICE_NAME -> CARGO_PKG_NAME -> "rollup-boost"
+        let service_name = std::env::var("OTEL_SERVICE_NAME".to_string())
+            .ok()
+            .or_else(|| std::env::var("CARGO_PKG_NAME".to_string()).ok())
+            .unwrap_or("rollup-boost".to_string());
+
+        let resource = Resource::builder()
+            .with_attribute(KeyValue::new("service.name", service_name))
+            .build();
+
         let mut provider_builder = opentelemetry_sdk::trace::SdkTracerProvider::builder()
             .with_batch_exporter(otlp_exporter)
-            .with_resource(Resource::builder().build());
+            .with_resource(resource);
         if args.metrics {
             provider_builder = provider_builder.with_span_processor(MetricsSpanProcessor);
         }
