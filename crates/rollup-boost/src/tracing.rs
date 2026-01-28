@@ -134,9 +134,9 @@ pub fn init_tracing(args: &RollupBoostServiceArgs) -> eyre::Result<()> {
             .context("Failed to create OTLP exporter")?;
 
         // precedence: OTEL_SERVICE_NAME -> CARGO_PKG_NAME -> "rollup-boost"
-        let service_name = std::env::var("OTEL_SERVICE_NAME".to_string())
+        let service_name = std::env::var("OTEL_SERVICE_NAME")
             .ok()
-            .or_else(|| std::env::var("CARGO_PKG_NAME".to_string()).ok())
+            .or_else(|| std::env::var("CARGO_PKG_NAME").ok())
             .unwrap_or("rollup-boost".to_string());
 
         let resource = Resource::builder()
