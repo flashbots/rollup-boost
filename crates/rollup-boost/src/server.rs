@@ -222,6 +222,8 @@ impl RollupBoostServer {
 
                     let execution_payload = ExecutionPayload::from(payload.clone());
                     info!(
+                        target: "server",
+                        event = "payload_returned",
                         message = "returning block",
                         "hash" = %execution_payload.block_hash(),
                         "number" = %execution_payload.block_number(),
@@ -359,6 +361,8 @@ impl RollupBoostServer {
         // While not ideal to rely on log parsing, it provides a reliable way to verify behavior.
         // Happy to consider an alternative approach later on.
         info!(
+            target: "server",
+            event = "payload_returned",
             message = "returning block",
             "hash" = %block_hash,
             "number" = %block_number,
@@ -640,7 +644,12 @@ impl EngineApiServer for RollupBoostServer {
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV3> {
-        info!("received get_payload_v3");
+        info!(
+            target: "server",
+            event = "get_payload_received",
+            message = "received get_payload_v3",
+            %payload_id,
+        );
 
         match self.get_payload(payload_id, PayloadVersion::V3).await? {
             OpExecutionPayloadEnvelope::V3(v3) => Ok(v3),
@@ -690,7 +699,12 @@ impl EngineApiServer for RollupBoostServer {
         &self,
         payload_id: PayloadId,
     ) -> RpcResult<OpExecutionPayloadEnvelopeV4> {
-        info!("received get_payload_v4");
+        info!(
+            target: "server",
+            event = "get_payload_received",
+            message = "received get_payload_v4",
+            %payload_id,
+        );
 
         match self.get_payload(payload_id, PayloadVersion::V4).await? {
             OpExecutionPayloadEnvelope::V4(v4) => Ok(v4),
