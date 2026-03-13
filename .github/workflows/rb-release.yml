@@ -261,4 +261,5 @@ jobs:
 
       - name: Publish to crates.io (Trusted Publishing)
         run: |
+          cargo publish --package rollup-boost-types
           cargo publish --package rollup-boost
