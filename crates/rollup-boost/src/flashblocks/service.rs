@@ -59,7 +59,7 @@ impl FlashblockBuilder {
     }
 
     pub fn extend(&mut self, payload: OpFlashblockPayload) -> Result<(), FlashblocksError> {
-        tracing::debug!(message = "Extending payload", payload_id = %payload.payload_id, index = payload.index, has_base=payload.base.is_some());
+        tracing::debug!(target: "flashblocks", message = "Extending payload", payload_id = %payload.payload_id, index = payload.index, has_base=payload.base.is_some());
 
         // Validate the index is contiguous
         if payload.index != self.flashblocks.len() as u64 {
@@ -233,7 +233,7 @@ impl FlashblocksService {
     }
 
     pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
-        tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
+        tracing::debug!(target: "flashblocks", message = "Setting current payload ID", payload_id = %payload_id);
         *self.current_payload_id.write().await = Some(payload_id);
         // Current state won't be useful anymore because chain progressed
         *self.best_payload.write().await = FlashblockBuilder::new();
@@ -244,7 +244,9 @@ impl FlashblocksService {
             FlashblocksEngineMessage::OpFlashblockPayload(payload) => {
                 self.metrics.messages_processed.increment(1);
 
-                tracing::debug!(
+                info!(
+                    target: "flashblocks",
+                    event = "flashblock_received",
                     message = "Received flashblock payload",
                     payload_id = %payload.payload_id,
                     index = payload.index
@@ -257,6 +259,7 @@ impl FlashblocksService {
                         if payload_id != payload.payload_id {
                             self.metrics.current_payload_id_mismatch.increment(1);
                             error!(
+                                target: "flashblocks",
                                 message = "Payload ID mismatch",
                                 payload_id = %payload.payload_id,
                                 local_payload_id = %payload_id,
@@ -268,6 +271,7 @@ impl FlashblocksService {
                     None => {
                         // We haven't served FCU with attributes yet, just ignore flashblocks
                         debug!(
+                            target: "flashblocks",
                             message = "Received flashblocks, but no FCU with attributes was sent",
                             payload_id = %payload.payload_id,
                             index = payload.index,
@@ -279,6 +283,7 @@ impl FlashblocksService {
                 if let Err(e) = self.best_payload.write().await.extend(payload.clone()) {
                     self.metrics.extend_payload_errors.increment(1);
                     error!(
+                        target: "flashblocks",
                         message = "Failed to extend payload",
                         error = %e,
                         payload_id = %payload.payload_id,
@@ -288,6 +293,7 @@ impl FlashblocksService {
                     // Broadcast the valid message
                     if let Err(e) = self.ws_pub.publish(&payload) {
                         error!(
+                            target: "flashblocks",
                             message = "Failed to broadcast payload",
                             error = %e,
                             payload_id = %payload.payload_id,
@@ -329,16 +335,17 @@ impl EngineApiExt for FlashblocksService {
             let current_payload = *self.current_payload_id.read().await;
             if current_payload != Some(payload_id) {
                 tracing::error!(
+                    target: "flashblocks",
                     message = "Payload id returned by builder differs from calculated. Using builder payload id",
                     builder_payload_id = %payload_id,
                     calculated_payload_id = %current_payload.unwrap_or_default(),
                 );
                 self.set_current_payload_id(payload_id).await;
             } else {
-                tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
+                tracing::debug!(target: "flashblocks", message = "Forkchoice updated", payload_id = %payload_id);
             }
         } else {
-            tracing::debug!(message = "Forkchoice updated with no payload ID");
+            tracing::debug!(target: "flashblocks", message = "Forkchoice updated with no payload ID");
         }
         Ok(resp)
     }
@@ -356,12 +363,18 @@ impl EngineApiExt for FlashblocksService {
 
         match self.get_best_payload(version, payload_id).await {
             Ok(payload) => {
-                info!(message = "Returning fb payload");
+                info!(
+                    target: "flashblocks",
+                    event = "payload_returned",
+                    message = "Returning fb payload",
+                    %payload_id,
+                );
                 // This will finalise block building in builder.
                 let client = self.client.clone();
                 tokio::spawn(async move {
                     if let Err(e) = client.get_payload(payload_id, version).await {
                         error!(
+                            target: "flashblocks",
                             message = "Failed to send finalising getPayload to builder",
                             error = %e,
                         );
@@ -370,8 +383,8 @@ impl EngineApiExt for FlashblocksService {
                 Ok(payload)
             }
             Err(e) => {
-                error!(message = "Error getting fb best payload, falling back on client", error = %e);
-                info!(message = "Falling back to get_payload on client", payload_id = %payload_id);
+                error!(target: "flashblocks", message = "Error getting fb best payload, falling back on client", error = %e);
+                info!(target: "flashblocks", message = "Falling back to get_payload on client", payload_id = %payload_id);
                 let result = self.client.get_payload(payload_id, version).await?;
                 Ok(result)
             }
