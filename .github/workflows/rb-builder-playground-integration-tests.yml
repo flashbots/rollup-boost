@@ -43,4 +43,4 @@ jobs:
           args: --skip-setup
 
       - name: Send test tx to the builder
-        run: builder-playground test http://localhost:8547 --timeout 2m --retries 100
+        run: builder-playground test --rpc http://localhost:8547 --timeout 30s --retries 20
