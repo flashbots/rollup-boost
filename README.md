@@ -14,6 +14,12 @@ Run the rollup-boost server using the following command:
 cargo run --bin rollup-boost -- [OPTIONS]
 ```
 
+or together with OP Stack by using builder-playground:
+
+```
+builder-playground start playground.yaml
+```
+
 ### Command-line Options
 
 - `--l2-jwt-token <TOKEN>`: JWT token for L2 authentication (required)

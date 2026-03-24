@@ -22,11 +22,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Builder playground
-        uses: flashbots/flashbots-toolchain@v0.2
-        with:
-          builder-playground: latest
-
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -40,6 +35,12 @@ jobs:
         run: |
           just build
 
-      - name: Run Builder Playground
-        run: |
-          builder-playground cook opstack --override rollup-boost=flashbots/rollup-boost:develop --external-builder op-reth --timeout 5m --watchdog
+      - name: Run rollup-boost with builder-playground
+        uses: flashbots/builder-playground-action@v1
+        with:
+          version: v0.3.2-alpha.7
+          recipe: playground.yaml
+          args: --skip-setup
+
+      - name: Send test tx to the builder
+        run: builder-playground test http://localhost:8547 --timeout 30s --retries 10
