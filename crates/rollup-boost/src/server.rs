@@ -5,7 +5,9 @@ use crate::{
 };
 use crate::{
     client::rpc::RpcClient,
-    health::HealthHandle,
+    health::{
+        HealthHandle, health_status_when_builder_is_ignored, health_status_when_builder_is_required,
+    },
     probe::{Health, Probes},
 };
 use alloy_primitives::{B256, Bytes, bytes};
@@ -208,14 +210,16 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> RpcResult<OpExecutionPayloadEnvelope> {
+        let execution_mode = *self.execution_mode.lock();
         let l2_fut = self.l2_client.get_payload(payload_id, version);
 
         // If execution mode is disabled, return the l2 payload without sending
         // the request to the builder
-        if self.execution_mode.lock().is_disabled() {
+        if execution_mode.is_disabled() {
             return match l2_fut.await {
                 Ok(payload) => {
-                    self.probes.set_health(Health::Healthy);
+                    self.probes
+                        .set_health(health_status_when_builder_is_ignored(true));
                     let context = PayloadSource::L2;
                     tracing::Span::current().record("payload_source", context.to_string());
                     counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
@@ -235,7 +239,8 @@ impl RollupBoostServer {
                 }
 
                 Err(e) => {
-                    self.probes.set_health(Health::ServiceUnavailable);
+                    self.probes
+                        .set_health(health_status_when_builder_is_ignored(false));
                     Err(e.into())
                 }
             };
@@ -299,9 +304,10 @@ impl RollupBoostServer {
 
         // Evaluate the builder and l2 response and select the final payload
         let (payload, context) = {
-            let l2_payload =
-                l2_payload.inspect_err(|_| self.probes.set_health(Health::ServiceUnavailable))?;
-            self.probes.set_health(Health::Healthy);
+            let l2_payload = l2_payload.inspect_err(|_| {
+                self.probes
+                    .set_health(health_status_when_builder_is_required(false, false))
+            })?;
 
             // Convert Result<Option<Payload>> to Option<Payload> by extracting the inner Option.
             // If there's an error, log it and return None instead.
@@ -312,6 +318,12 @@ impl RollupBoostServer {
                     (None, true)
                 }
             };
+
+            self.probes
+                .set_health(health_status_when_builder_is_required(
+                    true,
+                    !builder_api_failed,
+                ));
 
             if let Some(builder_payload) = builder_payload {
                 // Record the delta (gas and txn) between the builder and l2 payload
@@ -328,7 +340,7 @@ impl RollupBoostServer {
 
                 // If execution mode is set to DryRun, fallback to the l2_payload,
                 // otherwise prefer the builder payload
-                if self.execution_mode.lock().is_dry_run() {
+                if execution_mode.is_dry_run() {
                     (l2_payload, PayloadSource::L2)
                 } else if let Some(selection_policy) = &self.block_selection_policy {
                     selection_policy.select_block(builder_payload, l2_payload)
@@ -336,11 +348,6 @@ impl RollupBoostServer {
                     (builder_payload, PayloadSource::Builder)
                 }
             } else {
-                // Only update the health status if the builder payload fails
-                // and execution mode is enabled
-                if self.execution_mode.lock().is_enabled() && builder_api_failed {
-                    self.probes.set_health(Health::PartialContent);
-                }
                 (l2_payload, PayloadSource::L2)
             }
         };
@@ -839,13 +846,20 @@ pub mod tests {
             l2_mock: Option<MockEngineServer>,
             builder_mock: Option<MockEngineServer>,
         ) -> Self {
-            Self::new_with_external_state_root(l2_mock, builder_mock, false).await
+            Self::new_with_external_state_root_and_execution_mode(
+                l2_mock,
+                builder_mock,
+                false,
+                ExecutionMode::Enabled,
+            )
+            .await
         }
 
-        async fn new_with_external_state_root(
+        async fn new_with_external_state_root_and_execution_mode(
             l2_mock: Option<MockEngineServer>,
             builder_mock: Option<MockEngineServer>,
             external_state_root: bool,
+            execution_mode: ExecutionMode,
         ) -> Self {
             let jwt_secret = JwtSecret::random();
 
@@ -890,7 +904,7 @@ pub mod tests {
             let rollup_boost = RollupBoostServer::new(
                 l2_rpc_client,
                 builder_rpc_client,
-                Arc::new(Mutex::new(ExecutionMode::Enabled)),
+                Arc::new(Mutex::new(execution_mode)),
                 None,
                 probes.clone(),
                 external_state_root,
@@ -1299,10 +1313,30 @@ pub mod tests {
         external_state_root: bool,
         expect_l2_get_payload_success: bool,
     ) {
-        let test_harness = TestHarness::new_with_external_state_root(
+        run_health_test_scenario_with_execution_mode(
+            l2_mock,
+            builder_mock,
+            expected_health,
+            external_state_root,
+            expect_l2_get_payload_success,
+            ExecutionMode::Enabled,
+        )
+        .await;
+    }
+
+    async fn run_health_test_scenario_with_execution_mode(
+        l2_mock: MockEngineServer,
+        builder_mock: Option<MockEngineServer>,
+        expected_health: StatusCode,
+        external_state_root: bool,
+        expect_l2_get_payload_success: bool,
+        execution_mode: ExecutionMode,
+    ) {
+        let test_harness = TestHarness::new_with_external_state_root_and_execution_mode(
             Some(l2_mock),
             builder_mock,
             external_state_root,
+            execution_mode,
         )
         .await;
 
@@ -1334,6 +1368,35 @@ pub mod tests {
         assert_eq!(health.status(), expected_health);
 
         test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn dry_run_builder_api_failure_marks_partial_content() {
+        let payload_id = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]);
+        let valid_fcu =
+            ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))
+                .with_payload_id(payload_id);
+
+        let mut l2_mock = MockEngineServer::new();
+        l2_mock.fcu_response = Ok(valid_fcu.clone());
+
+        let mut builder_mock = MockEngineServer::new();
+        builder_mock.fcu_response = Ok(valid_fcu);
+        builder_mock.get_payload_responses[0] = Err(ErrorObject::owned(
+            INVALID_REQUEST_CODE,
+            "Builder API failed",
+            None::<String>,
+        ));
+
+        run_health_test_scenario_with_execution_mode(
+            l2_mock,
+            Some(builder_mock),
+            StatusCode::PARTIAL_CONTENT,
+            false,
+            true,
+            ExecutionMode::DryRun,
+        )
+        .await;
     }
 
     #[tokio::test]
