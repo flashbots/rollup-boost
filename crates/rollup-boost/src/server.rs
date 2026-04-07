@@ -44,7 +44,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
@@ -396,7 +396,13 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> Result<Option<OpExecutionPayloadEnvelope>, ErrorObject<'static>> {
-        let fcu_info = self.payload_to_fcu_request.remove(&payload_id).unwrap().1;
+        let Some((_, fcu_info)) = self.payload_to_fcu_request.remove(&payload_id) else {
+            warn!(
+                message = "missing fork choice context for external state root calculation",
+                %payload_id,
+            );
+            return Ok(None);
+        };
 
         let new_payload_attrs = match fcu_info.1.as_ref() {
             Some(attrs) => OpPayloadAttributes {
@@ -1350,6 +1356,79 @@ pub mod tests {
 
         let health = test_harness.get("healthz").await;
         assert_eq!(health.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn external_state_root_retried_get_payload_does_not_panic() {
+        let payload_id = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 42]);
+        let valid_fcu =
+            ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))
+                .with_payload_id(payload_id);
+
+        let mut l2_mock = MockEngineServer::new();
+        l2_mock.fcu_response = Ok(valid_fcu.clone());
+        l2_mock.get_payload_responses[0] =
+            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                payload.block_value = U256::from(5);
+                payload
+            });
+        l2_mock.get_payload_responses.push(
+            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                payload.block_value = U256::from(30);
+                payload
+            }),
+        );
+        l2_mock.get_payload_responses.push(l2_mock.get_payload_responses[0].clone());
+
+        let mut builder_mock = MockEngineServer::new();
+        builder_mock.fcu_response = Ok(valid_fcu);
+        builder_mock.get_payload_responses[0] =
+            builder_mock.get_payload_responses[0]
+                .clone()
+                .map(|mut payload| {
+                    payload.block_value = U256::from(20);
+                    payload
+                });
+
+        let test_harness = TestHarness::new_with_external_state_root_and_execution_mode(
+            Some(l2_mock),
+            Some(builder_mock),
+            true,
+            ExecutionMode::Enabled,
+        )
+        .await;
+
+        let fcu = ForkchoiceState {
+            head_block_hash: FixedBytes::random(),
+            safe_block_hash: FixedBytes::random(),
+            finalized_block_hash: FixedBytes::random(),
+        };
+        let response = test_harness
+            .rpc_client
+            .fork_choice_updated_v3(
+                fcu,
+                Some(OpPayloadAttributes {
+                    gas_limit: Some(1000000),
+                    ..Default::default()
+                }),
+            )
+            .await;
+        assert!(response.is_ok());
+
+        let payload_id = response.unwrap().payload_id.unwrap();
+
+        let first_get_payload = test_harness.rpc_client.get_payload_v3(payload_id).await;
+        assert!(first_get_payload.is_ok());
+        assert_eq!(first_get_payload.unwrap().block_value, U256::from(30));
+
+        let second_get_payload = test_harness.rpc_client.get_payload_v3(payload_id).await;
+        assert!(second_get_payload.is_ok());
+        assert_eq!(second_get_payload.unwrap().block_value, U256::from(5));
+
+        let health = test_harness.get("healthz").await;
+        assert_eq!(health.status(), StatusCode::OK);
 
         test_harness.cleanup().await;
     }
