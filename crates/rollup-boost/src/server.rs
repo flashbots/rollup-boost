@@ -71,7 +71,7 @@ pub struct RollupBoostServer {
     external_state_root: bool,
     ignore_unhealthy_builders: bool,
     probes: Arc<Probes>,
-    payload_to_fcu_request: Cache<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>,
+    payload_to_fcu_request: Cache<PayloadId, (ForkchoiceState, OpPayloadAttributes)>,
 }
 
 impl RollupBoostServer {
@@ -495,7 +495,7 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> Result<Option<OpExecutionPayloadEnvelope>, ErrorObject<'static>> {
-        let Some((fork_choice_state, payload_attributes)) =
+        let Some((fork_choice_state, attrs)) =
             self.payload_to_fcu_request.remove(&payload_id).await
         else {
             error!(
@@ -505,23 +505,13 @@ impl RollupBoostServer {
             return Ok(None);
         };
 
-        let new_payload_attrs = match payload_attributes.as_ref() {
-            Some(attrs) => OpPayloadAttributes {
-                payload_attributes: attrs.payload_attributes.clone(),
-                transactions: Some(builder_payload.transactions()),
-                no_tx_pool: Some(true),
-                gas_limit: attrs.gas_limit,
-                eip_1559_params: attrs.eip_1559_params,
-                min_base_fee: attrs.min_base_fee,
-            },
-            None => OpPayloadAttributes {
-                payload_attributes: builder_payload.payload_attributes(),
-                transactions: Some(builder_payload.transactions()),
-                no_tx_pool: Some(true),
-                gas_limit: None,
-                eip_1559_params: None,
-                min_base_fee: None,
-            },
+        let new_payload_attrs = OpPayloadAttributes {
+            payload_attributes: attrs.payload_attributes.clone(),
+            transactions: Some(builder_payload.transactions()),
+            no_tx_pool: Some(true),
+            gas_limit: attrs.gas_limit,
+            eip_1559_params: attrs.eip_1559_params,
+            min_base_fee: attrs.min_base_fee,
         };
 
         let l2_result = self
@@ -746,7 +736,7 @@ impl EngineApiServer for RollupBoostServer {
 
                     if self.external_state_root {
                         self.payload_to_fcu_request
-                            .insert(payload_id, (fork_choice_state, payload_attributes))
+                            .insert(payload_id, (fork_choice_state, attrs.clone()))
                             .await;
                     }
                 }
@@ -768,15 +758,6 @@ impl EngineApiServer for RollupBoostServer {
                     .await
             });
             let l2_response = self.handle_l2_rpc_result(l2_fut.await)?;
-            #[allow(clippy::collapsible_if)]
-            if let Some(payload_id) = l2_response.payload_id {
-                if self.external_state_root {
-                    self.payload_to_fcu_request
-                        .insert(payload_id, (fork_choice_state, payload_attributes))
-                        .await;
-                }
-            }
-
             return Ok(l2_response);
         }
     }
@@ -1026,6 +1007,7 @@ pub mod tests {
         l2_mock: MockEngineServer,
         builder_server: ServerHandle,
         builder_mock: MockEngineServer,
+        rollup_boost: RollupBoostServer,
         server: ServerHandle,
         server_addr: SocketAddr,
         rpc_client: HttpClient,
@@ -1102,7 +1084,7 @@ pub mod tests {
                 true,
             );
 
-            let module: RpcModule<()> = rollup_boost.try_into().unwrap();
+            let module: RpcModule<()> = rollup_boost.clone().try_into().unwrap();
 
             let http_middleware = tower::ServiceBuilder::new()
                 .layer(probe_layer)
@@ -1128,6 +1110,7 @@ pub mod tests {
                 l2_mock,
                 builder_server,
                 builder_mock,
+                rollup_boost,
                 server,
                 server_addr,
                 rpc_client,
