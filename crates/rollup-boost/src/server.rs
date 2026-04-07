@@ -12,8 +12,7 @@ use crate::{
 };
 use alloy_primitives::{B256, Bytes, bytes};
 use alloy_rpc_types_engine::{
-    ExecutionPayload, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId,
-    PayloadStatus,
+    ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus,
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
 use dashmap::DashMap;
@@ -73,6 +72,80 @@ pub struct RollupBoostServer {
 }
 
 impl RollupBoostServer {
+    fn new_payload_block_hash(new_payload: &NewPayload) -> B256 {
+        match new_payload {
+            NewPayload::V3(v3) => v3.payload.payload_inner.payload_inner.block_hash,
+            NewPayload::V4(v4) => {
+                v4.payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .block_hash
+            }
+        }
+    }
+
+    fn new_payload_parent_hash(new_payload: &NewPayload) -> B256 {
+        match new_payload {
+            NewPayload::V3(v3) => v3.payload.payload_inner.payload_inner.parent_hash,
+            NewPayload::V4(v4) => {
+                v4.payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .parent_hash
+            }
+        }
+    }
+
+    fn payload_block_hash(payload: &OpExecutionPayloadEnvelope) -> B256 {
+        match payload {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.block_hash
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .block_hash
+            }
+        }
+    }
+
+    fn payload_block_number(payload: &OpExecutionPayloadEnvelope) -> u64 {
+        match payload {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .block_number
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .block_number
+            }
+        }
+    }
+
+    fn payload_state_root(payload: &OpExecutionPayloadEnvelope) -> B256 {
+        match payload {
+            OpExecutionPayloadEnvelope::V3(v3) => {
+                v3.execution_payload.payload_inner.payload_inner.state_root
+            }
+            OpExecutionPayloadEnvelope::V4(v4) => {
+                v4.execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .payload_inner
+                    .state_root
+            }
+        }
+    }
+
     fn handle_l2_rpc_result<T, E>(&self, result: Result<T, E>) -> RpcResult<T>
     where
         E: Into<ErrorObject<'static>>,
@@ -187,9 +260,8 @@ impl RollupBoostServer {
     }
 
     async fn new_payload(&self, new_payload: NewPayload) -> RpcResult<PayloadStatus> {
-        let execution_payload = ExecutionPayload::from(new_payload.clone());
-        let block_hash = execution_payload.block_hash();
-        let parent_hash = execution_payload.parent_hash();
+        let block_hash = Self::new_payload_block_hash(&new_payload);
+        let parent_hash = Self::new_payload_parent_hash(&new_payload);
         info!(message = "received new_payload", "block_hash" = %block_hash, "version" = new_payload.version().as_str());
 
         if let Some(causes) = self
@@ -234,11 +306,10 @@ impl RollupBoostServer {
                     tracing::Span::current().record("payload_source", context.to_string());
                     counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
 
-                    let execution_payload = ExecutionPayload::from(payload.clone());
                     info!(
                         message = "returning block",
-                        "hash" = %execution_payload.block_hash(),
-                        "number" = %execution_payload.block_number(),
+                        "hash" = %Self::payload_block_hash(&payload),
+                        "number" = %Self::payload_block_number(&payload),
                         %context,
                         %payload_id,
                         // Add an extra label to know that this is the disabled execution mode path
@@ -367,10 +438,9 @@ impl RollupBoostServer {
         // This is temporary until we migrate to the new metrics
         counter!("rpc.blocks_created", "source" => context.to_string()).increment(1);
 
-        let inner_payload = ExecutionPayload::from(payload.clone());
-        let block_hash = inner_payload.block_hash();
-        let block_number = inner_payload.block_number();
-        let state_root = inner_payload.as_v1().state_root;
+        let block_hash = Self::payload_block_hash(&payload);
+        let block_number = Self::payload_block_number(&payload);
+        let state_root = Self::payload_state_root(&payload);
 
         // Note: This log message is used by integration tests to track payload context.
         // While not ideal to rely on log parsing, it provides a reliable way to verify behavior.
@@ -1374,13 +1444,15 @@ pub mod tests {
                 payload.block_value = U256::from(5);
                 payload
             });
-        l2_mock.get_payload_responses.push(
-            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+        l2_mock
+            .get_payload_responses
+            .push(l2_mock.get_payload_responses[0].clone().map(|mut payload| {
                 payload.block_value = U256::from(30);
                 payload
-            }),
-        );
-        l2_mock.get_payload_responses.push(l2_mock.get_payload_responses[0].clone());
+            }));
+        l2_mock
+            .get_payload_responses
+            .push(l2_mock.get_payload_responses[0].clone());
 
         let mut builder_mock = MockEngineServer::new();
         builder_mock.fcu_response = Ok(valid_fcu);
