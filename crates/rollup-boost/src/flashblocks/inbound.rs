@@ -297,12 +297,9 @@ mod tests {
                                                     write.send(Message::Text(utf8_bytes)).await.expect("message sent");
                                                 },
                                                 msg = read.next() => {
-                                                    match msg {
-                                                        // we need to read for the library to handle pong messages
-                                                        Some(Ok(Message::Ping(_))) => {
-                                                            send_ping_tx.send(()).await.expect("ping notification sent");
-                                                        },
-                                                        _ => {}
+                                                    // we need to read for the library to handle pong messages
+                                                    if let Some(Ok(Message::Ping(_))) = msg {
+                                                        send_ping_tx.send(()).await.expect("ping notification sent");
                                                     }
                                                 }
                                                 _ = term_rx.changed() => {
@@ -417,7 +414,7 @@ mod tests {
             flashblock_builder_ws_connect_timeout_ms: 5000,
         };
         let service = FlashblocksReceiverService::new(url, tx, config);
-        let _ = tokio::spawn(async move {
+        tokio::spawn(async move {
             service.run().await;
         });
 
@@ -471,7 +468,7 @@ mod tests {
 
         let (tx, _rx) = mpsc::channel(100);
         let service = FlashblocksReceiverService::new(url, tx, config);
-        let _ = tokio::spawn(async move {
+        tokio::spawn(async move {
             service.run().await;
         });
 

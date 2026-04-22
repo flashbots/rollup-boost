@@ -235,7 +235,7 @@ impl PayloadSource {
 
 #[derive(Debug, Clone)]
 pub struct PayloadTrace {
-    pub builder_has_payload: bool,
+    pub builder_payload_id: Option<PayloadId>,
     pub trace_id: Option<tracing::Id>,
 }
 
@@ -263,14 +263,14 @@ impl PayloadTraceContext {
         &self,
         payload_id: PayloadId,
         parent_hash: B256,
-        builder_has_payload: bool,
+        builder_payload_id: Option<PayloadId>,
         trace_id: Option<tracing::Id>,
     ) {
         self.payload_id
             .insert(
                 payload_id,
                 PayloadTrace {
-                    builder_has_payload,
+                    builder_payload_id,
                     trace_id,
                 },
             )
@@ -312,12 +312,17 @@ impl PayloadTraceContext {
             .and_then(|x| x.trace_id)
     }
 
-    pub async fn has_builder_payload(&self, payload_id: &PayloadId) -> bool {
+    /// Returns the builder's payload id for the given local (L2) payload id, if any.
+    ///
+    /// Builder and L2 may compute different payload ids (e.g. when the builder augments
+    /// attributes with flashblocks-specific fields). Callers that need to forward
+    /// `engine_getPayload` to the builder must translate the incoming (L2) id through
+    /// this map rather than passing it verbatim.
+    pub async fn builder_payload_id(&self, payload_id: &PayloadId) -> Option<PayloadId> {
         self.payload_id
             .get(payload_id)
             .await
-            .map(|x| x.builder_has_payload)
-            .unwrap_or_default()
+            .and_then(|x| x.builder_payload_id)
     }
 
     pub async fn remove_by_parent_hash(&self, block_hash: &B256) {
