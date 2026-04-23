@@ -39,7 +39,7 @@ pub struct RollupBoostLibArgs {
     pub ignore_unhealthy_builders: bool,
 
     #[clap(flatten)]
-    pub flashblocks_ws: Option<FlashblocksWsArgs>,
+    pub flashblocks_ws: FlashblocksWsArgs,
 
     #[clap(flatten)]
     pub flashblocks_p2p: Option<FlashblocksP2PArgs>,
@@ -218,7 +218,7 @@ pub mod tests {
         assert!(!args.metrics);
         assert_eq!(args.rpc_host, "127.0.0.1");
         assert_eq!(args.rpc_port, 8081);
-        assert!(args.lib.flashblocks_ws.is_none());
+        assert!(!args.lib.flashblocks_ws.flashblocks_ws);
         assert!(args.lib.flashblocks_p2p.is_none());
 
         Ok(())
@@ -352,6 +352,113 @@ pub mod tests {
         assert!(flashblocks.flashblocks_p2p);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_parse_args_with_flashblocks_ws_flag() -> Result<(), Box<dyn std::error::Error>> {
+        // `--flashblocks` must enable the WS client and materialize nested
+        // FlashblocksWebsocketConfig with defaults. Previously broken when
+        // FlashblocksWsArgs was wrapped in Option<> — clap's Option detection
+        // does not work with nested #[command(flatten)].
+        let args = RollupBoostServiceArgs::try_parse_from([
+            "rollup-boost",
+            "--builder-jwt-token",
+            SECRET,
+            "--l2-jwt-token",
+            SECRET,
+            "--flashblocks",
+        ])?;
+
+        let ws = &args.lib.flashblocks_ws;
+        assert!(ws.flashblocks_ws, "--flashblocks should set bool true");
+        assert_eq!(ws.flashblocks_host, "127.0.0.1");
+        assert_eq!(ws.flashblocks_port, 1112);
+        assert_eq!(
+            ws.flashblocks_ws_config
+                .flashblock_builder_ws_ping_interval_ms,
+            500,
+            "nested config default must be populated"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_args_flashblocks_ws_absent_defaults_false()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let args = RollupBoostServiceArgs::try_parse_from([
+            "rollup-boost",
+            "--builder-jwt-token",
+            SECRET,
+            "--l2-jwt-token",
+            SECRET,
+        ])?;
+
+        assert!(!args.lib.flashblocks_ws.flashblocks_ws);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_args_flashblocks_ws_custom_config() -> Result<(), Box<dyn std::error::Error>> {
+        let args = RollupBoostServiceArgs::try_parse_from([
+            "rollup-boost",
+            "--builder-jwt-token",
+            SECRET,
+            "--l2-jwt-token",
+            SECRET,
+            "--flashblocks",
+            "--flashblocks-builder-url",
+            "ws://builder:9999",
+            "--flashblocks-host",
+            "0.0.0.0",
+            "--flashblocks-port",
+            "2222",
+            "--flashblock-builder-ws-ping-interval-ms",
+            "777",
+            "--flashblock-builder-ws-pong-timeout-ms",
+            "1234",
+        ])?;
+
+        let ws = &args.lib.flashblocks_ws;
+        assert!(ws.flashblocks_ws);
+        assert_eq!(ws.flashblocks_builder_url.as_str(), "ws://builder:9999/");
+        assert_eq!(ws.flashblocks_host, "0.0.0.0");
+        assert_eq!(ws.flashblocks_port, 2222);
+        assert_eq!(
+            ws.flashblocks_ws_config
+                .flashblock_builder_ws_ping_interval_ms,
+            777
+        );
+        assert_eq!(
+            ws.flashblocks_ws_config
+                .flashblock_builder_ws_pong_timeout_ms,
+            1234
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_args_flashblocks_ws_conflicts_with_p2p() {
+        // `--flashblocks` and `--flashblocks-p2p` are mutually exclusive.
+        let result = RollupBoostServiceArgs::try_parse_from([
+            "rollup-boost",
+            "--builder-jwt-token",
+            SECRET,
+            "--l2-jwt-token",
+            SECRET,
+            "--flashblocks",
+            "--flashblocks-p2p",
+            "--flashblocks-authorizer-sk",
+            FLASHBLOCKS_SK,
+            "--flashblocks-builder-vk",
+            FLASHBLOCKS_VK,
+        ]);
+
+        assert!(
+            result.is_err(),
+            "--flashblocks and --flashblocks-p2p must conflict"
+        );
     }
 
     #[test]

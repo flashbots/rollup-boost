@@ -83,7 +83,8 @@ impl RollupBoostServer {
         let execution_mode = Arc::new(Mutex::new(rollup_boost_args.execution_mode.clone()));
 
         let builder_client: Arc<dyn EngineApiExt> =
-            if let Some(flashblocks_ws) = rollup_boost_args.flashblocks_ws {
+            if rollup_boost_args.flashblocks_ws.flashblocks_ws {
+                let flashblocks_ws = rollup_boost_args.flashblocks_ws;
                 let inbound_url = flashblocks_ws.flashblocks_builder_url;
                 let outbound_addr = SocketAddr::new(
                     IpAddr::from_str(&flashblocks_ws.flashblocks_host)?,
@@ -598,7 +599,7 @@ impl EngineApiServer for RollupBoostServer {
                     if let Some(bid) = builder_payload_id
                         && bid != payload_id
                     {
-                        tracing::warn!(
+                        tracing::info!(
                             message = "builder returned a different payload id than L2",
                             l2_payload_id = %payload_id,
                             builder_payload_id = %bid,
