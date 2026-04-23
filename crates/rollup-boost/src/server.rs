@@ -83,7 +83,8 @@ impl RollupBoostServer {
         let execution_mode = Arc::new(Mutex::new(rollup_boost_args.execution_mode.clone()));
 
         let builder_client: Arc<dyn EngineApiExt> =
-            if let Some(flashblocks_ws) = rollup_boost_args.flashblocks_ws {
+            if rollup_boost_args.flashblocks_ws.flashblocks_ws {
+                let flashblocks_ws = rollup_boost_args.flashblocks_ws;
                 let inbound_url = flashblocks_ws.flashblocks_builder_url;
                 let outbound_addr = SocketAddr::new(
                     IpAddr::from_str(&flashblocks_ws.flashblocks_host)?,
@@ -246,24 +247,38 @@ impl RollupBoostServer {
             if let Some(cause) = self.payload_trace_context.trace_id(&payload_id).await {
                 tracing::Span::current().follows_from(cause);
             }
-            if !self
+            let builder_payload_id = match self
                 .payload_trace_context
-                .has_builder_payload(&payload_id)
+                .builder_payload_id(&payload_id)
                 .await
             {
-                info!(message = "builder has no payload, skipping get_payload call to builder");
-                tracing::Span::current().record("builder_has_payload", false);
-                return BuilderResult::Ok(BuilderPayloadResult {
-                    payload: None,
-                    builder_api_failed: true,
-                });
-            }
+                Some(id) => id,
+                None => {
+                    info!(message = "builder has no payload, skipping get_payload call to builder");
+                    tracing::Span::current().record("builder_has_payload", false);
+                    return BuilderResult::Ok(BuilderPayloadResult {
+                        payload: None,
+                        builder_api_failed: true,
+                    });
+                }
+            };
 
             // Get payload and validate with the local l2 client
             tracing::Span::current().record("builder_has_payload", true);
+            if builder_payload_id != payload_id {
+                tracing::info!(
+                    message = "translating L2 payload id to builder payload id for get_payload",
+                    l2_payload_id = %payload_id,
+                    %builder_payload_id,
+                );
+            }
             info!(message = "builder has payload, calling get_payload on builder");
 
-            let payload = match self.builder_client.get_payload(payload_id, version).await {
+            let payload = match self
+                .builder_client
+                .get_payload(builder_payload_id, version)
+                .await
+            {
                 Ok(payload) => payload,
                 Err(e) => {
                     error!(message = "error getting payload from builder", error = %e);
@@ -554,7 +569,7 @@ impl EngineApiServer for RollupBoostServer {
                         .store(
                             payload_id,
                             fork_choice_state.head_block_hash,
-                            false,
+                            None,
                             span.id(),
                         )
                         .await;
@@ -572,18 +587,30 @@ impl EngineApiServer for RollupBoostServer {
                 let (l2_result, builder_result) = tokio::join!(l2_fut, builder_fut);
                 let l2_response = l2_result?;
 
+                let builder_payload_id = builder_result.as_ref().ok().and_then(|r| r.payload_id);
+
                 if let Some(payload_id) = l2_response.payload_id {
                     info!(
                         message = "block building started",
                         "payload_id" = %payload_id,
-                        "builder_building" = builder_result.is_ok(),
+                        "builder_building" = builder_payload_id.is_some(),
                     );
+
+                    if let Some(bid) = builder_payload_id
+                        && bid != payload_id
+                    {
+                        tracing::info!(
+                            message = "builder returned a different payload id than L2",
+                            l2_payload_id = %payload_id,
+                            builder_payload_id = %bid,
+                        );
+                    }
 
                     self.payload_trace_context
                         .store(
                             payload_id,
                             fork_choice_state.head_block_hash,
-                            builder_result.is_ok(),
+                            builder_payload_id,
                             span.id(),
                         )
                         .await;
@@ -1085,10 +1112,10 @@ pub mod tests {
                 fcu_requests.push(params);
 
                 let mut response = mock_engine_server.fcu_response.clone();
-                if let Ok(ref mut fcu_response) = response {
-                    if let Some(override_id) = mock_engine_server.override_payload_id {
-                        fcu_response.payload_id = Some(override_id);
-                    }
+                if let Ok(ref mut fcu_response) = response
+                    && let Some(override_id) = mock_engine_server.override_payload_id
+                {
+                    fcu_response.payload_id = Some(override_id);
                 }
 
                 response
@@ -1252,6 +1279,81 @@ pub mod tests {
         let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
         assert!(get_payload_response.is_ok());
         assert_eq!(get_payload_response.unwrap().block_value, U256::from(10));
+
+        test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn builder_payload_id_translation_on_mismatch() {
+        // the builder may compute a different payload_id than the L2
+        // client. On get_payload, rollup-boost must translate the incoming
+        // L2 id back to the builder's id when forwarding to the builder.
+        let l2_payload_id: PayloadId = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 1]);
+        let builder_payload_id: PayloadId = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 2]);
+
+        let mut l2_mock = MockEngineServer::new();
+        l2_mock.fcu_response = Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(
+            PayloadStatusEnum::Valid,
+        ))
+        .with_payload_id(l2_payload_id));
+        l2_mock.get_payload_responses[0] =
+            l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                payload.block_value = U256::from(10);
+                payload
+            });
+
+        let mut builder_mock = MockEngineServer::new();
+        builder_mock.fcu_response = Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(
+            PayloadStatusEnum::Valid,
+        ))
+        .with_payload_id(builder_payload_id));
+        builder_mock.get_payload_responses[0] =
+            builder_mock.get_payload_responses[0]
+                .clone()
+                .map(|mut payload| {
+                    payload.block_value = U256::from(15);
+                    payload
+                });
+
+        let test_harness =
+            TestHarness::new(Some(l2_mock.clone()), Some(builder_mock.clone())).await;
+        let fcu = ForkchoiceState {
+            head_block_hash: FixedBytes::random(),
+            safe_block_hash: FixedBytes::random(),
+            finalized_block_hash: FixedBytes::random(),
+        };
+        let payload_attributes = OpPayloadAttributes {
+            gas_limit: Some(1000000),
+            ..Default::default()
+        };
+
+        test_harness
+            .rpc_client
+            .fork_choice_updated_v3(fcu, Some(payload_attributes))
+            .await
+            .unwrap();
+
+        // op-node calls get_payload with the L2 id; rollup-boost should translate
+        // to the builder id before forwarding, and return the builder's payload.
+        let get_payload_response = test_harness
+            .rpc_client
+            .get_payload_v3(l2_payload_id)
+            .await
+            .unwrap();
+        assert_eq!(get_payload_response.block_value, U256::from(15));
+
+        // The builder must have been called with its own id, not the L2's.
+        {
+            let builder_gp_reqs = builder_mock.get_payload_requests.lock();
+            assert_eq!(builder_gp_reqs.len(), 1);
+            assert_eq!(builder_gp_reqs[0], builder_payload_id);
+        }
+        // The L2 is always queried with the original id.
+        {
+            let l2_gp_reqs = l2_mock.get_payload_requests.lock();
+            assert_eq!(l2_gp_reqs.len(), 1);
+            assert_eq!(l2_gp_reqs[0], l2_payload_id);
+        }
 
         test_harness.cleanup().await;
     }

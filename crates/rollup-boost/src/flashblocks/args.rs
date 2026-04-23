@@ -1,5 +1,5 @@
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
-use clap::{Args, Parser};
+use clap::Args;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::time::Duration;
 use url::Url;
@@ -7,7 +7,6 @@ use url::Url;
 use hex::FromHex;
 
 #[derive(Args, Clone, Debug)]
-#[group(requires = "flashblocks_ws")]
 pub struct FlashblocksWsArgs {
     /// Enable Flashblocks Websocket client
     #[arg(
@@ -16,7 +15,7 @@ pub struct FlashblocksWsArgs {
         id = "flashblocks_ws",
         conflicts_with = "flashblocks_p2p",
         env,
-        default_value = "false"
+        required = false
     )]
     pub flashblocks_ws: bool,
 
@@ -37,7 +36,7 @@ pub struct FlashblocksWsArgs {
     pub flashblocks_ws_config: FlashblocksWebsocketConfig,
 }
 
-#[derive(Parser, Debug, Clone, Copy)]
+#[derive(Args, Debug, Clone, Copy)]
 pub struct FlashblocksWebsocketConfig {
     /// Minimum time for exponential backoff for timeout if builder disconnected
     #[arg(long, env, default_value = "10")]

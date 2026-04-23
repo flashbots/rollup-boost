@@ -159,7 +159,7 @@ mod tests {
 
     // A JSON-RPC error is retriable if error.code ∉ (-32700, -32600]
     fn is_retriable_code(code: i32) -> bool {
-        code < -32700 || code > -32600
+        !(-32700..=-32600).contains(&code)
     }
 
     struct TestHarness {
@@ -889,7 +889,7 @@ mod tests {
         {
             let l2_requests = l2.requests.lock().await;
             assert!(
-                l2_requests.len() >= 1,
+                !l2_requests.is_empty(),
                 "L2 server should have received requests"
             );
             assert_eq!(l2_requests[0]["method"], "mock_forwardedMethod");
