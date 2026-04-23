@@ -1,6 +1,6 @@
 [package]
 name = "rollup-boost"
-version = "0.7.14"
+version = "0.7.15"
 edition = "2024"
 description = "Rollup Boost is a sidecar for optimism rollups that enables rollup extensions"
 rust-version = "1.94"

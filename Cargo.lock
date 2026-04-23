@@ -4358,7 +4358,7 @@ dependencies = [
 
 [[package]]
 name = "rollup-boost"
-version = "0.7.14"
+version = "0.7.15"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -4428,7 +4428,7 @@ dependencies = [
 
 [[package]]
 name = "rollup-boost-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
