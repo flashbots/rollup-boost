@@ -328,7 +328,7 @@ impl EngineApiExt for FlashblocksService {
         if let Some(payload_id) = resp.payload_id {
             let current_payload = *self.current_payload_id.read().await;
             if current_payload != Some(payload_id) {
-                tracing::error!(
+                tracing::debug!(
                     message = "Payload id returned by builder differs from calculated. Using builder payload id",
                     builder_payload_id = %payload_id,
                     calculated_payload_id = %current_payload.unwrap_or_default(),
