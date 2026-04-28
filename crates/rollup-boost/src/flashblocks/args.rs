@@ -10,11 +10,10 @@ use hex::FromHex;
 pub struct FlashblocksWsArgs {
     /// Enable Flashblocks Websocket client
     #[arg(
-        // Keep the flag as "flashblocks" for backward compatibility
         long = "flashblocks",
         id = "flashblocks_ws",
         conflicts_with = "flashblocks_p2p",
-        env,
+        env = "FLASHBLOCKS",
         required = false
     )]
     pub flashblocks_ws: bool,
