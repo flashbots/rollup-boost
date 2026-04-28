@@ -10,25 +10,28 @@ use hex::FromHex;
 pub struct FlashblocksWsArgs {
     /// Enable Flashblocks Websocket client
     #[arg(
-        // Keep the flag as "flashblocks" for backward compatibility
         long = "flashblocks",
         id = "flashblocks_ws",
         conflicts_with = "flashblocks_p2p",
-        env,
+        env = "FLASHBLOCKS",
         required = false
     )]
     pub flashblocks_ws: bool,
 
     /// Flashblocks Builder WebSocket URL
-    #[arg(long, env, default_value = "ws://127.0.0.1:1111")]
+    #[arg(
+        long,
+        env = "FLASHBLOCKS_BUILDER_URL",
+        default_value = "ws://127.0.0.1:1111"
+    )]
     pub flashblocks_builder_url: Url,
 
     /// Flashblocks WebSocket host for outbound connections
-    #[arg(long, env, default_value = "127.0.0.1")]
+    #[arg(long, env = "FLASHBLOCKS_HOST", default_value = "127.0.0.1")]
     pub flashblocks_host: String,
 
     /// Flashblocks WebSocket port for outbound connections
-    #[arg(long, env, default_value = "1112")]
+    #[arg(long, env = "FLASHBLOCKS_PORT", default_value = "1112")]
     pub flashblocks_port: u16,
 
     /// Websocket connection configuration
@@ -39,23 +42,43 @@ pub struct FlashblocksWsArgs {
 #[derive(Args, Debug, Clone, Copy)]
 pub struct FlashblocksWebsocketConfig {
     /// Minimum time for exponential backoff for timeout if builder disconnected
-    #[arg(long, env, default_value = "10")]
+    #[arg(
+        long,
+        env = "FLASHBLOCK_BUILDER_WS_INITIAL_RECONNECT_MS",
+        default_value = "10"
+    )]
     pub flashblock_builder_ws_initial_reconnect_ms: u64,
 
     /// Maximum time for exponential backoff for timeout if builder disconnected
-    #[arg(long, env, default_value = "5000")]
+    #[arg(
+        long,
+        env = "FLASHBLOCK_BUILDER_WS_MAX_RECONNECT_MS",
+        default_value = "5000"
+    )]
     pub flashblock_builder_ws_max_reconnect_ms: u64,
 
     /// Timeout for connection attempt
-    #[arg(long, env, default_value = "5000")]
+    #[arg(
+        long,
+        env = "FLASHBLOCK_BUILDER_WS_CONNECT_TIMEOUT_MS",
+        default_value = "5000"
+    )]
     pub flashblock_builder_ws_connect_timeout_ms: u64,
 
     /// Interval in milliseconds between ping messages sent to upstream servers to detect unresponsive connections
-    #[arg(long, env, default_value = "500")]
+    #[arg(
+        long,
+        env = "FLASHBLOCK_BUILDER_WS_PING_INTERVAL_MS",
+        default_value = "500"
+    )]
     pub flashblock_builder_ws_ping_interval_ms: u64,
 
     /// Timeout in milliseconds to wait for pong responses from upstream servers before considering the connection dead
-    #[arg(long, env, default_value = "1500")]
+    #[arg(
+        long,
+        env = "FLASHBLOCK_BUILDER_WS_PONG_TIMEOUT_MS",
+        default_value = "1500"
+    )]
     pub flashblock_builder_ws_pong_timeout_ms: u64,
 }
 
@@ -100,7 +123,7 @@ pub struct FlashblocksP2PArgs {
         long,
         id = "flashblocks_p2p",
         conflicts_with = "flashblocks_ws",
-        env,
+        env = "FLASHBLOCKS_P2P",
         required = false
     )]
     pub flashblocks_p2p: bool,
