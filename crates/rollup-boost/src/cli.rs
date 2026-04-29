@@ -203,12 +203,17 @@ impl std::str::FromStr for LogFormat {
 #[cfg(test)]
 pub mod tests {
     use std::result::Result;
+    use std::sync::Mutex;
 
     use super::*;
 
     const SECRET: &str = "f79ae8046bc11c9927afe911db7143c51a806c4a537cc08e0d37140b0192f430";
     const FLASHBLOCKS_SK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const FLASHBLOCKS_VK: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    /// Tests that mutate the `FLASHBLOCKS` env var must hold this lock to avoid
+    /// racing with tests that assert the default (unset) state.
+    static FLASHBLOCKS_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_parse_args_minimal() -> Result<(), Box<dyn std::error::Error>> {
@@ -384,8 +389,86 @@ pub mod tests {
     }
 
     #[test]
+    fn test_flashblocks_env_var_contract() -> Result<(), Box<dyn std::error::Error>> {
+        // Pin the public env-var contract for every FLASHBLOCKS* arg. If a future
+        // refactor renames any of these fields without explicitly setting `env =`,
+        // clap will silently rename the env var and this test will catch it.
+        type Check = fn(&RollupBoostServiceArgs) -> bool;
+        let cases: &[(&str, &str, Check)] = &[
+            ("FLASHBLOCKS", "true", |a| {
+                a.lib.flashblocks_ws.flashblocks_ws
+            }),
+            ("FLASHBLOCKS_BUILDER_URL", "ws://10.0.0.1:9000", |a| {
+                a.lib.flashblocks_ws.flashblocks_builder_url.as_str() == "ws://10.0.0.1:9000/"
+            }),
+            ("FLASHBLOCKS_HOST", "10.0.0.2", |a| {
+                a.lib.flashblocks_ws.flashblocks_host == "10.0.0.2"
+            }),
+            ("FLASHBLOCKS_PORT", "9999", |a| {
+                a.lib.flashblocks_ws.flashblocks_port == 9999
+            }),
+            ("FLASHBLOCK_BUILDER_WS_INITIAL_RECONNECT_MS", "42", |a| {
+                a.lib
+                    .flashblocks_ws
+                    .flashblocks_ws_config
+                    .flashblock_builder_ws_initial_reconnect_ms
+                    == 42
+            }),
+            ("FLASHBLOCK_BUILDER_WS_MAX_RECONNECT_MS", "43", |a| {
+                a.lib
+                    .flashblocks_ws
+                    .flashblocks_ws_config
+                    .flashblock_builder_ws_max_reconnect_ms
+                    == 43
+            }),
+            ("FLASHBLOCK_BUILDER_WS_CONNECT_TIMEOUT_MS", "44", |a| {
+                a.lib
+                    .flashblocks_ws
+                    .flashblocks_ws_config
+                    .flashblock_builder_ws_connect_timeout_ms
+                    == 44
+            }),
+            ("FLASHBLOCK_BUILDER_WS_PING_INTERVAL_MS", "45", |a| {
+                a.lib
+                    .flashblocks_ws
+                    .flashblocks_ws_config
+                    .flashblock_builder_ws_ping_interval_ms
+                    == 45
+            }),
+            ("FLASHBLOCK_BUILDER_WS_PONG_TIMEOUT_MS", "46", |a| {
+                a.lib
+                    .flashblocks_ws
+                    .flashblocks_ws_config
+                    .flashblock_builder_ws_pong_timeout_ms
+                    == 46
+            }),
+        ];
+
+        let _guard = FLASHBLOCKS_ENV_LOCK.lock().unwrap();
+        for (var, val, check) in cases {
+            // SAFETY: env mutation, serialized via FLASHBLOCKS_ENV_LOCK.
+            unsafe { std::env::set_var(var, val) };
+            let parsed = RollupBoostServiceArgs::try_parse_from([
+                "rollup-boost",
+                "--builder-jwt-token",
+                SECRET,
+                "--l2-jwt-token",
+                SECRET,
+            ]);
+            unsafe { std::env::remove_var(var) };
+            let parsed = parsed.unwrap_or_else(|e| panic!("{var}={val} failed to parse: {e}"));
+            assert!(
+                check(&parsed),
+                "{var}={val} did not propagate to the parsed value"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn test_parse_args_flashblocks_ws_absent_defaults_false()
     -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = FLASHBLOCKS_ENV_LOCK.lock().unwrap();
         let args = RollupBoostServiceArgs::try_parse_from([
             "rollup-boost",
             "--builder-jwt-token",
