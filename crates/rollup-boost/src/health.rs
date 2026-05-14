@@ -13,6 +13,27 @@ use tracing::warn;
 
 use crate::{EngineApiExt, ExecutionMode, Health, Probes};
 
+pub(crate) fn health_status_when_builder_is_ignored(l2_healthy: bool) -> Health {
+    if l2_healthy {
+        Health::Healthy
+    } else {
+        Health::ServiceUnavailable
+    }
+}
+
+pub(crate) fn health_status_when_builder_is_required(
+    l2_healthy: bool,
+    builder_healthy: bool,
+) -> Health {
+    if !l2_healthy {
+        Health::ServiceUnavailable
+    } else if builder_healthy {
+        Health::Healthy
+    } else {
+        Health::PartialContent
+    }
+}
+
 pub struct HealthHandle {
     pub probes: Arc<Probes>,
     pub execution_mode: Arc<Mutex<ExecutionMode>>,
@@ -50,9 +71,10 @@ impl HealthHandle {
 
             loop {
                 let t = timestamp.tick();
+                let execution_mode = *self.execution_mode.lock();
 
                 // Check L2 client health. If its unhealthy, set the health status to ServiceUnavailable
-                // If in disabled or dry run execution mode, set the health status to Healthy if the l2 client is healthy
+                // If execution mode is disabled, the builder is irrelevant and the L2 result is authoritative.
                 match self
                     .l2_client
                     .get_block_by_number(BlockNumberOrTag::Latest, false)
@@ -63,49 +85,51 @@ impl HealthHandle {
                             .gt(&self.max_unsafe_interval)
                         {
                             warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %block.header.timestamp, "L2 client - unsafe block timestamp is too old, updating health status to ServiceUnavailable");
-                            self.probes.set_health(Health::ServiceUnavailable);
+                            self.probes
+                                .set_health(health_status_when_builder_is_ignored(false));
                             sleep_until(Instant::now() + self.health_check_interval).await;
                             continue;
-                        } else if self.execution_mode.lock().is_disabled()
-                            || self.execution_mode.lock().is_dry_run()
-                        {
-                            self.probes.set_health(Health::Healthy);
+                        } else if execution_mode.is_disabled() {
+                            self.probes
+                                .set_health(health_status_when_builder_is_ignored(true));
                             sleep_until(Instant::now() + self.health_check_interval).await;
                             continue;
                         }
                     }
                     Err(e) => {
                         warn!(target: "rollup_boost::health", "L2 client - Failed to get unsafe block {} - updating health status", e);
-                        self.probes.set_health(Health::ServiceUnavailable);
+                        self.probes
+                            .set_health(health_status_when_builder_is_ignored(false));
                         sleep_until(Instant::now() + self.health_check_interval).await;
                         continue;
                     }
                 };
 
-                if self.execution_mode.lock().is_enabled() {
-                    // Only check builder client health if execution mode is enabled
-                    // If its unhealthy, set the health status to PartialContent
-                    match self
-                        .builder_client
-                        .get_block_by_number(BlockNumberOrTag::Latest, false)
-                        .await
-                    {
-                        Ok(block) => {
-                            if t.saturating_sub(block.header.timestamp)
-                                .gt(&self.max_unsafe_interval)
-                            {
-                                warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %block.header.timestamp, "Builder client - unsafe block timestamp is too old updating health status");
-                                self.probes.set_health(Health::PartialContent);
-                            } else {
-                                self.probes.set_health(Health::Healthy);
-                            }
+                // In enabled and dry-run modes the builder still matters for health.
+                match self
+                    .builder_client
+                    .get_block_by_number(BlockNumberOrTag::Latest, false)
+                    .await
+                {
+                    Ok(block) => {
+                        let builder_healthy = !t
+                            .saturating_sub(block.header.timestamp)
+                            .gt(&self.max_unsafe_interval);
+                        if !builder_healthy {
+                            warn!(target: "rollup_boost::health", curr_unix = %t, unsafe_unix = %block.header.timestamp, "Builder client - unsafe block timestamp is too old updating health status");
                         }
-                        Err(e) => {
-                            warn!(target: "rollup_boost::health", "Builder client - Failed to get unsafe block {} - updating health status", e);
-                            self.probes.set_health(Health::PartialContent);
-                        }
-                    };
-                }
+                        self.probes
+                            .set_health(health_status_when_builder_is_required(
+                                true,
+                                builder_healthy,
+                            ));
+                    }
+                    Err(e) => {
+                        warn!(target: "rollup_boost::health", "Builder client - Failed to get unsafe block {} - updating health status", e);
+                        self.probes
+                            .set_health(health_status_when_builder_is_required(true, false));
+                    }
+                };
                 sleep_until(Instant::now() + self.health_check_interval).await;
             }
         })
@@ -175,6 +199,42 @@ mod tests {
     use crate::Probes;
     use rollup_boost_types::{self, payload::PayloadSource};
     use serial_test::serial;
+
+    #[test]
+    fn test_health_status_when_builder_is_ignored_requires_l2() {
+        assert!(matches!(
+            health_status_when_builder_is_ignored(false),
+            Health::ServiceUnavailable
+        ));
+        assert!(matches!(
+            health_status_when_builder_is_ignored(true),
+            Health::Healthy
+        ));
+    }
+
+    #[test]
+    fn test_health_status_when_builder_is_required_requires_l2() {
+        assert!(matches!(
+            health_status_when_builder_is_required(false, true),
+            Health::ServiceUnavailable
+        ));
+        assert!(matches!(
+            health_status_when_builder_is_required(false, false),
+            Health::ServiceUnavailable
+        ));
+    }
+
+    #[test]
+    fn test_health_status_when_builder_is_required_requires_builder() {
+        assert!(matches!(
+            health_status_when_builder_is_required(true, false),
+            Health::PartialContent
+        ));
+        assert!(matches!(
+            health_status_when_builder_is_required(true, true),
+            Health::Healthy
+        ));
+    }
 
     pub struct MockHttpServer {
         addr: SocketAddr,
@@ -494,7 +554,7 @@ mod tests {
 
         health_handle.spawn();
         tokio::time::sleep(Duration::from_secs(2)).await;
-        assert!(matches!(probes.health(), Health::Healthy));
+        assert!(matches!(probes.health(), Health::PartialContent));
         Ok(())
     }
 
