@@ -45,7 +45,7 @@ Follow the [Rust Style Guide](https://doc.rust-lang.org/nightly/style-guide/) re
 
 ### Signed commits
 
-All commits must be signed. See GitHub's guide on [SSH commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification#ssh-commit-signature-verification) for instructions on enabling commit signing.
+Please [sign your commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) before contributing. [SSH commit signing](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification#ssh-commit-signature-verification) is the easiest setup, but other methods work as well.
 
 We appreciate you, friend <3.
 
