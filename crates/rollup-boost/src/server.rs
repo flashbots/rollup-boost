@@ -486,6 +486,9 @@ pub trait FlashblocksEngineApi {
 
 #[rpc(server, client)]
 pub trait EngineApi {
+    #[method(name = "engine_exchangeCapabilities")]
+    async fn exchange_capabilities(&self, capabilities: Vec<String>) -> RpcResult<Vec<String>>;
+
     #[method(name = "engine_forkchoiceUpdatedV3")]
     async fn fork_choice_updated_v3(
         &self,
@@ -528,6 +531,17 @@ pub trait EngineApi {
 
 #[async_trait]
 impl EngineApiServer for RollupBoostServer {
+    #[instrument(
+        skip_all,
+        err,
+        fields(
+            otel.kind = ?SpanKind::Server,
+        )
+    )]
+    async fn exchange_capabilities(&self, capabilities: Vec<String>) -> RpcResult<Vec<String>> {
+        Ok(self.l2_client.exchange_capabilities(capabilities).await?)
+    }
+
     #[instrument(
         skip_all,
         err,
@@ -802,9 +816,11 @@ pub mod tests {
     #[derive(Debug, Clone)]
     pub struct MockEngineServer {
         fcu_requests: Arc<Mutex<Vec<(ForkchoiceState, Option<OpPayloadAttributes>)>>>,
+        pub exchange_capabilities_requests: Arc<Mutex<Vec<Vec<String>>>>,
         pub get_payload_requests: Arc<Mutex<Vec<PayloadId>>>,
         new_payload_requests: Arc<Mutex<Vec<(ExecutionPayloadV3, Vec<B256>, B256)>>>,
         fcu_response: RpcResult<ForkchoiceUpdated>,
+        exchange_capabilities_response: RpcResult<Vec<String>>,
         get_payload_responses: Vec<RpcResult<OpExecutionPayloadEnvelopeV3>>,
         new_payload_response: RpcResult<PayloadStatus>,
 
@@ -815,9 +831,18 @@ pub mod tests {
         pub fn new() -> Self {
             Self {
                 fcu_requests: Arc::new(Mutex::new(vec![])),
+                exchange_capabilities_requests: Arc::new(Mutex::new(vec![])),
                 get_payload_requests: Arc::new(Mutex::new(vec![])),
                 new_payload_requests: Arc::new(Mutex::new(vec![])),
                 fcu_response: Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(PayloadStatusEnum::Valid))),
+                exchange_capabilities_response: Ok(vec![
+                    "engine_forkchoiceUpdatedV3".to_string(),
+                    "engine_getPayloadV3".to_string(),
+                    "engine_newPayloadV3".to_string(),
+                    "engine_getPayloadV4".to_string(),
+                    "engine_newPayloadV4".to_string(),
+                    "engine_exchangeCapabilities".to_string(),
+                ]),
                 get_payload_responses: vec![Ok(OpExecutionPayloadEnvelopeV3{
                     execution_payload: ExecutionPayloadV3 {
                             payload_inner: ExecutionPayloadV2 {
@@ -990,6 +1015,48 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn engine_exchange_capabilities_success() {
+        let test_harness = TestHarness::new(None, None).await;
+
+        let capabilities = vec![
+            "engine_forkchoiceUpdatedV3".to_string(),
+            "engine_getPayloadV3".to_string(),
+            "engine_newPayloadV3".to_string(),
+            "engine_exchangeCapabilities".to_string(),
+        ];
+        let exchange_capabilities_response = test_harness
+            .rpc_client
+            .exchange_capabilities(capabilities.clone())
+            .await;
+        assert!(exchange_capabilities_response.is_ok());
+        assert_eq!(
+            exchange_capabilities_response.unwrap(),
+            test_harness
+                .l2_mock
+                .exchange_capabilities_response
+                .clone()
+                .unwrap()
+        );
+        assert_eq!(
+            test_harness
+                .l2_mock
+                .exchange_capabilities_requests
+                .lock()
+                .as_slice(),
+            &[capabilities]
+        );
+        assert!(
+            test_harness
+                .builder_mock
+                .exchange_capabilities_requests
+                .lock()
+                .is_empty()
+        );
+
+        test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
     async fn engine_success() {
         let test_harness = TestHarness::new(None, None).await;
 
@@ -1118,6 +1185,17 @@ pub mod tests {
         let server_addr = server.local_addr().expect("Missing local address");
 
         let mut module: RpcModule<()> = RpcModule::new(());
+
+        module
+            .register_method("engine_exchangeCapabilities", move |params, _, _| {
+                let params: (Vec<String>,) = params.parse()?;
+                let mut exchange_capabilities_requests =
+                    mock_engine_server.exchange_capabilities_requests.lock();
+                exchange_capabilities_requests.push(params.0);
+
+                mock_engine_server.exchange_capabilities_response.clone()
+            })
+            .unwrap();
 
         module
             .register_method("engine_forkchoiceUpdatedV3", move |params, _, _| {
