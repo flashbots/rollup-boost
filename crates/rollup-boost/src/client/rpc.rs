@@ -176,6 +176,27 @@ impl RpcClient {
         fields(
             otel.kind = ?SpanKind::Client,
             target = self.payload_source.to_string(),
+            url = %self.auth_rpc,
+        )
+    )]
+    pub async fn exchange_capabilities(
+        &self,
+        capabilities: Vec<String>,
+    ) -> ClientResult<Vec<String>> {
+        info!("Sending exchange_capabilities to {}", self.payload_source);
+        Ok(self
+            .auth_client
+            .exchange_capabilities(capabilities)
+            .await
+            .set_code()?)
+    }
+
+    #[instrument(
+        skip_all,
+        err,
+        fields(
+            otel.kind = ?SpanKind::Client,
+            target = self.payload_source.to_string(),
             head_block_hash = %fork_choice_state.head_block_hash,
             url = %self.auth_rpc,
             payload_attributes = payload_attributes.is_some(),
