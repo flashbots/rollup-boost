@@ -107,6 +107,9 @@ impl EngineApi {
             PayloadVersion::V4 => Ok(OpExecutionPayloadEnvelope::V4(
                 EngineApiClient::get_payload_v4(&self.engine_api_client, payload_id).await?,
             )),
+            PayloadVersion::V5 => Ok(OpExecutionPayloadEnvelope::V4(
+                EngineApiClient::get_payload_v5(&self.engine_api_client, payload_id).await?,
+            )),
         }
     }
 
