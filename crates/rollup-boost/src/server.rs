@@ -16,7 +16,6 @@ use alloy_rpc_types_engine::{
     PayloadStatus,
 };
 use alloy_rpc_types_eth::{Block, BlockNumberOrTag};
-use dashmap::DashMap;
 use http_body_util::{BodyExt, Full};
 use jsonrpsee::RpcModule;
 use jsonrpsee::core::BoxError;
@@ -28,6 +27,7 @@ use jsonrpsee::server::HttpResponse;
 use jsonrpsee::types::ErrorObject;
 use jsonrpsee::types::error::INVALID_REQUEST_CODE;
 use metrics::counter;
+use moka::future::Cache;
 use op_alloy_rpc_types_engine::{
     OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4,
     OpPayloadAttributes,
@@ -44,10 +44,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 pub type Request = HttpRequest;
 pub type Response = HttpResponse;
+
+const FCU_REQUEST_CACHE_SIZE: u64 = 100;
+
 pub type BufferedRequest = http::Request<Full<bytes::Bytes>>;
 pub type BufferedResponse = http::Response<Full<bytes::Bytes>>;
 
@@ -69,7 +72,7 @@ pub struct RollupBoostServer {
     external_state_root: bool,
     ignore_unhealthy_builders: bool,
     probes: Arc<Probes>,
-    payload_to_fcu_request: DashMap<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>,
+    payload_to_fcu_request: Cache<PayloadId, (ForkchoiceState, Option<OpPayloadAttributes>)>,
 }
 
 impl RollupBoostServer {
@@ -144,7 +147,7 @@ impl RollupBoostServer {
             probes,
             external_state_root,
             ignore_unhealthy_builders,
-            payload_to_fcu_request: DashMap::new(),
+            payload_to_fcu_request: Cache::new(FCU_REQUEST_CACHE_SIZE),
         }
     }
 
@@ -295,10 +298,21 @@ impl RollupBoostServer {
             };
 
             if !self.external_state_root {
-                let _ = self
+                let status = self
                     .l2_client
                     .new_payload(NewPayload::from(payload.clone()))
                     .await?;
+
+                if !status.is_valid() {
+                    warn!(
+                        message = "builder payload was not validated by the l2 client",
+                        status = %status.status,
+                    );
+                    return BuilderResult::Ok(BuilderPayloadResult {
+                        payload: None,
+                        builder_api_failed: true,
+                    });
+                }
 
                 return BuilderResult::Ok(BuilderPayloadResult {
                     payload: Some(payload),
@@ -401,9 +415,17 @@ impl RollupBoostServer {
         payload_id: PayloadId,
         version: PayloadVersion,
     ) -> Result<Option<OpExecutionPayloadEnvelope>, ErrorObject<'static>> {
-        let fcu_info = self.payload_to_fcu_request.remove(&payload_id).unwrap().1;
+        let Some((fork_choice_state, payload_attributes)) =
+            self.payload_to_fcu_request.remove(&payload_id).await
+        else {
+            error!(
+                message = "no stored fcu request for payload id, falling back to l2 payload",
+                %payload_id,
+            );
+            return Ok(None);
+        };
 
-        let new_payload_attrs = match fcu_info.1.as_ref() {
+        let new_payload_attrs = match payload_attributes.as_ref() {
             Some(attrs) => OpPayloadAttributes {
                 payload_attributes: attrs.payload_attributes.clone(),
                 transactions: Some(builder_payload.transactions()),
@@ -424,7 +446,7 @@ impl RollupBoostServer {
 
         let l2_result = self
             .l2_client
-            .fork_choice_updated_v3(fcu_info.0, Some(new_payload_attrs))
+            .fork_choice_updated_v3(fork_choice_state, Some(new_payload_attrs))
             .await?;
 
         if let Some(new_payload_id) = l2_result.payload_id {
@@ -644,7 +666,8 @@ impl EngineApiServer for RollupBoostServer {
 
                     if self.external_state_root {
                         self.payload_to_fcu_request
-                            .insert(payload_id, (fork_choice_state, payload_attributes));
+                            .insert(payload_id, (fork_choice_state, payload_attributes))
+                            .await;
                     }
                 }
 
@@ -669,7 +692,8 @@ impl EngineApiServer for RollupBoostServer {
             if let Some(payload_id) = l2_response.payload_id {
                 if self.external_state_root {
                     self.payload_to_fcu_request
-                        .insert(payload_id, (fork_choice_state, payload_attributes));
+                        .insert(payload_id, (fork_choice_state, payload_attributes))
+                        .await;
                 }
             }
 
@@ -1213,6 +1237,74 @@ pub mod tests {
         assert_eq!(get_payload_response.unwrap().block_value, U256::from(10));
 
         test_harness.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn builder_payload_not_validated() {
+        // Any status other than VALID means the l2 client did not validate the builder's
+        // block — e.g. SYNCING/ACCEPTED
+        for status in [
+            PayloadStatusEnum::Syncing,
+            PayloadStatusEnum::Accepted,
+            PayloadStatusEnum::Invalid {
+                validation_error: "test".to_string(),
+            },
+        ] {
+            let payload_id: PayloadId = PayloadId::new([0, 0, 0, 0, 0, 0, 0, 42]);
+
+            let mut l2_mock = MockEngineServer::new();
+            l2_mock.fcu_response = Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(
+                PayloadStatusEnum::Valid,
+            ))
+            .with_payload_id(payload_id));
+            l2_mock.new_payload_response = l2_mock.new_payload_response.clone().map(|mut s| {
+                s.status = status.clone();
+                s
+            });
+            l2_mock.get_payload_responses[0] =
+                l2_mock.get_payload_responses[0].clone().map(|mut payload| {
+                    payload.block_value = U256::from(10);
+                    payload
+                });
+
+            let mut builder_mock = MockEngineServer::new();
+            builder_mock.fcu_response = Ok(ForkchoiceUpdated::new(PayloadStatus::from_status(
+                PayloadStatusEnum::Valid,
+            ))
+            .with_payload_id(payload_id));
+            builder_mock.get_payload_responses[0] = builder_mock.get_payload_responses[0]
+                .clone()
+                .map(|mut payload| {
+                    payload.block_value = U256::from(15);
+                    payload
+                });
+
+            let test_harness = TestHarness::new(Some(l2_mock), Some(builder_mock)).await;
+            let fcu = ForkchoiceState {
+                head_block_hash: FixedBytes::random(),
+                safe_block_hash: FixedBytes::random(),
+                finalized_block_hash: FixedBytes::random(),
+            };
+            let payload_attributes = OpPayloadAttributes {
+                gas_limit: Some(1000000),
+                ..Default::default()
+            };
+            test_harness
+                .rpc_client
+                .fork_choice_updated_v3(fcu, Some(payload_attributes))
+                .await
+                .unwrap();
+
+            let get_payload_response = test_harness.rpc_client.get_payload_v3(payload_id).await;
+            assert!(get_payload_response.is_ok());
+            assert_eq!(
+                get_payload_response.unwrap().block_value,
+                U256::from(10),
+                "expected fallback to the l2 payload when l2 newPayload returned {status:?}",
+            );
+
+            test_harness.cleanup().await;
+        }
     }
 
     pub async fn spawn_server(mock_engine_server: MockEngineServer) -> (ServerHandle, SocketAddr) {
