@@ -23,12 +23,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// op-reth uses EngineApiMessageVersion::default() to calculate the payload id instead
 /// since the FCU version is not injected into the payload id. This is a bug on op-reth
 /// described in https://github.com/ethereum-optimism/optimism/issues/20226
 const BUILDER_PAYLOAD_ID_VERSION: u8 = 4;
+
+/// Maximum number of flashblocks buffered while the builder's FCU response is in flight. The
+/// buffer normally holds at most a handful of flashblocks for one FCU round-trip, but a stalled
+/// builder response combined with a misbehaving flashblock stream must not grow it without
+/// bound; anything beyond the limit is dropped.
+const MAX_PENDING_FLASHBLOCKS: usize = 1024;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum FlashblocksError {
@@ -348,6 +354,18 @@ impl FlashblocksService {
                         if payload_id != payload.payload_id {
                             self.metrics.current_payload_id_mismatch.increment(1);
                             if building_state.is_pending_builder_payload {
+                                if building_state.pending_flashblocks.len()
+                                    >= MAX_PENDING_FLASHBLOCKS
+                                {
+                                    self.metrics.pending_flashblocks_dropped.increment(1);
+                                    warn!(
+                                        message = "Pending flashblocks buffer full, dropping flashblock",
+                                        payload_id = %payload.payload_id,
+                                        local_payload_id = %payload_id,
+                                        index = payload.index,
+                                    );
+                                    return;
+                                }
                                 // The builder's FCU response may still confirm this
                                 // flashblock's id, so hold on to it instead of discarding
                                 debug!(
@@ -689,6 +707,51 @@ mod tests {
                 .read()
                 .await
                 .is_pending_builder_payload
+        );
+
+        Ok(())
+    }
+
+    /// The pending buffer must not grow past [`MAX_PENDING_FLASHBLOCKS`] while the builder's
+    /// FCU response is in flight; overflow is dropped.
+    #[tokio::test]
+    async fn test_pending_flashblocks_bounded() -> eyre::Result<()> {
+        let jwt_secret = JwtSecret::random();
+        let builder_client = RpcClient::new(
+            Uri::from_str("http://127.0.0.1:1").unwrap(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+        let mut service =
+            FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
+
+        service
+            .start_payload_building(PayloadId::new([4, 1, 1, 1, 1, 1, 1, 1]))
+            .await;
+
+        // Fill the buffer to the limit, then deliver one more mismatching flashblock
+        service.building_state.write().await.pending_flashblocks =
+            vec![OpFlashblockPayload::default(); MAX_PENDING_FLASHBLOCKS];
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: PayloadId::new([3, 1, 1, 1, 1, 1, 1, 1]),
+                    index: 0,
+                    base: Some(OpFlashblockPayloadBase::default()),
+                    ..Default::default()
+                },
+            ))
+            .await;
+
+        assert_eq!(
+            service
+                .building_state
+                .read()
+                .await
+                .pending_flashblocks
+                .len(),
+            MAX_PENDING_FLASHBLOCKS
         );
 
         Ok(())

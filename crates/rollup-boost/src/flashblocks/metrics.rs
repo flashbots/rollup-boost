@@ -30,6 +30,9 @@ pub struct FlashblocksServiceMetrics {
     )]
     pub pending_flashblocks_buffered: Counter,
 
+    #[metric(describe = "Number of flashblocks dropped because the pending buffer was full")]
+    pub pending_flashblocks_dropped: Counter,
+
     #[metric(describe = "Number of messages processed by the service")]
     pub messages_processed: Counter,
 
