@@ -434,6 +434,7 @@ impl EngineApiExt for FlashblocksService {
         payload_attributes: Option<OpPayloadAttributes>,
     ) -> ClientResult<ForkchoiceUpdated> {
         // Calculate and set expected payload_id
+        let has_attributes = payload_attributes.is_some();
         if let Some(attr) = &payload_attributes {
             let payload_id = Self::builder_payload_id(&fork_choice_state.head_block_hash, attr);
             self.start_payload_building(payload_id).await;
@@ -444,9 +445,11 @@ impl EngineApiExt for FlashblocksService {
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)
             .await;
 
-        // The FCU response sets the canonical payload id from the builder
-        let builder_payload_id = result.as_ref().ok().and_then(|resp| resp.payload_id);
-        self.confirm_payload_building(builder_payload_id).await;
+        if has_attributes {
+            // The FCU response sets the canonical payload id from the builder
+            let builder_payload_id = result.as_ref().ok().and_then(|resp| resp.payload_id);
+            self.confirm_payload_building(builder_payload_id).await;
+        }
         result
     }
 
@@ -647,9 +650,74 @@ mod tests {
         Ok(())
     }
 
-    /// A forkchoice update without attributes must clear stale pending flashblocks
+    /// an FCU without attributes arriving while the builder's FCU response is in flight
+    /// must not reset pending flashblocks
     #[tokio::test]
-    async fn test_pending_flashblocks_reset_on_fcu_without_attributes() -> eyre::Result<()> {
+    async fn test_fcu_without_attributes_keeps_flashblocks() -> eyre::Result<()> {
+        let builder_mock: MockEngineServer = MockEngineServer::new();
+        let (_server, server_addr) = spawn_server(builder_mock.clone()).await;
+        let jwt_secret = JwtSecret::random();
+        let builder_client = RpcClient::new(
+            Uri::from_str(&format!("http://{server_addr}")).unwrap(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+        let mut service =
+            FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
+
+        let precomputed_id = PayloadId::new([4, 1, 1, 1, 1, 1, 1, 1]);
+        let builder_id = PayloadId::new([3, 1, 1, 1, 1, 1, 1, 1]);
+
+        // An FCU with attributes starts payload building; the builder's response is in flight.
+        service.start_payload_building(precomputed_id).await;
+
+        // Index 0 arrives under the builder's id and is buffered pending confirmation.
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: builder_id,
+                    index: 0,
+                    base: Some(OpFlashblockPayloadBase::default()),
+                    ..Default::default()
+                },
+            ))
+            .await;
+
+        // op-node fires an FCU without attributes while the builder's response is in flight.
+        service
+            .fork_choice_updated_v3(ForkchoiceState::default(), None)
+            .await?;
+
+        // The builder's response confirms its id; the buffered index 0 must still be adopted.
+        service.confirm_payload_building(Some(builder_id)).await;
+
+        // Index 1 must extend cleanly — this is where `Invalid index for flashblock` fired.
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: builder_id,
+                    index: 1,
+                    ..Default::default()
+                },
+            ))
+            .await;
+
+        assert!(
+            service
+                .get_best_payload(PayloadVersion::V3, builder_id)
+                .await
+                .is_ok(),
+            "index 0 must survive an FCU without attributes so index 1 stays contiguous",
+        );
+
+        Ok(())
+    }
+
+    /// An FCU without attributes must not disturb the state of payload building already in
+    /// progress.
+    #[tokio::test]
+    async fn test_fcu_without_attributes_preserves_pending_state() -> eyre::Result<()> {
         let builder_mock: MockEngineServer = MockEngineServer::new();
         let (_server, server_addr) = spawn_server(builder_mock.clone()).await;
         let jwt_secret = JwtSecret::random();
@@ -662,42 +730,81 @@ mod tests {
         let service =
             FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
 
-        // A flashblock left over from a previous round
-        service
-            .building_state
-            .write()
-            .await
-            .is_pending_builder_payload = true;
-        service
-            .building_state
-            .write()
-            .await
-            .pending_flashblocks
-            .push(OpFlashblockPayload {
+        // Payload building is in progress and the builder's FCU response is still in flight,
+        // with index 0 buffered against the precomputed id.
+        let precomputed_id = PayloadId::new([4, 1, 1, 1, 1, 1, 1, 1]);
+        {
+            let mut state = service.building_state.write().await;
+            state.payload_id = Some(precomputed_id);
+            state.is_pending_builder_payload = true;
+            state.pending_flashblocks.push(OpFlashblockPayload {
                 payload_id: PayloadId::new([3, 1, 1, 1, 1, 1, 1, 1]),
                 index: 0,
                 base: Some(OpFlashblockPayloadBase::default()),
                 ..Default::default()
             });
+        }
 
+        // An FCU without attributes arrives while the response is in flight.
         service
             .fork_choice_updated_v3(ForkchoiceState::default(), None)
             .await?;
 
-        assert!(
-            service
-                .building_state
-                .read()
-                .await
-                .pending_flashblocks
-                .is_empty()
+        let state = service.building_state.read().await;
+        assert_eq!(
+            state.pending_flashblocks.len(),
+            1,
+            "an FCU without attributes must not drop buffered flashblocks",
         );
         assert!(
-            !service
-                .building_state
-                .read()
-                .await
-                .is_pending_builder_payload
+            state.is_pending_builder_payload,
+            "an FCU without attributes must not confirm a payload id it did not start",
+        );
+        assert_eq!(
+            state.payload_id,
+            Some(precomputed_id),
+            "an FCU without attributes must not change the payload id",
+        );
+
+        Ok(())
+    }
+
+    /// Stale pending flashblocks are still discarded — by the next FCU with attributes, not by
+    /// FCUs without attributes.
+    #[tokio::test]
+    async fn test_pending_flashblocks_reset_on_fcu_with_attributes() -> eyre::Result<()> {
+        let builder_mock: MockEngineServer = MockEngineServer::new();
+        let (_server, server_addr) = spawn_server(builder_mock.clone()).await;
+        let jwt_secret = JwtSecret::random();
+        let builder_client = RpcClient::new(
+            Uri::from_str(&format!("http://{server_addr}")).unwrap(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+        let service =
+            FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
+
+        // A flashblock left over from previous payload building
+        {
+            let mut state = service.building_state.write().await;
+            state.is_pending_builder_payload = true;
+            state.pending_flashblocks.push(OpFlashblockPayload {
+                payload_id: PayloadId::new([3, 1, 1, 1, 1, 1, 1, 1]),
+                index: 0,
+                base: Some(OpFlashblockPayloadBase::default()),
+                ..Default::default()
+            });
+        }
+
+        service
+            .start_payload_building(PayloadId::new([4, 2, 2, 2, 2, 2, 2, 2]))
+            .await;
+
+        let state = service.building_state.read().await;
+        assert!(
+            state.pending_flashblocks.is_empty(),
+            "an FCU with attributes must clear the previous buffer",
         );
 
         Ok(())
