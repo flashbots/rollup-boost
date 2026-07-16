@@ -470,7 +470,8 @@ impl FlasblocksP2PRpcClient {
             self.inner.payload_source
         );
 
-        let payload_id = payload_attributes.payload_id(&fork_choice_state.head_block_hash, 3);
+        let payload_id =
+            Self::builder_payload_id(&fork_choice_state.head_block_hash, &payload_attributes);
         let authorization = Authorization::new(
             payload_id,
             payload_attributes.payload_attributes.timestamp,

@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sha_short = &sha[0..8];
 
     // Set short SHA
-    println!("cargo:rustc-env=VERGEN_GIT_SHA_SHORT={}", &sha_short);
+    println!("cargo:rustc-env=VERGEN_GIT_SHA_SHORT={sha_short}");
 
     Ok(())
 }

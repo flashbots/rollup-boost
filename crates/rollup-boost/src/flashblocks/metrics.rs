@@ -22,8 +22,16 @@ pub struct FlashblocksServiceMetrics {
     #[metric(describe = "Number of errors when extending payload")]
     pub extend_payload_errors: Counter,
 
-    #[metric(describe = "Number of times the current payload ID has been set")]
+    #[metric(describe = "Number of flashblocks received with a mismatched payload ID")]
     pub current_payload_id_mismatch: Counter,
+
+    #[metric(
+        describe = "Number of buffered flashblocks adopted after the builder confirmed their payload ID"
+    )]
+    pub pending_flashblocks_buffered: Counter,
+
+    #[metric(describe = "Number of flashblocks dropped because the pending buffer was full")]
+    pub pending_flashblocks_dropped: Counter,
 
     #[metric(describe = "Number of messages processed by the service")]
     pub messages_processed: Counter,

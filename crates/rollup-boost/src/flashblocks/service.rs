@@ -23,7 +23,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
+
+/// Maximum number of flashblocks buffered while the builder's FCU response is in flight. The
+/// buffer normally holds at most a handful of flashblocks for one FCU round-trip, but a stalled
+/// builder response combined with a misbehaving flashblock stream must not grow it without
+/// bound; anything beyond the limit is dropped.
+const MAX_PENDING_FLASHBLOCKS: usize = 1024;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum FlashblocksError {
@@ -164,14 +170,32 @@ impl FlashblockBuilder {
     }
 }
 
+/// State of the payload building round currently in progress
+#[derive(Debug, Default)]
+struct PayloadBuildingState {
+    /// Current payload ID we're processing. Set from local payload calculation and updated from
+    /// external source.
+    /// None means rollup-boost has not served FCU with attributes yet.
+    payload_id: Option<PayloadId>,
+
+    /// Whether a FCU with attributes builder response for the builder payload id is in flight
+    is_pending_builder_payload: bool,
+
+    /// If payload_id calculation changes there will be a mismatch between the current payload id
+    /// and the builder payload id. A race condition where the builder FCU response returns after
+    /// the first flashblock arrives at the websocket will cause the flashblock to be discarded,
+    /// resulting in subsequent flashblocks unable to be extended
+    /// We have a short buffer of flashblocks if the FCU builder payload id response is still in
+    /// flight and there is a payload id mismatch
+    pending_flashblocks: Vec<OpFlashblockPayload>,
+}
+
 #[derive(Clone, Debug)]
 pub struct FlashblocksService {
     client: RpcClient,
 
-    /// Current payload ID we're processing. Set from local payload calculation and updated from
-    /// external source.
-    /// None means rollup-boost has not served FCU with attributes yet.
-    current_payload_id: Arc<RwLock<Option<PayloadId>>>,
+    /// The payload building round currently in progress.
+    building_state: Arc<RwLock<PayloadBuildingState>>,
 
     /// The current Flashblock's payload being constructed.
     best_payload: Arc<RwLock<FlashblockBuilder>>,
@@ -193,7 +217,7 @@ impl FlashblocksService {
 
         Ok(Self {
             client,
-            current_payload_id: Arc::new(RwLock::new(None)),
+            building_state: Arc::new(RwLock::new(PayloadBuildingState::default())),
             best_payload: Arc::new(RwLock::new(FlashblockBuilder::new())),
             ws_pub,
             metrics: Default::default(),
@@ -206,9 +230,10 @@ impl FlashblocksService {
         version: PayloadVersion,
         payload_id: PayloadId,
     ) -> Result<OpExecutionPayloadEnvelope, FlashblocksError> {
-        // Check that we have flashblocks for correct payload
-        if *self.current_payload_id.read().await != Some(payload_id) {
-            // We have outdated `current_payload_id` so we should fallback to get_payload
+        // Check that we have flashblocks for correct payload.
+        let building_state = self.building_state.read().await;
+        if building_state.payload_id != Some(payload_id) {
+            // We have an outdated payload id so we should fallback to get_payload
             // Clearing best_payload in here would cause situation when old `get_payload` would clear
             // currently built correct flashblocks.
             // This will self-heal on the next FCU.
@@ -232,11 +257,77 @@ impl FlashblocksService {
         Ok(payload)
     }
 
-    pub async fn set_current_payload_id(&self, payload_id: PayloadId) {
-        tracing::debug!(message = "Setting current payload ID", payload_id = %payload_id);
-        *self.current_payload_id.write().await = Some(payload_id);
-        // Current state won't be useful anymore because chain progressed
+    pub async fn start_payload_building(&self, expected_payload_id: PayloadId) {
+        tracing::debug!(message = "Starting payload building", payload_id = %expected_payload_id);
+        let mut building_state = self.building_state.write().await;
+        building_state.payload_id = Some(expected_payload_id);
+        building_state.is_pending_builder_payload = true;
+        building_state.pending_flashblocks.clear();
+        // Current state won't be useful anymore because chain progressed.
         *self.best_payload.write().await = FlashblockBuilder::new();
+    }
+
+    /// Confirms the payload id for the current round from the builder's FCU response
+    pub async fn confirm_payload_building(&self, builder_payload_id: Option<PayloadId>) {
+        let mut building_state = self.building_state.write().await;
+        building_state.is_pending_builder_payload = false;
+        let pending = std::mem::take(&mut building_state.pending_flashblocks);
+
+        let Some(payload_id) = builder_payload_id else {
+            tracing::debug!(message = "Forkchoice updated with no payload ID");
+            return;
+        };
+        if building_state.payload_id == Some(payload_id) {
+            // The precomputed id was right - nothing for this id can be pending.
+            tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
+            return;
+        }
+
+        tracing::debug!(
+            message = "Payload id returned by builder differs from calculated. Using builder payload id",
+            builder_payload_id = %payload_id,
+            calculated_payload_id = %building_state.payload_id.unwrap_or_default(),
+        );
+        building_state.payload_id = Some(payload_id);
+
+        // The precomputed id had mismatch, try extending with flashblocks in the pending buffer
+        let mut pending: Vec<_> = pending
+            .into_iter()
+            .filter(|p| p.payload_id == payload_id)
+            .collect();
+        pending.sort_by_key(|p| p.index);
+
+        let mut builder = FlashblockBuilder::new();
+        let mut buffered = Vec::new();
+        for payload in pending {
+            match builder.extend(payload.clone()) {
+                Ok(()) => buffered.push(payload),
+                // Contiguity broken (e.g. the base flashblock was never buffered);
+                // keep whatever prefix applied cleanly.
+                Err(e) => {
+                    debug!(
+                        message = "Error extending buffered flashblocks",
+                        error = %e,
+                        payload_id = %payload_id,
+                        index = payload.index,
+                    );
+                    break;
+                }
+            }
+        }
+        *self.best_payload.write().await = builder;
+
+        for payload in buffered {
+            self.metrics.pending_flashblocks_buffered.increment(1);
+            debug!(
+                message = "Pending flashblock was buffered",
+                payload_id = %payload_id,
+                index = payload.index,
+            );
+            if let Err(e) = self.ws_pub.publish(&payload) {
+                error!(message = "Failed to broadcast payload", error = %e);
+            }
+        }
     }
 
     async fn on_event(&mut self, event: FlashblocksEngineMessage) {
@@ -250,18 +341,42 @@ impl FlashblocksService {
                     index = payload.index
                 );
 
-                // Make sure the payload id matches the current payload id
-                // If local payload id is non then boost is not service FCU with attributes
-                match *self.current_payload_id.read().await {
+                // Make sure the payload id matches the current payload id.
+                let mut building_state = self.building_state.write().await;
+                match building_state.payload_id {
                     Some(payload_id) => {
                         if payload_id != payload.payload_id {
                             self.metrics.current_payload_id_mismatch.increment(1);
-                            error!(
-                                message = "Payload ID mismatch",
-                                payload_id = %payload.payload_id,
-                                local_payload_id = %payload_id,
-                                index = payload.index,
-                            );
+                            if building_state.is_pending_builder_payload {
+                                if building_state.pending_flashblocks.len()
+                                    >= MAX_PENDING_FLASHBLOCKS
+                                {
+                                    self.metrics.pending_flashblocks_dropped.increment(1);
+                                    warn!(
+                                        message = "Pending flashblocks buffer full, dropping flashblock",
+                                        payload_id = %payload.payload_id,
+                                        local_payload_id = %payload_id,
+                                        index = payload.index,
+                                    );
+                                    return;
+                                }
+                                // The builder's FCU response may still confirm this
+                                // flashblock's id, so hold on to it instead of discarding
+                                debug!(
+                                    message = "Payload ID mismatch while FCU response in flight, buffering flashblock",
+                                    payload_id = %payload.payload_id,
+                                    local_payload_id = %payload_id,
+                                    index = payload.index,
+                                );
+                                building_state.pending_flashblocks.push(payload);
+                            } else {
+                                debug!(
+                                    message = "Payload ID mismatch, discarding flashblock",
+                                    payload_id = %payload.payload_id,
+                                    local_payload_id = %payload_id,
+                                    index = payload.index,
+                                );
+                            }
                             return;
                         }
                     }
@@ -276,7 +391,11 @@ impl FlashblocksService {
                     }
                 }
 
-                if let Err(e) = self.best_payload.write().await.extend(payload.clone()) {
+                let extend_result = self.best_payload.write().await.extend(payload.clone());
+                // Publishing doesn't touch round state; release the lock first
+                drop(building_state);
+
+                if let Err(e) = extend_result {
                     self.metrics.extend_payload_errors.increment(1);
                     error!(
                         message = "Failed to extend payload",
@@ -316,31 +435,19 @@ impl EngineApiExt for FlashblocksService {
     ) -> ClientResult<ForkchoiceUpdated> {
         // Calculate and set expected payload_id
         if let Some(attr) = &payload_attributes {
-            let payload_id = attr.payload_id(&fork_choice_state.head_block_hash, 3);
-            self.set_current_payload_id(payload_id).await;
+            let payload_id = Self::builder_payload_id(&fork_choice_state.head_block_hash, attr);
+            self.start_payload_building(payload_id).await;
         }
 
-        let resp = self
+        let result = self
             .client
             .fork_choice_updated_v3(fork_choice_state, payload_attributes)
-            .await?;
+            .await;
 
-        if let Some(payload_id) = resp.payload_id {
-            let current_payload = *self.current_payload_id.read().await;
-            if current_payload != Some(payload_id) {
-                tracing::debug!(
-                    message = "Payload id returned by builder differs from calculated. Using builder payload id",
-                    builder_payload_id = %payload_id,
-                    calculated_payload_id = %current_payload.unwrap_or_default(),
-                );
-                self.set_current_payload_id(payload_id).await;
-            } else {
-                tracing::debug!(message = "Forkchoice updated", payload_id = %payload_id);
-            }
-        } else {
-            tracing::debug!(message = "Forkchoice updated with no payload ID");
-        }
-        Ok(resp)
+        // The FCU response sets the canonical payload id from the builder
+        let builder_payload_id = result.as_ref().ok().and_then(|resp| resp.payload_id);
+        self.confirm_payload_building(builder_payload_id).await;
+        result
     }
 
     async fn new_payload(&self, new_payload: NewPayload) -> ClientResult<PayloadStatus> {
@@ -444,7 +551,8 @@ mod tests {
             FlashblocksService::new(builder_client, "127.0.0.1:8001".parse().unwrap()).unwrap();
 
         // Some "random" payload id
-        *service.current_payload_id.write().await = Some(PayloadId::new([1, 1, 1, 1, 1, 1, 1, 1]));
+        service.building_state.write().await.payload_id =
+            Some(PayloadId::new([1, 1, 1, 1, 1, 1, 1, 1]));
 
         // We ensure that request will skip rollup-boost and serve payload from backup if payload id
         // don't match
@@ -454,6 +562,251 @@ mod tests {
 
         let get_payload_requests_builder = builder_mock.get_payload_requests.clone();
         assert_eq!(get_payload_requests_builder.lock().len(), 1);
+
+        Ok(())
+    }
+
+    /// A flashblock whose payload id differs from the precomputed one (e.g. the builder stamps a
+    /// different payload-id version byte, or it raced ahead of the FCU response) must be buffered
+    /// and adopted once the builder's FCU response confirms its payload id.
+    #[tokio::test]
+    async fn test_flashblock_buffered_then_adopted() -> eyre::Result<()> {
+        let jwt_secret = JwtSecret::random();
+        let builder_client = RpcClient::new(
+            Uri::from_str("http://127.0.0.1:1").unwrap(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+        let mut service =
+            FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
+
+        // Same attributes hash, different version byte: locally precomputed id stamps
+        // BUILDER_PAYLOAD_ID_VERSION (4), while this builder stamps 3.
+        let precomputed_id = PayloadId::new([4, 1, 1, 1, 1, 1, 1, 1]);
+        let builder_id = PayloadId::new([3, 1, 1, 1, 1, 1, 1, 1]);
+
+        // FCU with attributes: precompute is set while the builder's FCU response is in flight
+        service.start_payload_building(precomputed_id).await;
+        assert!(
+            service
+                .building_state
+                .read()
+                .await
+                .is_pending_builder_payload
+        );
+
+        // The base flashblock arrives before the FCU response, under the builder's id
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: builder_id,
+                    index: 0,
+                    base: Some(OpFlashblockPayloadBase::default()),
+                    ..Default::default()
+                },
+            ))
+            .await;
+
+        // Not adopted yet: the builder id is unconfirmed
+        assert_eq!(
+            service
+                .get_best_payload(PayloadVersion::V3, builder_id)
+                .await
+                .unwrap_err(),
+            FlashblocksError::MissingPayload
+        );
+
+        // The builder's FCU response confirms its payload id; the buffered base is adopted
+        service.confirm_payload_building(Some(builder_id)).await;
+        assert!(
+            !service
+                .building_state
+                .read()
+                .await
+                .is_pending_builder_payload
+        );
+
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: builder_id,
+                    index: 1,
+                    ..Default::default()
+                },
+            ))
+            .await;
+
+        assert!(
+            service
+                .get_best_payload(PayloadVersion::V3, builder_id)
+                .await
+                .is_ok()
+        );
+
+        Ok(())
+    }
+
+    /// A forkchoice update without attributes must clear stale pending flashblocks
+    #[tokio::test]
+    async fn test_pending_flashblocks_reset_on_fcu_without_attributes() -> eyre::Result<()> {
+        let builder_mock: MockEngineServer = MockEngineServer::new();
+        let (_server, server_addr) = spawn_server(builder_mock.clone()).await;
+        let jwt_secret = JwtSecret::random();
+        let builder_client = RpcClient::new(
+            Uri::from_str(&format!("http://{server_addr}")).unwrap(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+        let service =
+            FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
+
+        // A flashblock left over from a previous round
+        service
+            .building_state
+            .write()
+            .await
+            .is_pending_builder_payload = true;
+        service
+            .building_state
+            .write()
+            .await
+            .pending_flashblocks
+            .push(OpFlashblockPayload {
+                payload_id: PayloadId::new([3, 1, 1, 1, 1, 1, 1, 1]),
+                index: 0,
+                base: Some(OpFlashblockPayloadBase::default()),
+                ..Default::default()
+            });
+
+        service
+            .fork_choice_updated_v3(ForkchoiceState::default(), None)
+            .await?;
+
+        assert!(
+            service
+                .building_state
+                .read()
+                .await
+                .pending_flashblocks
+                .is_empty()
+        );
+        assert!(
+            !service
+                .building_state
+                .read()
+                .await
+                .is_pending_builder_payload
+        );
+
+        Ok(())
+    }
+
+    /// The pending buffer must not grow past [`MAX_PENDING_FLASHBLOCKS`] while the builder's
+    /// FCU response is in flight; overflow is dropped.
+    #[tokio::test]
+    async fn test_pending_flashblocks_bounded() -> eyre::Result<()> {
+        let jwt_secret = JwtSecret::random();
+        let builder_client = RpcClient::new(
+            Uri::from_str("http://127.0.0.1:1").unwrap(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+        let mut service =
+            FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
+
+        service
+            .start_payload_building(PayloadId::new([4, 1, 1, 1, 1, 1, 1, 1]))
+            .await;
+
+        // Fill the buffer to the limit, then deliver one more mismatching flashblock
+        service.building_state.write().await.pending_flashblocks =
+            vec![OpFlashblockPayload::default(); MAX_PENDING_FLASHBLOCKS];
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: PayloadId::new([3, 1, 1, 1, 1, 1, 1, 1]),
+                    index: 0,
+                    base: Some(OpFlashblockPayloadBase::default()),
+                    ..Default::default()
+                },
+            ))
+            .await;
+
+        assert_eq!(
+            service
+                .building_state
+                .read()
+                .await
+                .pending_flashblocks
+                .len(),
+            MAX_PENDING_FLASHBLOCKS
+        );
+
+        Ok(())
+    }
+
+    /// A flashblock with a mismatched payload id must never replace flashblocks already
+    /// accumulated for the confirmed payload id.
+    #[tokio::test]
+    async fn test_mismatched_flashblock_does_not_clobber() -> eyre::Result<()> {
+        let jwt_secret = JwtSecret::random();
+        let builder_client = RpcClient::new(
+            Uri::from_str("http://127.0.0.1:1").unwrap(),
+            jwt_secret,
+            2000,
+            PayloadSource::Builder,
+        )?;
+        let mut service =
+            FlashblocksService::new(builder_client, "127.0.0.1:0".parse().unwrap()).unwrap();
+
+        let current_id = PayloadId::new([4, 1, 1, 1, 1, 1, 1, 1]);
+        let other_id = PayloadId::new([4, 2, 2, 2, 2, 2, 2, 2]);
+
+        // Confirmed round: the builder's FCU response matched the precomputed id
+        service.start_payload_building(current_id).await;
+        service.confirm_payload_building(Some(current_id)).await;
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: current_id,
+                    index: 0,
+                    base: Some(OpFlashblockPayloadBase::default()),
+                    ..Default::default()
+                },
+            ))
+            .await;
+
+        // A flashblock for a different payload id arrives after the id is confirmed; it must be
+        // discarded without touching the current round (and not buffered — it can never become
+        // part of this round)
+        service
+            .on_event(FlashblocksEngineMessage::OpFlashblockPayload(
+                OpFlashblockPayload {
+                    payload_id: other_id,
+                    index: 0,
+                    base: Some(OpFlashblockPayloadBase::default()),
+                    ..Default::default()
+                },
+            ))
+            .await;
+        assert!(
+            service
+                .building_state
+                .read()
+                .await
+                .pending_flashblocks
+                .is_empty()
+        );
+
+        assert!(
+            service
+                .get_best_payload(PayloadVersion::V3, current_id)
+                .await
+                .is_ok()
+        );
 
         Ok(())
     }

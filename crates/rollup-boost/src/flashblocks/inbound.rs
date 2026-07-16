@@ -299,7 +299,7 @@ mod tests {
                                                 msg = read.next() => {
                                                     // we need to read for the library to handle pong messages
                                                     if let Some(Ok(Message::Ping(_))) = msg {
-                                                        send_ping_tx.send(()).await.expect("ping notification sent");
+                                                        let _ = send_ping_tx.send(()).await;
                                                     }
                                                 }
                                                 _ = term_rx.changed() => {
