@@ -25,11 +25,6 @@ use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-/// op-reth uses EngineApiMessageVersion::default() to calculate the payload id instead
-/// since the FCU version is not injected into the payload id. This is a bug on op-reth
-/// described in https://github.com/ethereum-optimism/optimism/issues/20226
-const BUILDER_PAYLOAD_ID_VERSION: u8 = 4;
-
 /// Maximum number of flashblocks buffered while the builder's FCU response is in flight. The
 /// buffer normally holds at most a handful of flashblocks for one FCU round-trip, but a stalled
 /// builder response combined with a misbehaving flashblock stream must not grow it without
@@ -321,7 +316,6 @@ impl FlashblocksService {
             }
         }
         *self.best_payload.write().await = builder;
-        drop(building_state);
 
         for payload in buffered {
             self.metrics.pending_flashblocks_buffered.increment(1);
@@ -441,10 +435,7 @@ impl EngineApiExt for FlashblocksService {
     ) -> ClientResult<ForkchoiceUpdated> {
         // Calculate and set expected payload_id
         if let Some(attr) = &payload_attributes {
-            let payload_id = attr.payload_id(
-                &fork_choice_state.head_block_hash,
-                BUILDER_PAYLOAD_ID_VERSION,
-            );
+            let payload_id = Self::builder_payload_id(&fork_choice_state.head_block_hash, attr);
             self.start_payload_building(payload_id).await;
         }
 
