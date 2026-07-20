@@ -1,0 +1,33 @@
+base: opstack
+description: Run locally-built rollup-boost with the OP stack recipe
+
+base_args:
+  - --external-builder
+  - op-reth
+
+setup:
+  - just build
+
+recipe:
+  rollup-boost:
+    services:
+      rollup-boost:
+        image: flashbots/rollup-boost
+        tag: develop
+        # args:
+        #   - --rpc-host
+        #   - 0.0.0.0
+        #   - --rpc-port
+        #   - '{{Port "authrpc" 8551}}'
+        #   - --l2-jwt-path
+        #   - /data/jwtsecret
+        #   - --l2-url
+        #   - '{{Service "op-geth" "authrpc" "http" ""}}'
+        #   - --builder-jwt-path
+        #   - /data/jwtsecret
+        #   - --builder-url
+        #   - '{{Service "op-reth" "authrpc" "http" ""}}'
+        # ports:
+        #   authrpc: 8551
+        # files:
+        #   /data/jwtsecret: artifact:jwtsecret
